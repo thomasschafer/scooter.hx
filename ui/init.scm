@@ -7,19 +7,35 @@
 (require "helix/misc.scm")
 (require "helix/editor.scm")
 (require "components/scooter-window.scm")
+(require "components/field-registry.scm")
+(require (only-in "components/field-registry.scm" FIELD-TYPE-TEXT FIELD-TYPE-BOOLEAN))
 
 (provide scooter)
 
 ;; Main plugin function
 (define (scooter)
+  ;; Initialize field values from registry
+  (define field-values
+    (fold (lambda (field-def values)
+            (hash-insert values (field-id field-def) (field-default-value field-def)))
+          (hash)
+          (get-all-fields)))
+
+  ;; Initialize cursor positions for text fields
+  (define cursor-positions
+    (fold (lambda (field-def positions)
+            (if (equal? (field-type field-def) FIELD-TYPE-TEXT)
+                (hash-insert positions (field-id field-def) 0)
+                positions))
+          (hash)
+          (get-all-fields)))
+
   ;; Create initial state in input mode
   (define state
     (ScooterWindow 'input ; mode
-                   "" ; search-term (empty)
-                   "" ; replace-term (empty)
+                   field-values ; field-values hash
+                   cursor-positions ; cursor-positions hash
                    'search ; current-field (start with search)
-                   0 ; search-cursor-pos (start at beginning)
-                   0 ; replace-cursor-pos (start at beginning)
                    (box '()) ; lines-box
                    #f ; process (none yet)
                    #f ; stdout-port (none yet)
