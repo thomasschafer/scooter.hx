@@ -18,11 +18,14 @@
                    "" ; search-term (empty)
                    "" ; replace-term (empty)
                    'search ; current-field (start with search)
+                   0 ; search-cursor-pos (start at beginning)
+                   0 ; replace-cursor-pos (start at beginning)
                    (box '()) ; lines-box
                    #f ; process (none yet)
                    #f ; stdout-port (none yet)
                    (box #f) ; completed-box
-                   (position 0 0))) ; cursor-position
+                   (position 0 0) ; cursor-position
+                   '())) ; debug-events (empty list)
 
   (push-component!
    (new-component! "scooter-window"
