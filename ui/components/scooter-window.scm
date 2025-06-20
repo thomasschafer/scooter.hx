@@ -1,4 +1,5 @@
 ;; Main ScooterWindow component with rendering and event handling
+;; Provides a visual interface for configuring scooter search parameters
 (require-builtin helix/components)
 (require (prefix-in helix. "helix/commands.scm"))
 (require (prefix-in helix.static. "helix/static.scm"))
@@ -9,27 +10,22 @@
 (require "border.scm")
 (require "input-field.scm")
 (require "field-registry.scm")
+(require "field-utils.scm")
+(require "command-builder.scm")
 (require (only-in "field-registry.scm" FIELD-TYPE-TEXT FIELD-TYPE-BOOLEAN))
 
 (provide ScooterWindow
          scooter-render
          scooter-event-handler
          scooter-cursor-handler
-         start-scooter-search
-         read-process-output-async
-         truncate-string
-         take-right
-         drop
-         WINDOW-SIZE-RATIO
-         CONTENT-PADDING
-         BORDER-PADDING)
+         start-scooter-search)
 
 ;; UI Constants
 (define WINDOW-SIZE-RATIO 0.9)
 (define CONTENT-PADDING 3)
 (define BORDER-PADDING 2)
 
-;; Field access helpers (generic for all fields)
+;; Field access helpers
 (define (get-field-value state field-id)
   (hash-ref (ScooterWindow-field-values state) field-id))
 
@@ -37,7 +33,6 @@
   (set-ScooterWindow-field-values! state
                                    (hash-insert (ScooterWindow-field-values state) field-id value)))
 
-;; Cursor position helpers
 (define (get-field-cursor-pos state field-id)
   (hash-ref (ScooterWindow-cursor-positions state) field-id))
 
@@ -46,43 +41,35 @@
    state
    (hash-insert (ScooterWindow-cursor-positions state) field-id pos)))
 
+;; Text editing functions (only for text fields)
 (define (move-cursor-left state field-id)
-  (define field-def (get-field-by-id field-id))
-  (when (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
+  (when (field-is-text? field-id)
     (define current-pos (get-field-cursor-pos state field-id))
-    (define new-pos (max 0 (- current-pos 1)))
-    (set-field-cursor-pos! state field-id new-pos)))
+    (set-field-cursor-pos! state field-id (max 0 (- current-pos 1)))))
 
 (define (move-cursor-right state field-id)
-  (define field-def (get-field-by-id field-id))
-  (when (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
+  (when (field-is-text? field-id)
     (define current-pos (get-field-cursor-pos state field-id))
     (define field-value (get-field-value state field-id))
-    (define new-pos (min (string-length field-value) (+ current-pos 1)))
-    (set-field-cursor-pos! state field-id new-pos)))
+    (set-field-cursor-pos! state field-id (min (string-length field-value) (+ current-pos 1)))))
 
 (define (insert-char-at-cursor state field-id char)
-  (define field-def (get-field-by-id field-id))
-  (when (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
+  (when (field-is-text? field-id)
     (define field-value (get-field-value state field-id))
     (define cursor-pos (get-field-cursor-pos state field-id))
     (define before (substring field-value 0 cursor-pos))
     (define after (substring field-value cursor-pos (string-length field-value)))
-    (define new-value (string-append before (string char) after))
-    (set-field-value! state field-id new-value)
+    (set-field-value! state field-id (string-append before (string char) after))
     (set-field-cursor-pos! state field-id (+ cursor-pos 1))))
 
 (define (delete-char-at-cursor state field-id)
-  (define field-def (get-field-by-id field-id))
-  (when (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
+  (when (and (field-is-text? field-id) (> (get-field-cursor-pos state field-id) 0))
     (define field-value (get-field-value state field-id))
     (define cursor-pos (get-field-cursor-pos state field-id))
-    (when (> cursor-pos 0)
-      (define before (substring field-value 0 (- cursor-pos 1)))
-      (define after (substring field-value cursor-pos (string-length field-value)))
-      (define new-value (string-append before after))
-      (set-field-value! state field-id new-value)
-      (set-field-cursor-pos! state field-id (- cursor-pos 1)))))
+    (define before (substring field-value 0 (- cursor-pos 1)))
+    (define after (substring field-value cursor-pos (string-length field-value)))
+    (set-field-value! state field-id (string-append before after))
+    (set-field-cursor-pos! state field-id (- cursor-pos 1))))
 
 ;; Main component state structure
 (struct ScooterWindow
@@ -189,22 +176,12 @@
        (set-position-row! (ScooterWindow-cursor-position state) value-y)
        (set-position-col! (ScooterWindow-cursor-position state) (+ content-x cursor-pos)))
 
-     ;; Draw debug events
-     (define debug-events (ScooterWindow-debug-events state))
-     (when (not (null? debug-events))
-       (frame-set-string! frame content-x (+ y window-height -6) "DEBUG EVENTS:" border-style)
-       (let loop ([events debug-events]
-                  [row 0])
-         (when (and (not (null? events)) (< row 3))
-           (frame-set-string! frame content-x (+ y window-height -5 row) (car events) border-style)
-           (loop (cdr events) (+ row 1)))))
-
      ;; Draw hint at bottom
      (frame-set-string!
       frame
       content-x
       (+ y window-height -2)
-      "Tab/Shift+Tab: navigate | Space: toggle checkbox | Enter: search | Esc: cancel"
+      "Tab/Shift+Tab: navigate | Space: toggle | Paste: Ctrl+V | Enter: search | Esc: cancel"
       border-style)]
 
     [(equal? mode 'results)
@@ -238,76 +215,28 @@
                         (truncate-string status content-width)
                         border-style)]))
 
-;; Event handler with comprehensive logging
+;; Event handler
 (define (scooter-event-handler state event)
   (define mode (ScooterWindow-mode state))
-
-  ;; DEBUG: Log and track every single event we receive
-  (when (equal? mode 'input)
-    (define event-str
-      (cond
-        [(key-event? event)
-         (string-append
-          "KEY: "
-          (cond
-            [(key-event-escape? event) "ESC"]
-            [(key-event-tab? event) "TAB"]
-            [(key-event-enter? event) "ENTER"]
-            [(key-event-backspace? event) "BACKSPACE"]
-            [(key-event-left? event) "LEFT"]
-            [(key-event-right? event) "RIGHT"]
-            [(key-event-char event) (string-append "CHAR:" (string (key-event-char event)))]
-            [else "UNKNOWN-KEY"]))]
-        [(mouse-event? event) "MOUSE"]
-        [else (string-append "OTHER:" (to-string event))]))
-
-    ;; Add to debug events list (keep last 5)
-    (define current-events (ScooterWindow-debug-events state))
-    (define new-events-full (cons event-str current-events))
-    (define new-events
-      (if (> (length new-events-full) 5)
-          (take-n new-events-full 5)
-          new-events-full))
-    (set-ScooterWindow-debug-events! state new-events)
-
-    ;; Also log to console
-    (log::info! event-str))
 
   (cond
     ;; Always close on Escape
     [(key-event-escape? event) event-result/close]
 
-    ;; Handle any non-standard events (like paste events)
-    [(and (equal? mode 'input)
-          (not (key-event-escape? event))
-          (not (key-event-tab? event))
-          (not (key-event-enter? event))
-          (not (key-event-backspace? event))
-          (not (key-event-left? event))
-          (not (key-event-right? event))
-          (not (key-event-char event))
-          (not (mouse-event? event)))
-     ;; This might be a paste event - let's try to extract text from it
-     (log::info! "HANDLING POTENTIAL PASTE EVENT")
-
-     ;; Try different ways to extract text from the event
-     (define event-str (to-string event))
-     (log::info! (string-append "Event string: " event-str))
-
-     ;; Let's just try to inspect the event structure more directly
-     ;; Since we know it's Event::Paste(String), maybe we can pattern match or access fields
-     (log::info! "Trying to examine event structure...")
-
-     ;; Try to see if the event has any accessible properties
-     (log::info! (string-append "Event type: "
-                                (if (procedure? event)
-                                    "procedure"
-                                    (if (pair? event)
-                                        "pair"
-                                        (if (vector? event)
-                                            "vector"
-                                            (if (string? event) "string" "other"))))))
-
+    ;; Handle paste events
+    [(and (equal? mode 'input) (paste-event? event))
+     (define paste-text (paste-event-string event))
+     (when paste-text
+       (define current-field-id (ScooterWindow-current-field state))
+       (when (field-is-text? current-field-id)
+         ;; Insert the pasted text at cursor position
+         (define field-value (get-field-value state current-field-id))
+         (define cursor-pos (get-field-cursor-pos state current-field-id))
+         (define before (substring field-value 0 cursor-pos))
+         (define after (substring field-value cursor-pos (string-length field-value)))
+         (define new-value (string-append before paste-text after))
+         (set-field-value! state current-field-id new-value)
+         (set-field-cursor-pos! state current-field-id (+ cursor-pos (string-length paste-text)))))
      event-result/consume]
 
     [(equal? mode 'input)
@@ -365,35 +294,13 @@
        [(key-event? event) event-result/close]
        [else event-result/consume])]
 
-    [else
-     ;; Catch any unhandled events - this might be our paste event!
-     (when (equal? mode 'input)
-       (log::info! "UNHANDLED EVENT - MIGHT BE PASTE")
-       (define event-str (to-string event))
-       (log::info! (string-append "Unhandled event string: " event-str))
+    [else event-result/consume]))
 
-       ;; Check if this is an Event (from the Event? predicate)
-       (log::info! (string-append "Is Event?: " (if (Event? event) "true" "false")))
-
-       ;; The Steel docs show this is the pattern: Event::Paste(String)
-       ;; Maybe I need to add specific Steel binding support for paste events
-       ;; For now, let's see if we can extract the string from the event representation
-
-       ;; Try to parse the clipboard text from the event string representation
-       ;; The format seems to be "#<helix_view::input::Event>" but this is just the debug repr
-       (log::info! "Attempting to handle as paste event..."))
-     event-result/consume]))
-
-;; Cursor handler
+;; Cursor handler - only show cursor for text fields in input mode
 (define (scooter-cursor-handler state _)
-  ;; Only show cursor in input mode and on text fields
-  (if (equal? (ScooterWindow-mode state) 'input)
-      (let ([current-field-id (ScooterWindow-current-field state)])
-        (define field-def (get-field-by-id current-field-id))
-        (if (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
-            (ScooterWindow-cursor-position state)
-            #f))
-      #f))
+  (and (equal? (ScooterWindow-mode state) 'input)
+       (field-is-text? (ScooterWindow-current-field state))
+       (ScooterWindow-cursor-position state)))
 
 ;; Start scooter search process
 (define (start-scooter-search state search-term replace-term)
@@ -404,27 +311,9 @@
   (set-box! (ScooterWindow-lines-box state) '())
   (set-box! (ScooterWindow-completed-box state) #f)
 
-  ;; Build command arguments from all field values
+  ;; Build command arguments from field values
   (define field-values (ScooterWindow-field-values state))
-  (define args (list "-N" "-s" search-term "-r" replace-term))
-
-  ;; Add boolean flags
-  (when (hash-ref field-values 'fixed-strings)
-    (set! args (append args (list "-f"))))
-  (when (hash-ref field-values 'match-whole-word)
-    (set! args (append args (list "-w"))))
-  (when (not (hash-ref field-values 'match-case))
-    (set! args
-          (append args (list "-i")))) ; -i is case-insensitive, so we use it when match-case is OFF
-
-  ;; Add file patterns
-  (define include-pattern (hash-ref field-values 'files-include))
-  (when (> (string-length include-pattern) 0)
-    (set! args (append args (list "-I" include-pattern))))
-
-  (define exclude-pattern (hash-ref field-values 'files-exclude))
-  (when (> (string-length exclude-pattern) 0)
-    (set! args (append args (list "-E" exclude-pattern))))
+  (define args (build-scooter-args field-values))
 
   ;; Create and configure the command
   (define cmd (command "scooter" args))
