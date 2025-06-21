@@ -1,4 +1,3 @@
-;; Border drawing utilities for UI components
 (require-builtin helix/components)
 
 (provide draw-border!
@@ -9,7 +8,6 @@
          BORDER-HORIZONTAL
          BORDER-VERTICAL)
 
-;; Border characters
 (define BORDER-TOP-LEFT "┌")
 (define BORDER-TOP-RIGHT "┐")
 (define BORDER-BOTTOM-LEFT "└")
@@ -17,7 +15,6 @@
 (define BORDER-HORIZONTAL "─")
 (define BORDER-VERTICAL "│")
 
-;; Draw a border around the specified rectangle
 (define (draw-border! frame x y width height style)
   (define horizontal-line (make-string width (string-ref BORDER-HORIZONTAL 0)))
   (frame-set-string! frame x y horizontal-line style)

@@ -1,18 +1,15 @@
-;; Main ScooterWindow component with rendering and event handling
-;; Provides a visual interface for configuring scooter search parameters
-(require-builtin helix/components)
+(require "helix/components.scm")
+(require "helix/editor.scm")
+(require "helix/misc.scm")
+(require "helix/configuration.scm")
 (require (prefix-in helix. "helix/commands.scm"))
 (require (prefix-in helix.static. "helix/static.scm"))
-(require "helix/configuration.scm")
-(require "helix/components.scm")
-(require "helix/misc.scm")
-(require "helix/editor.scm")
+
 (require "border.scm")
 (require "input-field.scm")
 (require "field-registry.scm")
 (require "field-utils.scm")
 (require "command-builder.scm")
-(require (only-in "field-registry.scm" FIELD-TYPE-TEXT FIELD-TYPE-BOOLEAN))
 
 (provide ScooterWindow
          scooter-render
@@ -20,28 +17,26 @@
          scooter-cursor-handler
          start-scooter-search)
 
-;; UI Constants
 (define WINDOW-SIZE-RATIO 0.9)
 (define CONTENT-PADDING 3)
 (define BORDER-PADDING 2)
 
 ;; Field access helpers
 (define (get-field-value state field-id)
-  (hash-ref (ScooterWindow-field-values state) field-id))
+  (hash-ref (unbox (ScooterWindow-field-values-box state)) field-id))
 
 (define (set-field-value! state field-id value)
-  (set-ScooterWindow-field-values! state
-                                   (hash-insert (ScooterWindow-field-values state) field-id value)))
+  (set-box! (ScooterWindow-field-values-box state)
+            (hash-insert (unbox (ScooterWindow-field-values-box state)) field-id value)))
 
 (define (get-field-cursor-pos state field-id)
-  (hash-ref (ScooterWindow-cursor-positions state) field-id))
+  (hash-ref (unbox (ScooterWindow-cursor-positions-box state)) field-id))
 
 (define (set-field-cursor-pos! state field-id pos)
-  (set-ScooterWindow-cursor-positions!
-   state
-   (hash-insert (ScooterWindow-cursor-positions state) field-id pos)))
+  (set-box! (ScooterWindow-cursor-positions-box state)
+            (hash-insert (unbox (ScooterWindow-cursor-positions-box state)) field-id pos)))
 
-;; Text editing functions (only for text fields)
+;; Text editing functions
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
     (define current-pos (get-field-cursor-pos state field-id))
@@ -71,19 +66,17 @@
     (set-field-value! state field-id (string-append before after))
     (set-field-cursor-pos! state field-id (- cursor-pos 1))))
 
-;; Main component state structure
 (struct ScooterWindow
-        (mode ; 'input or 'results
-         field-values ; Hash table of field-id -> value
-         cursor-positions ; Hash table of field-id -> cursor position
-         current-field ; Current field ID (symbol)
-         lines-box ; Search results
-         process ; scooter process (or #f)
-         stdout-port ; Port for reading output (or #f)
-         completed-box ; Process completion status
-         cursor-position ; Cursor position object for rendering
-         debug-events) ; List of recent events for debugging
-  #:mutable)
+        (mode-box ; 'input or 'results (boxed)
+         field-values-box ; Hash table of field-id -> value (boxed)
+         cursor-positions-box ; Hash table of field-id -> cursor position (boxed)
+         current-field-box ; Current field ID (symbol, boxed)
+         lines-box ; Search results (boxed)
+         process-box ; scooter process (boxed, or #f)
+         stdout-port-box ; Port for reading output (boxed, or #f)
+         completed-box ; Process completion status (boxed)
+         cursor-position ; Cursor position object for rendering (immutable)
+         debug-events-box)) ; List of recent events for debugging (boxed)
 
 ;; Utility functions
 (define (truncate-string str max-width)
@@ -124,10 +117,10 @@
   (define border-style (style))
   (draw-border! frame x y window-width window-height border-style)
 
-  (define mode (ScooterWindow-mode state))
+  (define mode (unbox (ScooterWindow-mode-box state)))
   (define search-term (get-field-value state 'search))
   (define replace-term (get-field-value state 'replace))
-  (define current-field (ScooterWindow-current-field state))
+  (define current-field (unbox (ScooterWindow-current-field-box state)))
   (define default-style (style))
 
   (define content-x (+ x CONTENT-PADDING))
@@ -135,7 +128,6 @@
   (define content-width (- window-width (* CONTENT-PADDING 2)))
   (define content-height (- window-height (* BORDER-PADDING 2)))
 
-  ;; Draw title
   (define title
     (if (equal? mode 'input)
         " Scooter "
@@ -144,7 +136,6 @@
 
   (cond
     [(equal? mode 'input)
-     ;; Draw all input fields
      (define field-positions (calculate-field-positions content-y))
      (for-each (lambda (field-def)
                  (define field-id (field-id field-def))
@@ -217,17 +208,16 @@
 
 ;; Event handler
 (define (scooter-event-handler state event)
-  (define mode (ScooterWindow-mode state))
+  (define mode (unbox (ScooterWindow-mode-box state)))
 
   (cond
-    ;; Always close on Escape
     [(key-event-escape? event) event-result/close]
 
     ;; Handle paste events
     [(and (equal? mode 'input) (paste-event? event))
      (define paste-text (paste-event-string event))
      (when paste-text
-       (define current-field-id (ScooterWindow-current-field state))
+       (define current-field-id (unbox (ScooterWindow-current-field-box state)))
        (when (field-is-text? current-field-id)
          ;; Insert the pasted text at cursor position
          (define field-value (get-field-value state current-field-id))
@@ -242,16 +232,14 @@
     [(equal? mode 'input)
      (cond
        [(key-event-tab? event)
-        ;; Tab: next field, Shift+Tab: previous field
-        (define current-field-id (ScooterWindow-current-field state))
+        (define current-field-id (unbox (ScooterWindow-current-field-box state)))
         (define new-field-id
           (if (equal? (key-event-modifier event) key-modifier-shift)
               (get-previous-field current-field-id)
               (get-next-field current-field-id)))
-        (set-ScooterWindow-current-field! state new-field-id)
+        (set-box! (ScooterWindow-current-field-box state) new-field-id)
         event-result/consume]
        [(key-event-enter? event)
-        ;; Start search
         (define search-term (get-field-value state 'search))
         (define replace-term (get-field-value state 'replace))
         (if (> (string-length search-term) 0)
@@ -260,28 +248,22 @@
               event-result/consume)
             event-result/consume)]
        [(key-event-left? event)
-        ;; Move cursor left
-        (move-cursor-left state (ScooterWindow-current-field state))
+        (move-cursor-left state (unbox (ScooterWindow-current-field-box state)))
         event-result/consume]
        [(key-event-right? event)
-        ;; Move cursor right
-        (move-cursor-right state (ScooterWindow-current-field state))
+        (move-cursor-right state (unbox (ScooterWindow-current-field-box state)))
         event-result/consume]
        [(key-event-backspace? event)
-        ;; Delete character at cursor
-        (delete-char-at-cursor state (ScooterWindow-current-field state))
+        (delete-char-at-cursor state (unbox (ScooterWindow-current-field-box state)))
         event-result/consume]
        [(key-event-char event)
-        ;; Handle character input
         (define char (key-event-char event))
-        (define current-field-id (ScooterWindow-current-field state))
+        (define current-field-id (unbox (ScooterWindow-current-field-box state)))
         (define field-def (get-field-by-id current-field-id))
         (when (and (char? char) field-def)
           (cond
-            ;; For text fields, insert the character
             [(equal? (field-type field-def) FIELD-TYPE-TEXT)
              (insert-char-at-cursor state current-field-id char)]
-            ;; For boolean fields, toggle on space
             [(and (equal? (field-type field-def) FIELD-TYPE-BOOLEAN) (equal? char #\space))
              (define current-value (get-field-value state current-field-id))
              (set-field-value! state current-field-id (not current-value))]))
@@ -289,33 +271,28 @@
        [else event-result/consume])]
 
     [(equal? mode 'results)
-     ;; Any key event closes in results mode
      (cond
        [(key-event? event) event-result/close]
        [else event-result/consume])]
 
     [else event-result/consume]))
 
-;; Cursor handler - only show cursor for text fields in input mode
 (define (scooter-cursor-handler state _)
-  (and (equal? (ScooterWindow-mode state) 'input)
-       (field-is-text? (ScooterWindow-current-field state))
+  (and (equal? (unbox (ScooterWindow-mode-box state)) 'input)
+       (field-is-text? (unbox (ScooterWindow-current-field-box state)))
        (ScooterWindow-cursor-position state)))
 
-;; Start scooter search process
 (define (start-scooter-search state search-term replace-term)
   ;; Switch to results mode
-  (set-ScooterWindow-mode! state 'results)
+  (set-box! (ScooterWindow-mode-box state) 'results)
 
   ;; Clear previous results
   (set-box! (ScooterWindow-lines-box state) '())
   (set-box! (ScooterWindow-completed-box state) #f)
 
-  ;; Build command arguments from field values
-  (define field-values (ScooterWindow-field-values state))
+  (define field-values (unbox (ScooterWindow-field-values-box state)))
   (define args (build-scooter-args field-values))
 
-  ;; Create and configure the command
   (define cmd (command "scooter" args))
   (set-piped-stdout! cmd)
 
@@ -324,16 +301,16 @@
   (define stdout-port (child-stdout proc))
 
   ;; Update state
-  (set-ScooterWindow-process! state proc)
-  (set-ScooterWindow-stdout-port! state stdout-port)
+  (set-box! (ScooterWindow-process-box state) proc)
+  (set-box! (ScooterWindow-stdout-port-box state) stdout-port)
 
   ;; Start reading output
   (read-process-output-async state))
 
 ;; Async output reading
 (define (read-process-output-async state)
-  (define port (ScooterWindow-stdout-port state))
-  (define proc (ScooterWindow-process state))
+  (define port (unbox (ScooterWindow-stdout-port-box state)))
+  (define proc (unbox (ScooterWindow-process-box state)))
 
   (enqueue-thread-local-callback (lambda ()
                                    (let loop ()
