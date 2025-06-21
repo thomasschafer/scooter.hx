@@ -10,6 +10,7 @@
 (require "field-registry.scm")
 (require "field-utils.scm")
 (require "command-builder.scm")
+(require "utils.scm")
 
 (provide ScooterWindow
          scooter-render
@@ -77,28 +78,6 @@
          completed-box ; Process completion status (boxed)
          cursor-position ; Cursor position object for rendering (immutable)
          debug-events-box)) ; List of recent events for debugging (boxed)
-
-;; Utility functions
-(define (truncate-string str max-width)
-  (if (> (string-length str) max-width)
-      (substring str 0 max-width)
-      str))
-
-(define (take-right lst n)
-  (define len (length lst))
-  (if (<= len n)
-      lst
-      (drop lst (- len n))))
-
-(define (drop lst n)
-  (if (or (<= n 0) (null? lst))
-      lst
-      (drop (cdr lst) (- n 1))))
-
-(define (take-n lst n)
-  (if (or (<= n 0) (null? lst))
-      '()
-      (cons (car lst) (take-n (cdr lst) (- n 1)))))
 
 ;; Main render function
 (define (scooter-render state rect frame)
