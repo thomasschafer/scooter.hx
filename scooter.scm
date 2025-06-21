@@ -1,16 +1,14 @@
-;; Main entry point for Scooter search plugin
-;; Interactive find and replace interface for Helix
 (require-builtin helix/components)
 (require (prefix-in helix. "helix/commands.scm"))
 (require "helix/components.scm")
 (require "helix/editor.scm")
 (require "helix/misc.scm")
-(require "components/scooter-window.scm")
-(require "components/state-init.scm")
+
+(require "ui/scooter-window.scm")
+(require "ui/state-init.scm")
 
 (provide scooter)
 
-;; Main plugin function - launches the scooter search interface
 (define (scooter)
   (define state
     (ScooterWindow 'input ; Start in input mode
