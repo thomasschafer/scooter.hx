@@ -18,10 +18,14 @@
          scooter-cursor-handler
          start-scooter-search)
 
-;; Constants
-(define WINDOW-SIZE-RATIO 0.9)
-(define CONTENT-PADDING 3)
-(define BORDER-PADDING 2)
+;; UI Constants
+(define WINDOW-SIZE-RATIO 0.9) ; Window size as a ratio of screen size
+(define CONTENT-PADDING 3) ; Padding between window border and content
+(define BORDER-PADDING 2) ; Padding for border elements
+(define TEXT-FIELD-WIDTH 40) ; Default width for text fields
+(define CHECKBOX-WIDTH 5) ; Width of checkbox box
+(define CHECKBOX-TEXT-GAP 1) ; Gap between checkbox and label
+(define CURSOR-PADDING 2) ; Padding for cursor positioning in text fields
 
 ;; State struct
 (struct ScooterWindow
@@ -98,154 +102,141 @@
       (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
 
 ;; ----------------
-;; UI Styling Functions
+;; UI Styling
 ;; ----------------
 
+;; Define a structure for holding all UI styles
+(struct UIStyles
+        (text ; Default text style
+         popup ; Popup window background style
+         bold ; Bold text style
+         dim ; Dimmed text style
+         search ; Search result highlighting style
+         status ; Status bar style
+         active ; Active field highlighting style
+         ))
+
+;; Create a central style registry for the application
 (define (create-ui-styles)
-  (let* ([bg-color (theme->bg *helix.cx*)]
-         [fg-color (theme->fg *helix.cx*)]
-         [ui-text-style (theme-scope "ui.text")]
-         [ui-popup-style (theme-scope "ui.popup")]
-         ;; Use built-in theme colors for active elements
-         [ui-cursor-style (theme-scope "ui.cursor")]
-         [ui-selection-style (theme-scope "ui.selection")]
-         [ui-menu-style (theme-scope "ui.menu.selected")]
-         ;; Create a green-highlight style using built-in styles
-         [active-style (theme-scope "markup.heading")])
-    (list ui-text-style
-          ui-popup-style
-          (style-with-bold ui-text-style) ; active style (bold)
-          (style-with-dim ui-text-style) ; hint style
-          (theme-scope "search.match") ; search result style
-          (theme-scope "ui.statusline") ; status style
-          active-style))) ; use markup.heading which is usually green in most themes
+  (let* ([ui-text-style (theme-scope "ui.text")]
+         [ui-popup-style (theme-scope "ui.popup")])
+    (UIStyles ui-text-style ; text
+              ui-popup-style ; popup
+              (style-with-bold ui-text-style) ; bold
+              (style-with-dim ui-text-style) ; dim
+              (theme-scope "search.match") ; search
+              (theme-scope "ui.statusline") ; status
+              (theme-scope "markup.heading")))) ; active - usually green in most themes
 
 ;; ----------------
 ;; Field Drawing Functions
 ;; ----------------
 
-(define (draw-boolean-field frame content-x label-y field-def field-value active? label-style)
-  (let* ([styles (create-ui-styles)]
-         [active-highlight-style (list-ref styles 6)] ; Get the active highlight style
-         [box-style (if active? active-highlight-style label-style)]
-         [title (field-label field-def)]
+(define (draw-boolean-field frame content-x label-y field-def field-value active? styles)
+  (let* ([title (field-label field-def)]
          [checkbox-content (if field-value "X" " ")]
-         [checkbox-top (string-append BORDER-TOP-LEFT
-                                      BORDER-HORIZONTAL
-                                      BORDER-HORIZONTAL
-                                      BORDER-HORIZONTAL
-                                      BORDER-TOP-RIGHT)]
+         ;; Compute horizontal line for top/bottom of checkbox
+         [horizontal-line (make-string (- CHECKBOX-WIDTH 2) (string-ref BORDER-HORIZONTAL 0))]
+         ;; Create the box components
+         [checkbox-top (string-append BORDER-TOP-LEFT horizontal-line BORDER-TOP-RIGHT)]
          [checkbox-middle (string-append BORDER-VERTICAL " " checkbox-content " " BORDER-VERTICAL)]
-         [checkbox-bottom (string-append BORDER-BOTTOM-LEFT
-                                         BORDER-HORIZONTAL
-                                         BORDER-HORIZONTAL
-                                         BORDER-HORIZONTAL
-                                         BORDER-BOTTOM-RIGHT)])
+         [checkbox-bottom (string-append BORDER-BOTTOM-LEFT horizontal-line BORDER-BOTTOM-RIGHT)]
+         ;; Choose style based on active state
+         [box-style (if active?
+                        (UIStyles-active styles)
+                        (UIStyles-text styles))]
+         [text-style (UIStyles-text styles)])
 
     ;; Draw the checkbox box
     (frame-set-string! frame content-x label-y checkbox-top box-style)
     (frame-set-string! frame content-x (+ label-y 1) checkbox-middle box-style)
     (frame-set-string! frame content-x (+ label-y 2) checkbox-bottom box-style)
 
-    ;; Draw the title text to the right of the checkbox
-    (frame-set-string! frame (+ content-x 6) (+ label-y 1) title label-style)))
+    ;; Draw the title text to the right of the checkbox with appropriate spacing
+    (frame-set-string! frame
+                       (+ content-x CHECKBOX-WIDTH CHECKBOX-TEXT-GAP)
+                       (+ label-y 1)
+                       title
+                       text-style)))
 
 (define (draw-text-field-box frame
                              content-x
                              label-y
-                             value-y
                              content-width
                              field-def
                              field-value
                              active?
-                             label-style
-                             value-style)
-  (let* ([box-width (min 40 (- content-width 4))]
+                             styles)
+  (let* ([box-width (min TEXT-FIELD-WIDTH (- content-width 4))]
          [title (field-label field-def)]
          [title-len (string-length title)]
-         [left-border-len 1]
-         [right-border-len (max 1 (- box-width title-len left-border-len 2))]
-         ;; Use theme-based highlight for active field
-         [styles (create-ui-styles)]
-         [active-highlight-style (list-ref styles 6)] ; Get the active highlight style
-         [box-style (if active? active-highlight-style value-style)]
-         [title-style (if active?
-                          (style-with-bold box-style)
-                          box-style)]
-         ;; Ensure the top border has the correct width with title embedded
-         [title-overlay-len (+ 1 title-len)] ;; +1 for the starting BORDER-TOP-LEFT
-         [remaining-width (- box-width title-overlay-len 1)] ;; -1 for the ending BORDER-TOP-RIGHT
+
+         ;; Calculate box dimensions with title in the top border
+         [title-start-pos 1] ; Position after BORDER-TOP-LEFT
+         [right-border-pos (- box-width 1)] ; Position of the right border
+         [remaining-border-width (- right-border-pos title-start-pos title-len)]
+
+         ;; Create box elements with proper width calculations
          [box-top (string-append BORDER-TOP-LEFT
                                  title
-                                 (make-string remaining-width (string-ref BORDER-HORIZONTAL 0))
+                                 (make-string remaining-border-width (string-ref BORDER-HORIZONTAL 0))
                                  BORDER-TOP-RIGHT)]
          [box-bottom (string-append BORDER-BOTTOM-LEFT
                                     (make-string (- box-width 2) (string-ref BORDER-HORIZONTAL 0))
-                                    BORDER-BOTTOM-RIGHT)])
+                                    BORDER-BOTTOM-RIGHT)]
+
+         ;; Select styles based on active state
+         [base-style (if active?
+                         (UIStyles-active styles)
+                         (UIStyles-text styles))]
+         [title-style (if active?
+                          (style-with-bold base-style)
+                          base-style)]
+         [text-style (UIStyles-text styles)])
 
     ;; Draw the box with title integrated into the top border
     (frame-set-string! frame content-x label-y box-top title-style)
-    (frame-set-string! frame content-x (+ label-y 1) BORDER-VERTICAL box-style)
-    (frame-set-string! frame (+ content-x (- box-width 1)) (+ label-y 1) BORDER-VERTICAL box-style)
-    (frame-set-string! frame content-x (+ label-y 2) box-bottom box-style)
+    (frame-set-string! frame content-x (+ label-y 1) BORDER-VERTICAL base-style)
+    (frame-set-string! frame (+ content-x (- box-width 1)) (+ label-y 1) BORDER-VERTICAL base-style)
+    (frame-set-string! frame content-x (+ label-y 2) box-bottom base-style)
 
     ;; Draw the text value inside the box
     (frame-set-string! frame
-                       (+ content-x 2)
+                       (+ content-x CURSOR-PADDING)
                        (+ label-y 1)
-                       (truncate-string (or field-value "") (- box-width 4))
-                       value-style)))
+                       (truncate-string (or field-value "") (- box-width (+ CURSOR-PADDING 2)))
+                       text-style)))
 
 ;; Draws a single field based on its type
-(define (draw-field frame
-                    content-x
-                    field-def
-                    field-value
-                    active?
-                    positions
-                    default-style
-                    active-style)
+(define (draw-field frame content-x content-width field-def field-value active? field-y-pos styles)
   (let* ([field-id (field-id field-def)]
-         [label-y (car positions)]
-         [value-y (cdr positions)]
-         [label-style (if active? active-style default-style)]
-         [value-style (if active? active-style default-style)]
-         [content-width 40]) ; simplified - in real code get this from window size
+         [field-type (field-type field-def)])
 
     ;; Draw different field types appropriately
-    (if (equal? (field-type field-def) FIELD-TYPE-BOOLEAN)
-        (draw-boolean-field frame content-x label-y field-def field-value active? label-style)
+    (if (equal? field-type FIELD-TYPE-BOOLEAN)
+        (draw-boolean-field frame content-x field-y-pos field-def field-value active? styles)
         (draw-text-field-box frame
                              content-x
-                             label-y
-                             value-y
+                             field-y-pos
                              content-width
                              field-def
                              field-value
                              active?
-                             label-style
-                             value-style))))
+                             styles))))
 
 ;; Processes and draws all fields
-(define (draw-all-fields frame content-x content-y current-field state default-style active-style)
+(define (draw-all-fields frame content-x content-y content-width current-field state styles)
   (let ([field-positions (calculate-field-positions content-y)])
     (let process-fields ([fields (get-all-fields)])
       (when (not (null? fields))
         (let* ([field-def (car fields)]
                [field-id (field-id field-def)]
                [active? (equal? current-field field-id)]
-               [positions (hash-ref field-positions field-id)]
+               [y-pos (car (hash-ref field-positions field-id))]
                [field-value (get-field-value state field-id)])
 
           ;; Draw this field
-          (draw-field frame
-                      content-x
-                      field-def
-                      field-value
-                      active?
-                      positions
-                      default-style
-                      active-style)
+          (draw-field frame content-x content-width field-def field-value active? y-pos styles)
 
           ;; Process next field
           (process-fields (cdr fields)))))))
@@ -254,6 +245,7 @@
 ;; Results Display Functions
 ;; ----------------
 
+;; Draw search results with pagination (showing the most recent results that fit)
 (define (draw-search-results frame
                              content-x
                              content-y
@@ -262,20 +254,23 @@
                              window-height
                              lines
                              result-style)
-  (let* ([available-content-lines (- content-height 1)]
-         [display-lines (if (> (length lines) available-content-lines)
-                            (take-right lines available-content-lines)
+  (let* ([max-visible-lines (- content-height 1)] ; Leave room for status line
+         ;; If we have more lines than can fit, take the most recent ones
+         [display-lines (if (> (length lines) max-visible-lines)
+                            (take-right lines max-visible-lines)
                             lines)])
 
     ;; Draw each result line
-    (let loop ([lines display-lines]
-               [row 0])
-      (when (and (not (null? lines))
-                 (< row available-content-lines)
-                 (< (+ content-y row) (+ y window-height -2)))
-        (let ([line (truncate-string (car lines) (- content-height 4))])
-          (frame-set-string! frame content-x (+ content-y row) line result-style)
-          (loop (cdr lines) (+ row 1)))))))
+    (let loop ([remaining-lines display-lines]
+               [current-row 0])
+      (when (and (not (null? remaining-lines)) ; Still have lines to draw
+                 (< current-row max-visible-lines) ; Within visible area
+                 (< (+ content-y current-row) (+ y window-height -2))) ; Within window
+        (let* ([line (car remaining-lines)]
+               [truncated-line (truncate-string line (- content-height 4))])
+          ;; Draw this line and continue with next
+          (frame-set-string! frame content-x (+ content-y current-row) truncated-line result-style)
+          (loop (cdr remaining-lines) (+ current-row 1)))))))
 
 (define (draw-status-line frame
                           content-x
@@ -283,44 +278,66 @@
                           content-width ;; Width to use for truncation
                           lines
                           completed?
-                          status-style
-                          dim-style)
+                          status-style ;; Style for completed status
+                          dim-style) ;; Style for in-progress status
   (let* ([line-count (length lines)]
-         [status
+         [status-text
           (if completed?
               (string-append "Done. " (number->string line-count) " matches. Press any key to close")
               (string-append "Searching... " (number->string line-count) " matches"))]
          [style (if completed? status-style dim-style)])
-    (frame-set-string! frame content-x position-y (truncate-string status content-width) style)))
+    (frame-set-string! frame content-x position-y (truncate-string status-text content-width) style)))
 
 ;; ----------------
 ;; Main Rendering Function
 ;; ----------------
 
+;; Layout structure for window dimensions and position
+(struct WindowLayout
+        (x ; Window X position
+         y ; Window Y position
+         width ; Total window width
+         height ; Total window height
+         content-x ; Content area X position
+         content-y ; Content area Y position
+         content-width ; Content area width
+         content-height ; Content area height
+         ))
+
 ;; Calculate window dimensions and position
 (define (calculate-window-layout rect)
   (let* ([screen-width (area-width rect)]
          [screen-height (area-height rect)]
+         ;; Calculate window size based on screen dimensions
          [window-width (exact (round (* screen-width WINDOW-SIZE-RATIO)))]
          [window-height (exact (round (* screen-height WINDOW-SIZE-RATIO)))]
+         ;; Center window on screen
          [x (exact (max 1 (- (round (/ screen-width 2)) (round (/ window-width 2)))))]
          [y (exact (max 0 (- (round (/ screen-height 2)) (round (/ window-height 2)))))]
+         ;; Calculate content area dimensions
          [content-x (+ x CONTENT-PADDING)]
          [content-y (+ y BORDER-PADDING)]
          [content-width (- window-width (* CONTENT-PADDING 2))]
          [content-height (- window-height (* BORDER-PADDING 2))])
-    (list x y window-width window-height content-x content-y content-width content-height)))
+    ;; Return a structured layout object
+    (WindowLayout x y window-width window-height content-x content-y content-width content-height)))
 
-;; Draw window frame and title
-(define (draw-window-frame frame x y window-width window-height border-style title-style title)
-  (let ([window-area (area x y window-width window-height)]
-        [popup-style (theme-scope "ui.popup")])
-    ;; Clear area with popup style
+;; Draw the main window frame and title
+(define (draw-window-frame frame x y width height border-style title-style title)
+  (let* ([window-area (area x y width height)]
+         [popup-style (theme-scope "ui.popup")]
+         [title-x (+ x 2)] ; Position title slightly inset from left edge
+         [max-title-width (- width 4)] ; Leave room on both sides
+         [truncated-title (truncate-string title max-title-width)])
+
+    ;; Clear entire window area with popup background
     (buffer/clear-with frame window-area popup-style)
-    ;; Draw the border
-    (draw-border! frame x y window-width window-height border-style)
-    ;; Draw the title
-    (frame-set-string! frame (+ x 2) y (truncate-string title (- window-width 4)) title-style)))
+
+    ;; Draw the window border
+    (draw-border! frame x y width height border-style)
+
+    ;; Draw the window title
+    (frame-set-string! frame title-x y truncated-title title-style)))
 
 ;; Positions the cursor for text input fields
 (define (position-cursor-in-text-field state current-field field-positions content-x)
@@ -328,82 +345,74 @@
     (when (and active-field-def (equal? (field-type active-field-def) FIELD-TYPE-TEXT))
       (let* ([positions (hash-ref field-positions current-field)]
              [box-top-y (car positions)]
-             [cursor-pos (get-field-cursor-pos state current-field)])
-        ;; Position cursor inside the box (1 down from box top, 2 right from box left edge)
-        (set-position-row! (ScooterWindow-cursor-position state) (+ box-top-y 1))
-        (set-position-col! (ScooterWindow-cursor-position state) (+ content-x 2 cursor-pos))))))
+             [cursor-pos (get-field-cursor-pos state current-field)]
+             [cursor-row (+ box-top-y 1)] ; Position is 1 row below the box top
+             [cursor-col (+ content-x CURSOR-PADDING cursor-pos)]) ; Account for padding
+        ;; Position cursor inside the box
+        (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
+        (set-position-col! (ScooterWindow-cursor-position state) cursor-col)))))
 
-;; Draw hint at bottom of window
+;; Draw hint text at bottom of window to guide user interactions
 (define (draw-hint-text frame content-x y window-height hint-style)
-  (frame-set-string!
-   frame
-   content-x
-   (+ y window-height -2)
-   "<tab> next field | <shift+tab> prev field | <space> toggle | <enter> search | <esc> cancel"
-   hint-style))
+  (let ([hint-y (+ y window-height -2)] ; Position at bottom of window
+        [hint-text
+         "<tab> next field | <shift+tab> prev field | <space> toggle | <enter> search | <esc> cancel"])
+    (frame-set-string! frame content-x hint-y hint-text hint-style)))
 
 ;; Main render function
 (define (scooter-render state rect frame)
-  ;; Calculate layout
-  (let* ([layout (calculate-window-layout rect)]
-         [x (list-ref layout 0)]
-         [y (list-ref layout 1)]
-         [window-width (list-ref layout 2)]
-         [window-height (list-ref layout 3)]
-         [content-x (list-ref layout 4)]
-         [content-y (list-ref layout 5)]
-         [content-width (list-ref layout 6)]
-         [content-height (list-ref layout 7)]
+  (let* (;; Get the UI layout as a structured object
+         [layout (calculate-window-layout rect)]
 
-         ;; Get styles
+         ;; Get themed styles
          [styles (create-ui-styles)]
-         [default-style (list-ref styles 0)]
-         [popup-style (list-ref styles 1)]
-         [active-style (list-ref styles 2)]
-         [hint-style (list-ref styles 3)]
-         [result-style (list-ref styles 4)]
-         [status-style (list-ref styles 5)]
-         [active-highlight-style (list-ref styles 6)]
 
-         ;; Get state values
+         ;; Get application state
          [mode (unbox (ScooterWindow-mode-box state))]
          [search-term (get-field-value state 'search)]
          [current-field (unbox (ScooterWindow-current-field-box state))]
 
-         ;; Create title
+         ;; Create appropriate window title
          [title (if (equal? mode 'input)
                     " Scooter "
                     (string-append " Results for: " search-term " "))])
 
     ;; Draw window frame and title
     (draw-window-frame frame
-                       x
-                       y
-                       window-width
-                       window-height
-                       default-style
-                       (style-with-bold default-style)
+                       (WindowLayout-x layout)
+                       (WindowLayout-y layout)
+                       (WindowLayout-width layout)
+                       (WindowLayout-height layout)
+                       (UIStyles-text styles)
+                       (style-with-bold (UIStyles-text styles))
                        title)
 
     ;; Draw mode-specific content
     (cond
       ;; Input mode - draw fields
       [(equal? mode 'input)
-       (let ([field-positions (calculate-field-positions content-y)])
-         ;; Draw all fields (using active-highlight-style for active fields)
+       (let ([field-positions (calculate-field-positions (WindowLayout-content-y layout))])
+         ;; Draw all fields
          (draw-all-fields frame
-                          content-x
-                          content-y
+                          (WindowLayout-content-x layout)
+                          (WindowLayout-content-y layout)
+                          (WindowLayout-content-width layout)
                           current-field
                           state
-                          default-style
-                          active-highlight-style)
+                          styles)
 
          ;; Position cursor in text field
-         (position-cursor-in-text-field state current-field field-positions content-x)
+         (position-cursor-in-text-field state
+                                        current-field
+                                        field-positions
+                                        (WindowLayout-content-x layout))
 
          ;; Draw hint text
-         (draw-hint-text frame content-x y window-height hint-style))]
+         (draw-hint-text frame
+                         (WindowLayout-content-x layout)
+                         (WindowLayout-y layout)
+                         (WindowLayout-height layout)
+                         (UIStyles-dim styles)))]
 
       ;; Results mode - show search results
       [(equal? mode 'results)
@@ -411,23 +420,24 @@
              [completed? (unbox (ScooterWindow-completed-box state))])
          ;; Draw results
          (draw-search-results frame
-                              content-x
-                              content-y
-                              content-height
-                              y
-                              window-height
+                              (WindowLayout-content-x layout)
+                              (WindowLayout-content-y layout)
+                              (WindowLayout-content-height layout)
+                              (WindowLayout-y layout)
+                              (WindowLayout-height layout)
                               lines
-                              result-style)
+                              (UIStyles-search styles))
 
          ;; Draw status line
-         (draw-status-line frame
-                           content-x
-                           (+ y window-height -3) ;; Fixed position parameter
-                           content-width ;; Use content width for truncation
-                           lines
-                           completed?
-                           status-style
-                           hint-style))])))
+         (draw-status-line
+          frame
+          (WindowLayout-content-x layout)
+          (+ (WindowLayout-y layout) (WindowLayout-height layout) -3) ; Position at bottom of window
+          (WindowLayout-content-width layout)
+          lines
+          completed?
+          (UIStyles-status styles)
+          (UIStyles-dim styles)))])))
 
 ;; ----------------
 ;; Event Handling Functions
@@ -470,59 +480,53 @@
          (let ([current-value (get-field-value state current-field-id)])
            (set-field-value! state current-field-id (not current-value)))]))))
 
+;; Process key events in input mode
+(define (handle-input-mode-event state event)
+  (cond
+    ;; Paste events
+    [(paste-event? event) (handle-paste-event state (paste-event-string event))]
+
+    ;; Tab key - navigate fields
+    [(key-event-tab? event) (handle-tab-key state (key-event-modifier event))]
+
+    ;; Enter key - start search
+    [(key-event-enter? event) (handle-enter-key state)]
+
+    ;; Left arrow - move cursor left
+    [(key-event-left? event) (move-cursor-left state (unbox (ScooterWindow-current-field-box state)))]
+
+    ;; Right arrow - move cursor right
+    [(key-event-right? event)
+     (move-cursor-right state (unbox (ScooterWindow-current-field-box state)))]
+
+    ;; Backspace - delete character
+    [(key-event-backspace? event)
+     (delete-char-at-cursor state (unbox (ScooterWindow-current-field-box state)))]
+
+    ;; Character input
+    [(key-event-char event) (handle-char-input state (key-event-char event))])
+
+  ;; Always consume events in input mode
+  event-result/consume)
+
+;; Process key events in results mode
+(define (handle-results-mode-event state event)
+  ;; In results mode, any key press closes the window
+  (if (key-event? event) event-result/close event-result/consume))
+
 ;; Main event handler
 (define (scooter-event-handler state event)
-  (let ([mode (unbox (ScooterWindow-mode-box state))])
-    (cond
-      ;; Escape key - close window
-      [(key-event-escape? event) event-result/close]
+  (cond
+    ;; Escape key - close window regardless of mode
+    [(key-event-escape? event) event-result/close]
 
-      ;; Input mode events
-      [(equal? mode 'input)
-       (cond
-         ;; Paste events
-         [(paste-event? event)
-          (handle-paste-event state (paste-event-string event))
-          event-result/consume]
+    ;; Route events based on current mode
+    [(equal? (unbox (ScooterWindow-mode-box state)) 'input) (handle-input-mode-event state event)]
 
-         ;; Tab key - navigate fields
-         [(key-event-tab? event)
-          (handle-tab-key state (key-event-modifier event))
-          event-result/consume]
+    [(equal? (unbox (ScooterWindow-mode-box state)) 'results) (handle-results-mode-event state event)]
 
-         ;; Enter key - start search
-         [(key-event-enter? event)
-          (handle-enter-key state)
-          event-result/consume]
-
-         ;; Left arrow - move cursor left
-         [(key-event-left? event)
-          (move-cursor-left state (unbox (ScooterWindow-current-field-box state)))
-          event-result/consume]
-
-         ;; Right arrow - move cursor right
-         [(key-event-right? event)
-          (move-cursor-right state (unbox (ScooterWindow-current-field-box state)))
-          event-result/consume]
-
-         ;; Backspace - delete character
-         [(key-event-backspace? event)
-          (delete-char-at-cursor state (unbox (ScooterWindow-current-field-box state)))
-          event-result/consume]
-
-         ;; Character input
-         [(key-event-char event)
-          (handle-char-input state (key-event-char event))
-          event-result/consume]
-
-         ;; Other events
-         [else event-result/consume])]
-
-      ;; Results mode - any key closes
-      [(equal? mode 'results) (if (key-event? event) event-result/close event-result/consume)]
-
-      ;; Other modes
-      [else event-result/consume])))
+    ;; Other modes (fallback)
+    [else event-result/consume]))
 
 ;; Cursor handler
 (define (scooter-cursor-handler state _)
@@ -534,27 +538,37 @@
 ;; Search Functions
 ;; ----------------
 
-;; Start a search operation
+;; Start a search operation with the given search and replace terms
 (define (start-scooter-search state search-term replace-term)
+  ;; Initialize the search state
+  (init-search-state! state search-term replace-term)
+
+  ;; Execute the search process
+  (execute-search-process! state))
+
+;; Initialize the state for a new search
+(define (init-search-state! state search-term replace-term)
   ;; Switch to results mode
   (set-box! (ScooterWindow-mode-box state) 'results)
 
-  ;; Update the field values to ensure we're using the passed terms
+  ;; Update the field values with the provided terms
   (set-field-value! state 'search search-term)
   (set-field-value! state 'replace replace-term)
 
   ;; Clear previous results
   (set-box! (ScooterWindow-lines-box state) '())
-  (set-box! (ScooterWindow-completed-box state) #f)
+  (set-box! (ScooterWindow-completed-box state) #f))
 
-  ;; Prepare search command
+;; Execute the search process and set up output handling
+(define (execute-search-process! state)
   (let* ([field-values (unbox (ScooterWindow-field-values-box state))]
          [args (build-scooter-args field-values)]
          [cmd (command "scooter" args)])
 
-    ;; Set up process piping
+    ;; Configure the command to pipe output
     (set-piped-stdout! cmd)
 
+    ;; Spawn the process and get handles
     (let* ([process-result (spawn-process cmd)]
            [process (Ok->value process-result)]
            [stdout-port (child-stdout process)])
@@ -563,7 +577,7 @@
       (set-box! (ScooterWindow-process-box state) process)
       (set-box! (ScooterWindow-stdout-port-box state) stdout-port)
 
-      ;; Start reading output
+      ;; Start asynchronous output reading
       (read-process-output-async state))))
 
 ;; Process output reading
