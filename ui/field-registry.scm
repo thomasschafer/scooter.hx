@@ -23,41 +23,24 @@
   #:transparent)
 
 (define (get-all-fields)
-  (list (field 'search
-               "Search pattern:"
-               FIELD-TYPE-TEXT
-               ""
-               0)
-        (field 'replace
-               "Replace with:"
-               FIELD-TYPE-TEXT
-               ""
-               1)
-        (field 'fixed-strings
-               "Fixed strings"
-               FIELD-TYPE-BOOLEAN
-               #f
-               2)
-        (field 'match-whole-word
-               "Match whole word"
-               FIELD-TYPE-BOOLEAN
-               #f
-               3)
-        (field 'match-case
-               "Match case"
-               FIELD-TYPE-BOOLEAN
-               #f
-               4)
-        (field 'files-include
-               "Files to include:"
-               FIELD-TYPE-TEXT
-               ""
-               5)
-        (field 'files-exclude
-               "Files to exclude:"
-               FIELD-TYPE-TEXT
-               ""
-               6)))
+  (define field-definitions
+    (list (list 'search "Search pattern:" FIELD-TYPE-TEXT "")
+          (list 'replace "Replace with:" FIELD-TYPE-TEXT "")
+          (list 'fixed-strings "Fixed strings" FIELD-TYPE-BOOLEAN #f)
+          (list 'match-whole-word "Match whole word" FIELD-TYPE-BOOLEAN #f)
+          (list 'match-case "Match case" FIELD-TYPE-BOOLEAN #f)
+          (list 'files-include "Files to include:" FIELD-TYPE-TEXT "")
+          (list 'files-exclude "Files to exclude:" FIELD-TYPE-TEXT "")))
+
+  ;; Map over the field definitions with their indices
+  (let loop ([definitions field-definitions]
+             [index 0]
+             [result '()])
+    (if (null? definitions)
+        (reverse result)
+        (loop (cdr definitions)
+              (+ index 1)
+              (cons (apply field (append (car definitions) (list index))) result)))))
 
 (define (get-field-by-id id)
   (define matching-fields (filter (lambda (f) (equal? (field-id f) id)) (get-all-fields)))
