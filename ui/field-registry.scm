@@ -12,7 +12,7 @@
 
 (define FIELD-TYPE-TEXT 'text)
 (define FIELD-TYPE-BOOLEAN 'boolean)
-(define FIELD-SPACING 3) ; Lines between fields
+(define FIELD-SPACING 3) ; Lines between fields - just enough for boxes with no gap
 
 (struct field
         (id ; Symbol identifier (e.g., 'search, 'replace)
@@ -48,13 +48,19 @@
       #f
       (car matching-fields)))
 
-;; Calculate Y positions for fields
+;; Calculate Y positions for fields with no gaps between boxes
 ;; Returns a hash of field-id -> (label-y . value-y)
 (define (calculate-field-positions content-y)
-  (fold (lambda (f positions)
-          (define row (field-row f))
-          (define label-y (+ content-y (* row FIELD-SPACING)))
-          (define value-y (+ label-y 1))
-          (hash-insert positions (field-id f) (cons label-y value-y)))
-        (hash)
-        (get-all-fields)))
+  ;; Use a running y-position to ensure no gaps between fields
+  (let loop ([fields (get-all-fields)]
+             [current-y content-y]
+             [positions (hash)])
+    (if (null? fields)
+        positions
+        (let* ([field (car fields)]
+               [field-type (field-type field)]
+               [field-height 3] ; All field types (text boxes and checkboxes) are 3 rows high
+               [next-y (+ current-y field-height)])
+          (loop (cdr fields)
+                next-y
+                (hash-insert positions (field-id field) (cons current-y current-y)))))))
