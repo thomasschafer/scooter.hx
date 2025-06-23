@@ -1,3 +1,4 @@
+(require-builtin helix/components)
 (require "helix/components.scm")
 (require "helix/editor.scm")
 (require "helix/misc.scm")
@@ -11,6 +12,7 @@
 (require "field-utils.scm")
 (require "command-builder.scm")
 (require "utils.scm")
+(require "styles.scm")
 (require "fields.scm")
 
 (provide ScooterWindow
@@ -86,32 +88,6 @@
       (set-field-value! state field-id new-value)
       (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
 
-(struct UIStyles
-        (text ; Default text style
-         popup ; Popup window background style
-         bold ; Bold text style
-         dim ; Dimmed text style
-         search ; Search result highlighting style
-         status ; Status bar style
-         active ; Active field highlighting style
-         ))
-
-(define (create-ui-styles)
-  (let* ([ui-text-style (theme-scope "ui.text")]
-         [ui-popup-style (theme-scope "ui.popup")])
-    (UIStyles ui-text-style ; text
-              ui-popup-style ; popup
-              (style-with-bold ui-text-style) ; bold
-              (style-with-dim ui-text-style) ; dim
-              (theme-scope "search.match") ; search
-              (theme-scope "ui.statusline") ; status
-              (theme-scope "markup.heading")))) ; active - usually green in most themes
-
-;; ----------------
-;; Results Display Functions
-;; ----------------
-
-;; Draw search results with pagination (showing the most recent results that fit)
 (define (draw-search-results frame
                              content-x
                              content-y
@@ -174,14 +150,13 @@
          [content-height (- window-height (* BORDER-PADDING 2))])
     (WindowLayout x y window-width window-height content-x content-y content-width content-height)))
 
-(define (draw-window-frame frame x y width height border-style title-style title)
+(define (draw-window-frame frame x y width height border-style title-style title background-style)
   (let* ([window-area (area x y width height)]
-         [popup-style (theme-scope "ui.popup")]
          [title-x (+ x 2)]
          [max-title-width (- width 4)]
          [truncated-title (truncate-string title max-title-width)])
 
-    (buffer/clear-with frame window-area popup-style)
+    (buffer/clear-with frame window-area background-style)
     (draw-border! frame x y width height border-style)
     (frame-set-string! frame title-x y truncated-title title-style)))
 
@@ -217,9 +192,10 @@
                        (WindowLayout-y layout)
                        (WindowLayout-width layout)
                        (WindowLayout-height layout)
-                       (UIStyles-text styles)
-                       (style-with-bold (UIStyles-text styles))
-                       title)
+                       (UIStyles-popup styles)
+                       (UIStyles-active styles)
+                       title
+                       (UIStyles-popup styles))
 
     (cond
       ;; Input mode - draw fields
@@ -232,8 +208,7 @@
                           (WindowLayout-content-width layout)
                           current-field
                           state
-                          (UIStyles-text styles)
-                          (UIStyles-active styles)
+                          styles
                           get-field-value)
 
          (position-cursor-in-text-field state
