@@ -1,7 +1,8 @@
 (provide truncate-string
          take-right
          drop
-         take-n)
+         take-n
+         index-of)
 
 (define (truncate-string str max-width)
   (if (> (string-length str) max-width)
@@ -23,3 +24,11 @@
   (if (or (<= n 0) (null? lst))
       '()
       (cons (car lst) (take-n (cdr lst) (- n 1)))))
+
+(define (index-of lst elem)
+  (let loop ([lst lst]
+             [idx 0])
+    (cond
+      [(null? lst) #f]
+      [(equal? (car lst) elem) idx]
+      [else (loop (cdr lst) (+ idx 1))])))
