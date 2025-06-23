@@ -14,6 +14,7 @@
 (require "utils.scm")
 (require "styles.scm")
 (require "fields.scm")
+(require "centering.scm")
 
 (provide ScooterWindow
          scooter-render
@@ -200,11 +201,28 @@
     (cond
       ;; Input mode - draw fields
       [(equal? mode 'input)
-       (let ([field-positions (calculate-field-positions (WindowLayout-content-y layout))])
+       (let* ([all-fields (get-all-fields)]
+              [field-count (length all-fields)]
+              [total-fields-height (* field-count 3)] ; Each field is 3 rows high
+              [hint-text-height 1] ; Space for hint text at bottom
+              [content-height (- (WindowLayout-content-height layout) hint-text-height)]
+              ;; Calculate vertical centering
+              [centered-layout (calculate-centered-layout 
+                                (WindowLayout-content-x layout)
+                                (WindowLayout-content-y layout)
+                                (WindowLayout-content-width layout)
+                                content-height
+                                (WindowLayout-content-width layout)
+                                total-fields-height
+                                #f ; no max width constraint (handled in fields.scm)
+                                #f ; no max height constraint
+                                #f ; horizontal centering handled in fields.scm
+                                #t)] ; enable vertical centering
+              [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
          ;; Draw all fields
          (draw-all-fields frame
                           (WindowLayout-content-x layout)
-                          (WindowLayout-content-y layout)
+                          (CenteredLayout-y centered-layout)
                           (WindowLayout-content-width layout)
                           current-field
                           state
