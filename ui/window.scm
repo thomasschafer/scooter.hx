@@ -160,14 +160,14 @@
     (draw-border! frame x y width height border-style)
     (frame-set-string! frame title-x y truncated-title title-style)))
 
-(define (position-cursor-in-text-field state current-field field-positions content-x)
+(define (position-cursor-in-text-field state current-field field-positions content-x content-width)
   (let ([active-field-def (get-field-by-id current-field)])
     (when (and active-field-def (equal? (field-type active-field-def) FIELD-TYPE-TEXT))
       (let* ([positions (hash-ref field-positions current-field)]
              [box-top-y (car positions)]
              [cursor-pos (get-field-cursor-pos state current-field)]
              [cursor-row (+ box-top-y 1)]
-             [cursor-col (get-field-cursor-column content-x cursor-pos)])
+             [cursor-col (get-field-cursor-column content-x content-width cursor-pos)])
         (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
         (set-position-col! (ScooterWindow-cursor-position state) cursor-col)))))
 
@@ -214,7 +214,8 @@
          (position-cursor-in-text-field state
                                         current-field
                                         field-positions
-                                        (WindowLayout-content-x layout))
+                                        (WindowLayout-content-x layout)
+                                        (WindowLayout-content-width layout))
 
          (draw-hint-text frame
                          (WindowLayout-content-x layout)

@@ -20,35 +20,42 @@
 (define CHECKBOX-WIDTH 5)
 (define CHECKBOX-TEXT-GAP 1)
 (define CURSOR-PADDING 2)
+(define MAX-FIELD-WIDTH 150)
 
 (define (get-field-style active? ui-styles)
   (if active?
       (UIStyles-active ui-styles)
       (UIStyles-text ui-styles)))
 
-(define (draw-boolean-field frame content-x label-y field-def field-value active? ui-styles)
+(define (draw-boolean-field frame
+                            content-x
+                            content-width
+                            label-y
+                            field-def
+                            field-value
+                            active?
+                            ui-styles)
   (let* ([title (field-label field-def)]
          [checkbox-content (if field-value "X" " ")]
          [horizontal-line (make-string (- CHECKBOX-WIDTH 2) (string-ref BORDER-HORIZONTAL 0))]
          [checkbox-top (string-append BORDER-TOP-LEFT horizontal-line BORDER-TOP-RIGHT)]
          [checkbox-middle (string-append BORDER-VERTICAL " " checkbox-content " " BORDER-VERTICAL)]
          [checkbox-bottom (string-append BORDER-BOTTOM-LEFT horizontal-line BORDER-BOTTOM-RIGHT)]
-         [field-style (get-field-style active? ui-styles)])
+         [field-style (get-field-style active? ui-styles)]
+         ;; Calculate the actual field area width and offset
+         [available-width (- content-width (* 2 FIELD-PADDING-HORIZONTAL))]
+         [field-area-width (min available-width MAX-FIELD-WIDTH)]
+         [offset (if (> available-width MAX-FIELD-WIDTH)
+                     (quotient (- available-width MAX-FIELD-WIDTH) 2)
+                     0)]
+         [field-x (+ content-x FIELD-PADDING-HORIZONTAL offset)])
 
-    (frame-set-string! frame (+ content-x FIELD-PADDING-HORIZONTAL) label-y checkbox-top field-style)
-    (frame-set-string! frame
-                       (+ content-x FIELD-PADDING-HORIZONTAL)
-                       (+ label-y 1)
-                       checkbox-middle
-                       field-style)
-    (frame-set-string! frame
-                       (+ content-x FIELD-PADDING-HORIZONTAL)
-                       (+ label-y 2)
-                       checkbox-bottom
-                       field-style)
+    (frame-set-string! frame field-x label-y checkbox-top field-style)
+    (frame-set-string! frame field-x (+ label-y 1) checkbox-middle field-style)
+    (frame-set-string! frame field-x (+ label-y 2) checkbox-bottom field-style)
 
     (frame-set-string! frame
-                       (+ content-x FIELD-PADDING-HORIZONTAL CHECKBOX-WIDTH CHECKBOX-TEXT-GAP)
+                       (+ field-x CHECKBOX-WIDTH CHECKBOX-TEXT-GAP)
                        (+ label-y 1)
                        title
                        field-style)))
@@ -61,7 +68,12 @@
                              field-value
                              active?
                              ui-styles)
-  (let* ([box-width (- content-width (* 2 FIELD-PADDING-HORIZONTAL))]
+  (let* ([available-width (- content-width (* 2 FIELD-PADDING-HORIZONTAL))]
+         [box-width (min available-width MAX-FIELD-WIDTH)]
+         [offset (if (> available-width MAX-FIELD-WIDTH)
+                     (quotient (- available-width MAX-FIELD-WIDTH) 2)
+                     0)]
+         [field-x (+ content-x FIELD-PADDING-HORIZONTAL offset)]
          [title (field-label field-def)]
          [title-len (string-length title)]
 
@@ -79,22 +91,10 @@
 
          [field-style (get-field-style active? ui-styles)])
 
-    (frame-set-string! frame (+ content-x FIELD-PADDING-HORIZONTAL) label-y box-top field-style)
-    (frame-set-string! frame
-                       (+ content-x FIELD-PADDING-HORIZONTAL)
-                       (+ label-y 1)
-                       BORDER-VERTICAL
-                       field-style)
-    (frame-set-string! frame
-                       (+ content-x FIELD-PADDING-HORIZONTAL (- box-width 1))
-                       (+ label-y 1)
-                       BORDER-VERTICAL
-                       field-style)
-    (frame-set-string! frame
-                       (+ content-x FIELD-PADDING-HORIZONTAL)
-                       (+ label-y 2)
-                       box-bottom
-                       field-style)
+    (frame-set-string! frame field-x label-y box-top field-style)
+    (frame-set-string! frame field-x (+ label-y 1) BORDER-VERTICAL field-style)
+    (frame-set-string! frame (+ field-x (- box-width 1)) (+ label-y 1) BORDER-VERTICAL field-style)
+    (frame-set-string! frame field-x (+ label-y 2) box-bottom field-style)
 
     ;; Draw the complete inner line including leading/trailing spaces
     (let* ([inner-width (- box-width 2)]
@@ -105,18 +105,21 @@
            [leading-spaces (make-string text-start-pos #\space)]
            [trailing-spaces (make-string (- inner-width text-start-pos text-length) #\space)]
            [complete-line (string-append leading-spaces text-content trailing-spaces)])
-      (frame-set-string! frame
-                         (+ content-x FIELD-PADDING-HORIZONTAL 1)
-                         (+ label-y 1)
-                         complete-line
-                         field-style))))
+      (frame-set-string! frame (+ field-x 1) (+ label-y 1) complete-line field-style))))
 
 (define (draw-field frame content-x content-width field-def field-value active? field-y-pos ui-styles)
   (let* ([field-id (field-id field-def)]
          [field-type (field-type field-def)])
 
     (if (equal? field-type FIELD-TYPE-BOOLEAN)
-        (draw-boolean-field frame content-x field-y-pos field-def field-value active? ui-styles)
+        (draw-boolean-field frame
+                            content-x
+                            content-width
+                            field-y-pos
+                            field-def
+                            field-value
+                            active?
+                            ui-styles)
         (draw-text-field-box frame
                              content-x
                              field-y-pos
@@ -147,5 +150,9 @@
 
           (process-fields (cdr fields)))))))
 
-(define (get-field-cursor-column content-x cursor-pos)
-  (+ content-x FIELD-PADDING-HORIZONTAL CURSOR-PADDING cursor-pos))
+(define (get-field-cursor-column content-x content-width cursor-pos)
+  (let* ([available-width (- content-width (* 2 FIELD-PADDING-HORIZONTAL))]
+         [offset (if (> available-width MAX-FIELD-WIDTH)
+                     (quotient (- available-width MAX-FIELD-WIDTH) 2)
+                     0)])
+    (+ content-x FIELD-PADDING-HORIZONTAL offset CURSOR-PADDING cursor-pos)))
