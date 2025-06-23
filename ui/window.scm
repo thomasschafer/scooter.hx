@@ -6,15 +6,11 @@
 (require (prefix-in helix. "helix/commands.scm"))
 (require (prefix-in helix.static. "helix/static.scm"))
 
-(require "border.scm")
-(require "input-field.scm")
-(require "field-registry.scm")
-(require "field-utils.scm")
 (require "command-builder.scm")
 (require "utils.scm")
 (require "styles.scm")
 (require "fields.scm")
-(require "centering.scm")
+(require "drawing.scm")
 
 (provide ScooterWindow
          scooter-render
@@ -206,20 +202,17 @@
               [total-fields-height (* field-count 3)] ; Each field is 3 rows high
               [hint-text-height 1] ; Space for hint text at bottom
               [content-height (- (WindowLayout-content-height layout) hint-text-height)]
-              ;; Calculate vertical centering
-              [centered-layout (calculate-centered-layout 
-                                (WindowLayout-content-x layout)
-                                (WindowLayout-content-y layout)
-                                (WindowLayout-content-width layout)
-                                content-height
-                                (WindowLayout-content-width layout)
-                                total-fields-height
-                                #f ; no max width constraint (handled in fields.scm)
-                                #f ; no max height constraint
-                                #f ; horizontal centering handled in fields.scm
-                                #t)] ; enable vertical centering
+              [centered-layout (calculate-centered-layout (WindowLayout-content-x layout)
+                                                          (WindowLayout-content-y layout)
+                                                          (WindowLayout-content-width layout)
+                                                          content-height
+                                                          (WindowLayout-content-width layout)
+                                                          total-fields-height
+                                                          #f
+                                                          #f
+                                                          #f
+                                                          #t)]
               [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
-         ;; Draw all fields
          (draw-all-fields frame
                           (WindowLayout-content-x layout)
                           (CenteredLayout-y centered-layout)
@@ -313,7 +306,7 @@
 
   event-result/consume)
 
-(define (handle-results-mode-event state event)
+(define (handle-results-mode-event _state event)
   (if (key-event? event) event-result/close event-result/consume))
 
 (define (scooter-event-handler state event)

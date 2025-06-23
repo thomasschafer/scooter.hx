@@ -1,4 +1,4 @@
-(require "field-registry.scm")
+(require "fields.scm")
 
 (provide build-scooter-args)
 

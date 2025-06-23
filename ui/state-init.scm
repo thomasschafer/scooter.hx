@@ -1,6 +1,4 @@
-(require "field-registry.scm")
-(require "field-utils.scm")
-(require (only-in "field-registry.scm" FIELD-TYPE-TEXT))
+(require "fields.scm")
 
 (provide create-initial-field-values
          create-initial-cursor-positions)

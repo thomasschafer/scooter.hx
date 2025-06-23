@@ -16,16 +16,16 @@
 
 (define (scooter)
   (define state
-    (ScooterWindow (box 'input) ; mode-box
-                   (box (create-initial-field-values)) ; field-values-box from registry
-                   (box (create-initial-cursor-positions)) ; cursor-positions-box for text fields
-                   (box 'search) ; current-field-box
-                   (box '()) ; lines-box - Empty results
-                   (box #f) ; process-box - No process yet
-                   (box #f) ; stdout-port-box - No stdout port yet
-                   (box #f) ; completed-box - Process not completed
-                   (position 0 0) ; cursor-position - Initial cursor position (immutable)
-                   (box '()))) ; debug-events-box - Empty debug events
+    (ScooterWindow (box 'input)
+                   (box (create-initial-field-values))
+                   (box (create-initial-cursor-positions))
+                   (box 'search)
+                   (box '())
+                   (box #f)
+                   (box #f)
+                   (box #f)
+                   (position 0 0)
+                   (box '())))
 
   (push-component!
    (new-component! "scooter-window"
