@@ -8,10 +8,15 @@ mod scooter_hx;
 declare_module!(create_module);
 
 fn create_module() -> FFIModule {
-    let mut module = FFIModule::new("steel/sys-info");
+    let mut module = FFIModule::new("steel/scooter");
 
     module
-        .register_fn("Scooter-search", scooter_hx::ScooterHx::search)
+        .register_fn("Scooter-new", scooter_hx::ScooterHx::new)
+        .register_fn("Scooter-start-search", scooter_hx::ScooterHx::start_search)
+        .register_fn(
+            "Scooter-cancel-search",
+            scooter_hx::ScooterHx::cancel_search,
+        )
         .register_fn(
             "Scooter-search-progressing?",
             scooter_hx::ScooterHx::search_is_progressing,
