@@ -1,5 +1,6 @@
 use ignore::WalkState;
 use steel::rvals::Custom;
+use steel::steel_vm::ffi::FFIValue;
 use steel_derive::Steel;
 
 use std::path::PathBuf;
@@ -9,7 +10,11 @@ use std::thread;
 
 use frep_core::{
     search::SearchResult,
-    validation::{self, SearchConfiguration, SimpleErrorHandler, ValidationResult},
+    validation::{self, SearchConfiguration, ValidationResult},
+};
+
+use crate::validation::{
+    ErrorHandler, error_response, success_response, validation_error_response,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -54,7 +59,7 @@ impl ScooterHx {
         include_globs: String,
         exclude_globs: String,
         directory: String,
-    ) {
+    ) -> FFIValue {
         if let Some(token) = &self.search_cancelled {
             token.store(true, Ordering::Relaxed);
         }
@@ -76,24 +81,26 @@ impl ScooterHx {
             include_hidden: false,
             directory: PathBuf::from(directory),
         };
-        let mut error_handler = SimpleErrorHandler::new();
+        let mut error_handler = ErrorHandler::new();
         let result = validation::validate_search_configuration(search_config, &mut error_handler);
         let searcher = match result {
-            Err(e) => todo!(), // TODO: send back e
+            Err(e) => {
+                return error_response(
+                    "configuration-error",
+                    &format!("Failed to validate search configuration: {}", e),
+                );
+            }
             Ok(ValidationResult::Success(searcher)) => searcher,
             Ok(ValidationResult::ValidationErrors) => {
-                todo!()
-                // TODO: send back error with the following string: error_handler.errors_str().unwrap()
+                return validation_error_response(&error_handler);
             }
         };
 
         let search_results = self.search_results.clone();
 
-        // Start search in a separate thread
         thread::spawn(move || {
             let (tx, rx) = crossbeam::channel::bounded(100);
 
-            // Set initial state to InProgress
             *search_results.lock().unwrap() = SearchResults::InProgress(Vec::new());
 
             searcher.walk_files(Some(&cancellation_token), || {
@@ -105,7 +112,6 @@ impl ScooterHx {
                 })
             });
 
-            // Collect results while search is running
             while let Ok(results) = rx.recv() {
                 let mut search_results = search_results.lock().unwrap();
                 match &mut *search_results {
@@ -116,7 +122,6 @@ impl ScooterHx {
                 }
             }
 
-            // Mark as complete if not cancelled
             let mut search_results = search_results.lock().unwrap();
             if let SearchResults::InProgress(results) =
                 std::mem::replace(&mut *search_results, SearchResults::NotStarted)
@@ -124,6 +129,8 @@ impl ScooterHx {
                 *search_results = SearchResults::Complete(results);
             }
         });
+
+        success_response()
     }
 
     pub(crate) fn search_is_progressing(&self) -> bool {

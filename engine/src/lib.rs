@@ -4,6 +4,7 @@ use steel::{
 };
 
 mod scooter_hx;
+mod validation;
 
 declare_module!(create_module);
 
