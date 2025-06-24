@@ -13,11 +13,15 @@ fn create_module() -> FFIModule {
     module
         .register_fn("Scooter-search", scooter_hx::ScooterHx::search)
         .register_fn(
+            "Scooter-search-progressing?",
+            scooter_hx::ScooterHx::search_is_progressing,
+        )
+        .register_fn(
             "Scooter-search-results-window",
             scooter_hx::ScooterHx::search_results_window,
         )
         .register_fn(
-            "Scooter-toggle_inclusion",
+            "Scooter-toggle-inclusion",
             scooter_hx::ScooterHx::toggle_inclusion,
         )
         .register_fn("Scooter-replace", scooter_hx::ScooterHx::replace);

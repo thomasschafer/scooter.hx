@@ -147,15 +147,15 @@
          [content-height (- window-height (* BORDER-PADDING 2))])
     (WindowLayout x y window-width window-height content-x content-y content-width content-height)))
 
-(define (draw-window-frame frame x y width height border-style title-style title background-style)
+(define (draw-window-frame frame x y width height style title)
   (let* ([window-area (area x y width height)]
          [title-x (+ x 2)]
          [max-title-width (- width 4)]
          [truncated-title (truncate-string title max-title-width)])
 
-    (buffer/clear-with frame window-area background-style)
-    (draw-border! frame x y width height border-style)
-    (frame-set-string! frame title-x y truncated-title title-style)))
+    (buffer/clear-with frame window-area style)
+    (draw-border! frame x y width height style)
+    (frame-set-string! frame title-x y truncated-title style)))
 
 (define (position-cursor-in-text-field state current-field field-positions content-x content-width)
   (let ([active-field-def (get-field-by-id current-field)])
@@ -190,9 +190,7 @@
                        (WindowLayout-width layout)
                        (WindowLayout-height layout)
                        (UIStyles-popup styles)
-                       (UIStyles-active styles)
-                       title
-                       (UIStyles-popup styles))
+                       title)
 
     (cond
       ;; Input mode - draw fields

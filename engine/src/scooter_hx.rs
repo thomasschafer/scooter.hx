@@ -93,6 +93,13 @@ impl ScooterHx {
         }
     }
 
+    pub(crate) fn search_is_progressing(&self) -> bool {
+        match &self.search_results {
+            SearchResults::InProgress(_) => true,
+            SearchResults::NotStarted | SearchResults::Complete(_) => false,
+        }
+    }
+
     pub(crate) fn search_results_window(
         &self,
         start: usize,

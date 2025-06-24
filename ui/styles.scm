@@ -12,11 +12,10 @@
 (struct UIStyles (text popup active dim search status))
 
 (define (create-ui-styles)
-  (let ([ui-text-style (theme-scope *helix.cx* "ui.text")])
-    (UIStyles ui-text-style ; text
-              (theme-scope *helix.cx* "ui.popup") ; popup
-              (style-with-bold (theme-scope *helix.cx* "ui.text.focus")) ; active
-              (style-with-dim ui-text-style) ; dim
-              (theme-scope *helix.cx* "search.match") ; search
-              (theme-scope *helix.cx* "ui.statusline") ; status
-              )))
+  (UIStyles (theme-scope *helix.cx* "ui.text") ; text
+            (theme-scope *helix.cx* "ui.popup") ; popup
+            (style-with-bold (theme-scope *helix.cx* "hint")) ; active
+            (theme-scope *helix.cx* "ui.text.inactive") ; dim
+            (theme-scope *helix.cx* "search.match") ; search
+            (theme-scope *helix.cx* "ui.statusline") ; status
+            ))
