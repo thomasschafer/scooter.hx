@@ -18,3 +18,5 @@ abi_stable = "0.11.1"
 frep-core = "0.1.2"
 crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 ignore = "0.4.23"
+scooter-core = { version = "0.1.2", path = "../../../scooter/scooter-core" } # TODO: remove path
+tokio = { version = "1.45", features = ["rt", "sync"] }
