@@ -34,7 +34,6 @@ pub(crate) enum State {
     PerformingReplacement {
         cancelled: Arc<AtomicBool>,
         num_replacements_completed: Arc<AtomicUsize>,
-        num_ignored: usize,
     },
     ReplacementComplete(ReplacementStats),
 }
@@ -69,11 +68,10 @@ impl ScooterHx {
 
     pub(crate) fn cancel_search(&mut self) {
         let mut state = self.state.lock().unwrap();
-        let State::SearchInProgress { cancelled, .. } = &mut *state else {
-            return;
-        };
-        cancelled.store(true, Ordering::Relaxed);
-        *self.state.lock().unwrap() = State::NotStarted;
+        if let State::SearchInProgress { cancelled, .. } = &*state {
+            cancelled.store(true, Ordering::Relaxed);
+            *state = State::NotStarted;
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -236,15 +234,11 @@ impl ScooterHx {
         drop(state);
 
         let state_clone = self.state.clone();
-        thread::spawn(async move || {
+        thread::spawn(move || {
             let mut replacement_results = vec![];
-            loop {
-                tokio::select! {
-                    res = receiver.recv() => match res {
-                        Some(res) => replacement_results.push(res),
-                        None => break,
-                    }
-                }
+            // Use blocking_recv() instead of async recv()
+            while let Some(res) = receiver.blocking_recv() {
+                replacement_results.push(res);
             }
 
             let stats = frep_core::replace::calculate_statistics(replacement_results);
@@ -265,8 +259,19 @@ impl ScooterHx {
         *state = State::PerformingReplacement {
             cancelled,
             num_replacements_completed,
-            num_ignored,
         };
+    }
+
+    pub(crate) fn num_replacement_complete(&self) -> usize {
+        let state = self.state.lock().unwrap();
+        match &*state {
+            State::PerformingReplacement {
+                num_replacements_completed,
+                ..
+            } => num_replacements_completed.load(Ordering::Relaxed),
+            State::ReplacementComplete(stats) => stats.num_successes,
+            _ => 0,
+        }
     }
 
     pub(crate) fn replacement_complete(&self) -> bool {
@@ -287,11 +292,10 @@ impl ScooterHx {
 
     pub(crate) fn cancel_replacement(&mut self) {
         let mut state = self.state.lock().unwrap();
-        let State::PerformingReplacement { cancelled, .. } = &mut *state else {
-            return;
-        };
-        cancelled.store(true, Ordering::Relaxed);
-        *self.state.lock().unwrap() = State::NotStarted;
+        if let State::PerformingReplacement { cancelled, .. } = &*state {
+            cancelled.store(true, Ordering::Relaxed);
+            *state = State::NotStarted;
+        }
     }
 }
 
