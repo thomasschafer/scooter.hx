@@ -2,7 +2,6 @@ use ignore::WalkState;
 use steel::rvals::Custom;
 use steel::steel_vm::ffi::FFIValue;
 use steel_derive::Steel;
-use tokio::sync::mpsc::UnboundedReceiver;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -18,34 +17,42 @@ use crate::validation::{
     ErrorHandler, error_response, success_response, validation_error_response,
 };
 
-pub(crate) enum Results {
+#[derive(Clone, Debug, Eq, Steel, PartialEq)]
+pub(crate) struct ReplacementStats {
+    pub(crate) num_successes: usize,
+    pub(crate) num_ignored: usize,
+    pub(crate) errors: Vec<SearchResult>,
+}
+
+pub(crate) enum State {
     NotStarted,
-    SearchInProgress(Vec<SearchResult>),
+    SearchInProgress {
+        results: Vec<SearchResult>,
+        cancelled: Arc<AtomicBool>,
+    },
     SearchComplete(Vec<SearchResult>),
     PerformingReplacement {
         cancelled: Arc<AtomicBool>,
         num_replacements_completed: Arc<AtomicUsize>,
         num_ignored: usize,
-        receiver: UnboundedReceiver<SearchResult>,
     },
-    ReplacementComplete,
+    ReplacementComplete(ReplacementStats),
 }
 
-impl Results {
+impl State {
     fn name(&self) -> &'static str {
         match self {
-            Results::NotStarted => "NotStarted",
-            Results::SearchInProgress(_) => "SearchInProgress",
-            Results::SearchComplete(_) => "SearchComplete",
-            Results::PerformingReplacement { .. } => "PerformingReplacement",
-            Results::ReplacementComplete => "ReplacementComplete",
+            State::NotStarted => "NotStarted",
+            State::SearchInProgress { .. } => "SearchInProgress",
+            State::SearchComplete(_) => "SearchComplete",
+            State::PerformingReplacement { .. } => "PerformingReplacement",
+            State::ReplacementComplete(ReplacementStats { .. }) => "ReplacementComplete",
         }
     }
 }
 
 pub(crate) struct ScooterHx {
-    pub(crate) search_results: Arc<Mutex<Results>>,
-    pub(crate) search_cancelled: Option<Arc<AtomicBool>>,
+    pub(crate) state: Arc<Mutex<State>>,
 }
 
 impl Custom for ScooterHx {}
@@ -56,17 +63,19 @@ pub(crate) struct WrappedSearchResult(SearchResult);
 impl ScooterHx {
     pub(crate) fn new() -> Self {
         ScooterHx {
-            search_results: Arc::new(Mutex::new(Results::NotStarted)),
-            search_cancelled: None,
+            state: Arc::new(Mutex::new(State::NotStarted)),
         }
     }
 
     pub(crate) fn cancel_search(&mut self) {
-        if let Some(token) = &self.search_cancelled {
-            token.store(true, Ordering::Relaxed);
-        }
-        *self.search_results.lock().unwrap() = Results::NotStarted;
+        let mut state = self.state.lock().unwrap();
+        let State::SearchInProgress { cancelled, .. } = &mut *state else {
+            return;
+        };
+        cancelled.store(true, Ordering::Relaxed);
+        *self.state.lock().unwrap() = State::NotStarted;
     }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn start_search(
         &mut self,
@@ -79,14 +88,9 @@ impl ScooterHx {
         exclude_globs: String,
         directory: String,
     ) -> FFIValue {
-        if let Some(token) = &self.search_cancelled {
-            token.store(true, Ordering::Relaxed);
-        }
+        self.cancel_search();
 
-        let cancellation_token = Arc::new(AtomicBool::new(false));
-        self.search_cancelled = Some(cancellation_token.clone());
-
-        *self.search_results.lock().unwrap() = Results::NotStarted;
+        *self.state.lock().unwrap() = State::NotStarted;
 
         let search_config = SearchConfiguration {
             search_text: &search_text,
@@ -115,12 +119,16 @@ impl ScooterHx {
             }
         };
 
-        let search_results = self.search_results.clone();
+        let cancellation_token = Arc::new(AtomicBool::new(false));
+        let state = self.state.clone();
 
         thread::spawn(move || {
             let (tx, rx) = crossbeam::channel::bounded(1000);
 
-            *search_results.lock().unwrap() = Results::SearchInProgress(Vec::new());
+            *state.lock().unwrap() = State::SearchInProgress {
+                results: Vec::new(),
+                cancelled: cancellation_token.clone(),
+            };
 
             searcher.walk_files(Some(&cancellation_token), || {
                 let tx = tx.clone();
@@ -131,32 +139,29 @@ impl ScooterHx {
                 })
             });
 
-            while let Ok(results) = rx.recv() {
-                let mut search_results = search_results.lock().unwrap();
-                match &mut *search_results {
-                    Results::SearchInProgress(current_results) => {
-                        current_results.extend(results);
+            while let Ok(additional_results) = rx.recv() {
+                let mut state = state.lock().unwrap();
+                match &mut *state {
+                    State::SearchInProgress { results, .. } => {
+                        results.extend(additional_results);
                     }
                     _ => break, // Search was cancelled
                 }
             }
 
-            let mut search_results = search_results.lock().unwrap();
-            if let Results::SearchInProgress(results) =
-                std::mem::replace(&mut *search_results, Results::NotStarted)
+            let mut state = state.lock().unwrap();
+            if let State::SearchInProgress { results, .. } =
+                std::mem::replace(&mut *state, State::NotStarted)
             {
-                *search_results = Results::SearchComplete(results);
+                *state = State::SearchComplete(results);
             }
         });
 
         success_response()
     }
 
-    pub(crate) fn search_is_progressing(&self) -> bool {
-        matches!(
-            &*self.search_results.lock().unwrap(),
-            Results::SearchInProgress(_)
-        )
+    pub(crate) fn search_complete(&self) -> bool {
+        matches!(&*self.state.lock().unwrap(), State::SearchComplete { .. })
     }
 
     pub(crate) fn search_results_window(
@@ -164,9 +169,9 @@ impl ScooterHx {
         start: usize,
         end: usize,
     ) -> Vec<WrappedSearchResult> {
-        let search_results = self.search_results.lock().unwrap();
-        let results = match &*search_results {
-            Results::SearchInProgress(results) | Results::SearchComplete(results) => results,
+        let state = self.state.lock().unwrap();
+        let results = match &*state {
+            State::SearchInProgress { results, .. } | State::SearchComplete(results) => results,
             res => {
                 panic!(
                     "Attempted to get search results window on {name}",
@@ -184,11 +189,9 @@ impl ScooterHx {
     }
 
     pub(crate) fn toggle_inclusion(&mut self, idx: usize) {
-        let mut search_results_guard = self.search_results.lock().unwrap();
-        let search_results = match &mut *search_results_guard {
-            Results::SearchInProgress(search_results) | Results::SearchComplete(search_results) => {
-                search_results
-            }
+        let mut state = self.state.lock().unwrap();
+        let search_results = match &mut *state {
+            State::SearchInProgress { results, .. } | State::SearchComplete(results) => results,
             res => {
                 panic!("Attempted to toggle inclusion on {name}", name = res.name())
             }
@@ -205,16 +208,16 @@ impl ScooterHx {
         }
     }
 
-    pub(crate) fn replace(&mut self) {
+    pub(crate) fn start_replace(&mut self) {
         let cancelled = Arc::new(AtomicBool::new(false));
         let num_replacements_completed = Arc::new(AtomicUsize::new(0));
-        let mut search_results = self.search_results.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
 
-        let (receiver, num_ignored) = match std::mem::replace(
-            &mut *search_results,
-            Results::NotStarted, // temporary placeholder
+        let (mut receiver, num_ignored) = match std::mem::replace(
+            &mut *state,
+            State::NotStarted, // temporary placeholder
         ) {
-            Results::SearchComplete(search_results) => {
+            State::SearchComplete(search_results) => {
                 let cancelled_clone = cancelled.clone();
                 let num_replacements_completed_clone = num_replacements_completed.clone();
                 scooter_core::replace::spawn_replace_included(
@@ -225,24 +228,71 @@ impl ScooterHx {
             }
             res => {
                 panic!(
-                    "Called replace on {name}, expected Complete",
+                    "Called replace on {name}, expected SearchComplete",
                     name = res.name()
                 )
             }
         };
+        drop(state);
 
-        *search_results = Results::PerformingReplacement {
+        let state_clone = self.state.clone();
+        thread::spawn(async move || {
+            let mut replacement_results = vec![];
+            loop {
+                tokio::select! {
+                    res = receiver.recv() => match res {
+                        Some(res) => replacement_results.push(res),
+                        None => break,
+                    }
+                }
+            }
+
+            let stats = frep_core::replace::calculate_statistics(replacement_results);
+
+            let mut state = state_clone.lock().unwrap();
+            if let State::PerformingReplacement { .. } =
+                std::mem::replace(&mut *state, State::NotStarted)
+            {
+                *state = State::ReplacementComplete(ReplacementStats {
+                    num_successes: stats.num_successes,
+                    num_ignored,
+                    errors: stats.errors,
+                });
+            }
+        });
+
+        let mut state = self.state.lock().unwrap();
+        *state = State::PerformingReplacement {
             cancelled,
             num_replacements_completed,
             num_ignored,
-            receiver,
         };
     }
 
-    // TODO:
-    // - replacement results
-    // - replacement is complete
-    // - cancel replacement
+    pub(crate) fn replacement_complete(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        matches!(*state, State::ReplacementComplete { .. })
+    }
+
+    pub(crate) fn replacement_stats(&self) -> ReplacementStats {
+        let mut state = self.state.lock().unwrap();
+        match &mut *state {
+            State::ReplacementComplete(stats) => stats.clone(),
+            res => panic!(
+                "Called replace on {name}, expected ReplacementComplete",
+                name = res.name()
+            ),
+        }
+    }
+
+    pub(crate) fn cancel_replacement(&mut self) {
+        let mut state = self.state.lock().unwrap();
+        let State::PerformingReplacement { cancelled, .. } = &mut *state else {
+            return;
+        };
+        cancelled.store(true, Ordering::Relaxed);
+        *self.state.lock().unwrap() = State::NotStarted;
+    }
 }
 
 // TODO:

@@ -19,8 +19,8 @@ fn create_module() -> FFIModule {
             scooter_hx::ScooterHx::cancel_search,
         )
         .register_fn(
-            "Scooter-search-progressing?",
-            scooter_hx::ScooterHx::search_is_progressing,
+            "Scooter-search-complete?",
+            scooter_hx::ScooterHx::search_complete,
         )
         .register_fn(
             "Scooter-search-results-window",
@@ -30,7 +30,22 @@ fn create_module() -> FFIModule {
             "Scooter-toggle-inclusion",
             scooter_hx::ScooterHx::toggle_inclusion,
         )
-        .register_fn("Scooter-replace", scooter_hx::ScooterHx::replace);
+        .register_fn(
+            "Scooter-start-replace",
+            scooter_hx::ScooterHx::start_replace,
+        )
+        .register_fn(
+            "Scooter-replacement-complete?",
+            scooter_hx::ScooterHx::replacement_complete,
+        )
+        .register_fn(
+            "Scooter-cancel-replacement",
+            scooter_hx::ScooterHx::cancel_replacement,
+        )
+        .register_fn(
+            "Scooter-replacement-stats",
+            scooter_hx::ScooterHx::replacement_stats,
+        );
 
     module
 }
