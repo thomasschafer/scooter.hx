@@ -87,7 +87,7 @@
           (list 'replace "Replace text" FIELD-TYPE-TEXT "")
           (list 'fixed-strings "Fixed strings" FIELD-TYPE-BOOLEAN #f)
           (list 'match-whole-word "Match whole word" FIELD-TYPE-BOOLEAN #f)
-          (list 'match-case "Match case" FIELD-TYPE-BOOLEAN #f)
+          (list 'match-case "Match case" FIELD-TYPE-BOOLEAN #t)
           (list 'files-include "Files to include" FIELD-TYPE-TEXT "")
           (list 'files-exclude "Files to exclude" FIELD-TYPE-TEXT "")))
 
