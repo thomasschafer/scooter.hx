@@ -270,7 +270,7 @@ impl ScooterHx {
         };
     }
 
-    pub(crate) fn num_replacement_complete(&self) -> usize {
+    pub(crate) fn num_replacements_complete(&self) -> usize {
         let state = self.state.lock().unwrap();
         match &*state {
             State::PerformingReplacement {

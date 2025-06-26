@@ -39,8 +39,8 @@ fn create_module() -> FFIModule {
             scooter_hx::ScooterHx::start_replace,
         )
         .register_fn(
-            "Scooter-num-replacement-complete",
-            scooter_hx::ScooterHx::num_replacement_complete,
+            "Scooter-num-replacements-complete",
+            scooter_hx::ScooterHx::num_replacements_complete,
         )
         .register_fn(
             "Scooter-replacement-complete?",
