@@ -165,6 +165,7 @@ impl ScooterHx {
         matches!(&*self.state.lock().unwrap(), State::SearchComplete(_))
     }
 
+    // Note that this is an inclusive window, i.e. `search_results_window(a, b)` maps to `[a..=b]`
     pub(crate) fn search_results_window(
         &self,
         start: usize,
@@ -182,8 +183,8 @@ impl ScooterHx {
         };
 
         results
-            .get(start..end)
-            .unwrap_or(&[])
+            .get(start..(end + 1))
+            .unwrap()
             .iter()
             .map(|result| WrappedSearchResult(result.clone()))
             .collect()
@@ -306,6 +307,8 @@ impl ScooterHx {
 mod tests {
     use std::time::Duration;
 
+    use frep_core::line_reader::LineEnding;
+
     use super::*;
     use crate::test_utils::wait_until;
 
@@ -340,14 +343,106 @@ mod tests {
             temp_dir.path().to_str().unwrap().to_string(),
         );
 
-        wait_until(
-            || {
-                let state = scooter.state.lock().unwrap();
-                matches!(*state, State::SearchComplete(_))
+        wait_until(|| scooter.search_complete(), Duration::from_millis(100));
+
+        let mut search_results_clone = {
+            let state = scooter.state.lock().unwrap();
+            match &*state {
+                State::SearchComplete(search_results) => search_results.clone(),
+                other => panic!("Expected SearchComplete, found {}", other.name()),
+            }
+        };
+
+        let expected = vec![
+            SearchResult {
+                path: temp_dir.path().to_path_buf().join("file1.txt"),
+                line_number: 2,
+                line: "It contains TEST_PATTERN that should be replaced.".to_owned(),
+                line_ending: LineEnding::Lf,
+                replacement: "It contains REPLACEMENT that should be replaced.".to_owned(),
+                included: true,
+                replace_result: None,
             },
+            SearchResult {
+                path: temp_dir.path().to_path_buf().join("file1.txt"),
+                line_number: 3,
+                line: "Multiple lines with TEST_PATTERN here.".to_owned(),
+                line_ending: LineEnding::Lf,
+                replacement: "Multiple lines with REPLACEMENT here.".to_owned(),
+                included: true,
+                replace_result: None,
+            },
+            SearchResult {
+                path: temp_dir.path().to_path_buf().join("file2.txt"),
+                line_number: 1,
+                line: "Another file with TEST_PATTERN.".to_owned(),
+                line_ending: LineEnding::Lf,
+                replacement: "Another file with REPLACEMENT.".to_owned(),
+                included: true,
+                replace_result: None,
+            },
+            SearchResult {
+                path: temp_dir
+                    .path()
+                    .to_path_buf()
+                    .join("subdir")
+                    .join("file3.txt"),
+                line_number: 1,
+                line: "Nested file with TEST_PATTERN.".to_owned(),
+                line_ending: LineEnding::Lf,
+                replacement: "Nested file with REPLACEMENT.".to_owned(),
+                included: true,
+                replace_result: None,
+            },
+        ];
+        search_results_clone.sort_by_key(|s| (s.path.clone(), s.line_number));
+        assert_eq!(search_results_clone, expected);
+
+        let mut window = scooter.search_results_window(0, 3).clone();
+        window.sort_by_key(|s| (s.0.path.clone(), s.0.line_number));
+        assert_eq!(
+            window,
+            expected
+                .into_iter()
+                .map(WrappedSearchResult)
+                .collect::<Vec<_>>()
+        );
+
+        scooter.start_replace();
+
+        wait_until(
+            || scooter.replacement_complete(),
             Duration::from_millis(100),
         );
 
-        // TODO
+        let stats_clone = {
+            let state = scooter.state.lock().unwrap();
+            match &*state {
+                State::ReplacementComplete(stats) => stats.clone(),
+                other => panic!("Expected ReplacementComplete, found {}", other.name()),
+            }
+        };
+        assert_eq!(stats_clone.num_successes, 4);
+        assert_eq!(stats_clone.num_ignored, 0);
+        assert_eq!(stats_clone.errors.len(), 0);
+
+        assert_test_files!(
+            &temp_dir,
+            "file1.txt" => text!(
+                "This is a test file.",
+                "It contains REPLACEMENT that should be replaced.",
+                "Multiple lines with REPLACEMENT here.",
+            ),
+            "file2.txt" => text!(
+                "Another file with REPLACEMENT.",
+                "Second line.",
+            ),
+            "subdir/file3.txt" => text!(
+                "Nested file with REPLACEMENT.",
+                "Only one occurrence here.",
+            ),
+            "binary.bin" => &[10, 19, 3, 92],
+        );
     }
+    // TODO: more detailed tests for individual functions e.g. `search_results_window`, `toggle_inclusion`
 }
