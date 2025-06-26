@@ -14,10 +14,9 @@ macro_rules! create_test_files {
     ($($name:expr => $content:expr),+ $(,)?) => {
         {
             use std::path::Path;
-            use std::fs::create_dir_all;
+            use std::fs::{create_dir_all, File};
+            use std::io::Write;
             use tempfile::TempDir;
-            use tokio::fs::File;
-            use tokio::io::AsyncWriteExt;
 
             let temp_dir = TempDir::new().unwrap();
 
@@ -26,16 +25,16 @@ macro_rules! create_test_files {
                 let path = Path::new(&path);
                 create_dir_all(path.parent().unwrap()).unwrap();
 
-                let mut file = File::create(path).await.unwrap();
+                let mut file = File::create(path).unwrap();
                 let content: &[u8] = $content;
-                file.write_all(content).await.unwrap();
-                file.sync_all().await.unwrap();
+                file.write_all(content).unwrap();
+                file.sync_all().unwrap();
             )+
 
             #[cfg(windows)]
             {
-                use tokio::time::{sleep, Duration};
-                sleep(Duration::from_millis(100)).await;
+                use std::time::Duration;
+                std::thread::sleep(Duration::from_millis(100));
             }
 
             temp_dir
@@ -61,26 +60,27 @@ macro_rules! binary {
 macro_rules! overwrite_files {
     ($base_dir:expr, $($name:expr => {$($line:expr),+ $(,)?}),+ $(,)?) => {
         {
+            use std::fs::File;
+            use std::io::Write;
             use std::path::Path;
-            use tokio::fs::File;
-            use tokio::io::AsyncWriteExt;
 
-            async move {
-                $(
-                    let contents = concat!($($line,"\n",)+);
-                    let path = Path::new($base_dir).join($name);
+            $(
+                let contents = concat!($($line,"\n",)+);
+                let path = Path::new($base_dir).join($name);
 
-                    if !path.exists() {
-                        panic!("File does not exist: {}", path.display());
-                    }
-                    let mut file = File::create(&path).await.unwrap();
-                    file.write_all(contents.as_bytes()).await.unwrap();
-                    file.sync_all().await.unwrap();
-                )+
+                if !path.exists() {
+                    panic!("File does not exist: {}", path.display());
+                }
+                let mut file = File::create(&path).unwrap();
+                file.write_all(contents.as_bytes()).unwrap();
+                file.sync_all().unwrap();
+            )+
 
-                #[cfg(windows)]
-                let _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            }.await
+            #[cfg(windows)]
+            {
+                use std::time::Duration;
+                std::thread::sleep(Duration::from_millis(100));
+            }
         }
     };
 }

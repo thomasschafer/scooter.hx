@@ -5,7 +5,7 @@ use steel_derive::Steel;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
 use frep_core::{
@@ -215,7 +215,8 @@ impl ScooterHx {
         let num_replacements_completed = Arc::new(AtomicUsize::new(0));
         let mut state = self.state.lock().unwrap();
 
-        let (mut receiver, num_ignored) = match std::mem::replace(
+        let (tx, rx) = mpsc::channel();
+        let num_ignored = match std::mem::replace(
             &mut *state,
             State::NotStarted, // temporary placeholder
         ) {
@@ -226,6 +227,9 @@ impl ScooterHx {
                     search_results,
                     cancelled_clone,
                     num_replacements_completed_clone,
+                    move |result| {
+                        let _ = tx.send(result); // Ignore error if receiver is dropped
+                    },
                 )
             }
             res => {
@@ -238,10 +242,10 @@ impl ScooterHx {
         drop(state);
 
         let state_clone = self.state.clone();
+
         thread::spawn(move || {
             let mut replacement_results = vec![];
-            // Use blocking_recv() instead of async recv()
-            while let Some(res) = receiver.blocking_recv() {
+            while let Ok(res) = rx.recv() {
                 replacement_results.push(res);
             }
 
@@ -312,8 +316,8 @@ mod tests {
     use super::*;
     use crate::test_utils::wait_until;
 
-    #[tokio::test]
-    async fn test_basic_search_and_replace() {
+    #[test]
+    fn test_basic_search_and_replace() {
         let mut scooter = ScooterHx::new();
         let temp_dir = create_test_files!(
             "file1.txt" => text!(
