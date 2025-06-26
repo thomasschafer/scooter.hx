@@ -66,6 +66,10 @@ impl ScooterHx {
         }
     }
 
+    pub(crate) fn reset(&mut self) {
+        *self = Self::new();
+    }
+
     pub(crate) fn cancel_search(&mut self) {
         let mut state = self.state.lock().unwrap();
         if let State::SearchInProgress { cancelled, .. } = &*state {

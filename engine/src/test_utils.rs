@@ -1,5 +1,4 @@
 use std::time::{Duration, Instant};
-#[cfg(test)]
 use std::{fs, path::Path};
 
 #[cfg(test)]

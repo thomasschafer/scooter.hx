@@ -17,6 +17,7 @@ fn create_module() -> FFIModule {
 
     module
         .register_fn("Scooter-new", scooter_hx::ScooterHx::new)
+        .register_fn("Scooter-reset", scooter_hx::ScooterHx::reset)
         .register_fn("Scooter-start-search", scooter_hx::ScooterHx::start_search)
         .register_fn(
             "Scooter-cancel-search",
