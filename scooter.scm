@@ -18,6 +18,7 @@
                           Scooter-start-search
                           Scooter-cancel-search
                           Scooter-search-complete?
+                          Scooter-search-result-count
                           Scooter-search-results-window
                           Scooter-toggle-inclusion
                           Scooter-start-replace

@@ -369,22 +369,21 @@
      (lambda ()
        (let ([result-count (Scooter-search-result-count scooter-hx)]
              [is-complete (Scooter-search-complete? scooter-hx)])
-         (cond
-           [is-complete
-            ;; Search is complete - get results and show file paths
-            (let ([results (Scooter-search-results-window
-                            scooter-hx
-                            0
-                            (max 0 (- result-count 1)))]) ;; TODO - just show correct num
-              (set-box!
-               (ScooterWindow-lines-box state)
-               (cons (string-append "Search complete! Found " (to-string result-count) " results:")
-                     (map SteelSearchResult-display results))))
-            (set-box! (ScooterWindow-completed-box state) #t)]
 
-           [else
-            ;; Search still in progress - show current status and check again
-            (set-box!
-             (ScooterWindow-lines-box state)
-             (list (string-append "Searching... Found " (to-string result-count) " results so far.")))
-            (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))
+         (let ([results
+                (Scooter-search-results-window
+                 scooter-hx
+                 0
+                 (max 0 (- result-count 1)))]) ;; TODO - just show correct num, add scrolling etc.
+           (set-box! (ScooterWindow-lines-box state)
+                     (cons (string-append (cond
+                                            [is-complete "Search complete!"]
+                                            [else "Searching..."])
+                                          " Found "
+                                          (to-string result-count)
+                                          " results")
+                           (map SteelSearchResult-display results))))
+
+         (cond
+           [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
+           [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))
