@@ -3,7 +3,11 @@ use steel::{
     steel_vm::ffi::{FFIModule, RegisterFFIFn},
 };
 
-mod scooter_hx;
+#[cfg(test)]
+#[macro_use]
+mod test_utils;
+
+pub mod scooter_hx;
 mod validation;
 
 declare_module!(create_module);

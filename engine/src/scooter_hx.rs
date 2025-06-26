@@ -137,6 +137,9 @@ impl ScooterHx {
                 })
             });
 
+            // Drop the original sender so the receiver loop can terminate
+            drop(tx);
+
             while let Ok(additional_results) = rx.recv() {
                 let mut state = state.lock().unwrap();
                 match &mut *state {
@@ -159,7 +162,7 @@ impl ScooterHx {
     }
 
     pub(crate) fn search_complete(&self) -> bool {
-        matches!(&*self.state.lock().unwrap(), State::SearchComplete { .. })
+        matches!(&*self.state.lock().unwrap(), State::SearchComplete(_))
     }
 
     pub(crate) fn search_results_window(
@@ -276,7 +279,7 @@ impl ScooterHx {
 
     pub(crate) fn replacement_complete(&self) -> bool {
         let state = self.state.lock().unwrap();
-        matches!(*state, State::ReplacementComplete { .. })
+        matches!(*state, State::ReplacementComplete(_))
     }
 
     pub(crate) fn replacement_stats(&self) -> ReplacementStats {
@@ -299,6 +302,52 @@ impl ScooterHx {
     }
 }
 
-// TODO:
-// - unit tests
-// - end-to-end tests
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::test_utils::wait_until;
+
+    #[tokio::test]
+    async fn test_basic_search_and_replace() {
+        let mut scooter = ScooterHx::new();
+        let temp_dir = create_test_files!(
+            "file1.txt" => text!(
+                "This is a test file.",
+                "It contains TEST_PATTERN that should be replaced.",
+                "Multiple lines with TEST_PATTERN here.",
+            ),
+            "file2.txt" => text!(
+                "Another file with TEST_PATTERN.",
+                "Second line.",
+            ),
+            "subdir/file3.txt" => text!(
+                "Nested file with TEST_PATTERN.",
+                "Only one occurrence here.",
+            ),
+            "binary.bin" => &[10, 19, 3, 92],
+        );
+
+        scooter.start_search(
+            "TEST_PATTERN".into(),
+            "REPLACEMENT".into(),
+            false,
+            false,
+            true,
+            "".into(),
+            "".into(),
+            temp_dir.path().to_str().unwrap().to_string(),
+        );
+
+        wait_until(
+            || {
+                let state = scooter.state.lock().unwrap();
+                matches!(*state, State::SearchComplete(_))
+            },
+            Duration::from_millis(100),
+        );
+
+        // TODO
+    }
+}
