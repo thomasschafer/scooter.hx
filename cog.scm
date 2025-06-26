@@ -3,4 +3,4 @@
 
 (define dependencies '())
 
-(define dylibs '())
+(define dylibs '((#:name "scooter_hx")))

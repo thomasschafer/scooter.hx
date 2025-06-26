@@ -28,6 +28,10 @@ fn create_module() -> FFIModule {
             scooter_hx::ScooterHx::search_complete,
         )
         .register_fn(
+            "Scooter-search-result-count",
+            scooter_hx::ScooterHx::search_result_count,
+        )
+        .register_fn(
             "Scooter-search-results-window",
             scooter_hx::ScooterHx::search_results_window,
         )
@@ -54,6 +58,10 @@ fn create_module() -> FFIModule {
         .register_fn(
             "Scooter-replacement-stats",
             scooter_hx::ScooterHx::replacement_stats,
+        )
+        .register_fn(
+            "SteelSearchResult-display",
+            scooter_hx::SteelSearchResult::display,
         );
 
     module

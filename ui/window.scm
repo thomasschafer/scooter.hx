@@ -6,6 +6,15 @@
 (require (prefix-in helix. "helix/commands.scm"))
 (require (prefix-in helix.static. "helix/static.scm"))
 
+(require-builtin steel/ffi)
+
+(#%require-dylib "libscooter_hx"
+                 (only-in Scooter-start-search
+                          Scooter-search-complete?
+                          Scooter-search-result-count
+                          Scooter-search-results-window
+                          SteelSearchResult-display))
+
 (require "command-builder.scm")
 (require "utils.scm")
 (require "styles.scm")
@@ -31,7 +40,8 @@
                   stdout-port-box
                   completed-box
                   cursor-position
-                  debug-events-box))
+                  debug-events-box
+                  scooter-hx-box))
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -116,10 +126,7 @@
                           status-style
                           dim-style)
   (let* ([line-count (length lines)]
-         [status-text
-          (if completed?
-              (string-append "Done. " (number->string line-count) " matches. Press any key to close")
-              (string-append "Searching... " (number->string line-count) " matches"))]
+         [status-text (if completed? "Done." "Searching...")]
          [style (if completed? status-style dim-style)])
     (frame-set-string! frame content-x position-y (truncate-string status-text content-width) style)))
 
@@ -180,9 +187,7 @@
          [mode (unbox (ScooterWindow-mode-box state))]
          [search-term (get-field-value state 'search)]
          [current-field (unbox (ScooterWindow-current-field-box state))]
-         [title (if (equal? mode 'input)
-                    " Scooter "
-                    (string-append " Results for: " search-term " "))])
+         [title " Scooter "])
 
     (draw-window-frame frame
                        (WindowLayout-x layout)
@@ -337,34 +342,49 @@
 
 (define (execute-search-process! state)
   (let* ([field-values (unbox (ScooterWindow-field-values-box state))]
-         [args (build-scooter-args field-values)]
-         [cmd (command "scooter" args)])
+         [scooter-hx (unbox (ScooterWindow-scooter-hx-box state))]
+         [search-term (hash-ref field-values 'search)]
+         [replace-term (hash-ref field-values 'replace)]
+         [fixed-strings (hash-ref field-values 'fixed-strings)]
+         [match-whole-word (hash-ref field-values 'match-whole-word)]
+         [match-case (hash-ref field-values 'match-case)]
+         [include-pattern (hash-ref field-values 'files-include)]
+         [exclude-pattern (hash-ref field-values 'files-exclude)])
 
-    (set-piped-stdout! cmd)
+    (Scooter-start-search scooter-hx
+                          search-term
+                          replace-term
+                          fixed-strings
+                          match-whole-word
+                          match-case
+                          include-pattern
+                          exclude-pattern)
 
-    (let* ([process-result (spawn-process cmd)]
-           [process (Ok->value process-result)]
-           [stdout-port (child-stdout process)])
+    (poll-search-results state)))
 
-      (set-box! (ScooterWindow-process-box state) process)
-      (set-box! (ScooterWindow-stdout-port-box state) stdout-port)
+(define (poll-search-results state)
+  (let ([scooter-hx (unbox (ScooterWindow-scooter-hx-box state))])
 
-      (read-process-output-async state))))
+    (enqueue-thread-local-callback
+     (lambda ()
+       (let ([result-count (Scooter-search-result-count scooter-hx)]
+             [is-complete (Scooter-search-complete? scooter-hx)])
+         (cond
+           [is-complete
+            ;; Search is complete - get results and show file paths
+            (let ([results (Scooter-search-results-window
+                            scooter-hx
+                            0
+                            (max 0 (- result-count 1)))]) ;; TODO - just show correct num
+              (set-box!
+               (ScooterWindow-lines-box state)
+               (cons (string-append "Search complete! Found " (to-string result-count) " results:")
+                     (map SteelSearchResult-display results))))
+            (set-box! (ScooterWindow-completed-box state) #t)]
 
-(define (read-process-output-async state)
-  (let ([port (unbox (ScooterWindow-stdout-port-box state))]
-        [process (unbox (ScooterWindow-process-box state))])
-
-    (enqueue-thread-local-callback (lambda ()
-                                     (let process-line ()
-                                       (let ([line (read-line-from-port port)])
-                                         (cond
-                                           [(eof-object? line)
-                                            (set-box! (ScooterWindow-completed-box state) #t)
-                                            (wait process)]
-
-                                           [else
-                                            (set-box! (ScooterWindow-lines-box state)
-                                                      (append (unbox (ScooterWindow-lines-box state))
-                                                              (list line)))
-                                            (enqueue-thread-local-callback process-line)])))))))
+           [else
+            ;; Search still in progress - show current status and check again
+            (set-box!
+             (ScooterWindow-lines-box state)
+             (list (string-append "Searching... Found " (to-string result-count) " results so far.")))
+            (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))
