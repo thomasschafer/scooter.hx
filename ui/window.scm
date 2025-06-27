@@ -36,7 +36,10 @@
          cursor-position
          debug-events-box
          engine-box
-         search-id-box)) ; Track current search to avoid stale callbacks
+         search-id-box ; Track current search to avoid stale callbacks
+         selected-index-box ; Index of currently selected result
+         scroll-offset-box ; Offset for scrolling results
+         content-height-box)) ; Available height for results
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -83,6 +86,21 @@
 (define (increment-search-id! state)
   (set-box! (ScooterWindow-search-id-box state) (+ 1 (unbox (ScooterWindow-search-id-box state)))))
 
+(define (get-selected-index state)
+  (unbox (ScooterWindow-selected-index-box state)))
+(define (set-selected-index! state value)
+  (set-box! (ScooterWindow-selected-index-box state) value))
+
+(define (get-scroll-offset state)
+  (unbox (ScooterWindow-scroll-offset-box state)))
+(define (set-scroll-offset! state value)
+  (set-box! (ScooterWindow-scroll-offset-box state) value))
+
+(define (get-content-height state)
+  (unbox (ScooterWindow-content-height-box state)))
+(define (set-content-height! state value)
+  (set-box! (ScooterWindow-content-height-box state) value))
+
 (define (create-scooter-window directory)
   "Create a new ScooterWindow with organized initialization."
   (ScooterWindow (box 'search-fields) ; mode-box
@@ -94,7 +112,10 @@
                  (position 0 0) ; cursor-position
                  (box '()) ; debug-events-box
                  (box (Scooter-new directory)) ; engine-box
-                 (box 0))) ; search-id-box
+                 (box 0) ; search-id-box
+                 (box 0) ; selected-index-box
+                 (box 0) ; scroll-offset-box
+                 (box 10))) ; content-height-box (placeholder, set during rendering)
 
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
@@ -154,12 +175,21 @@
 
 (define (format-search-result result)
   "Convert a raw search result to styled segments."
-  (list (cons (SteelSearchResult-display-path result) (UIStyles-search (ui-styles)))
-        (cons ":" (UIStyles-search (ui-styles)))
+  (list (cons (SteelSearchResult-display-path result) (UIStyles-text (ui-styles)))
+        (cons ":" (UIStyles-text (ui-styles)))
         (cons (int->string (SteelSearchResult-line-num result)) (UIStyles-line-num (ui-styles)))))
 
-(define (draw-search-results frame content-x content-y content-height y window-height raw-data)
-  (let ([result-style (UIStyles-search (ui-styles))])
+(define (draw-search-results frame
+                             content-x
+                             content-y
+                             content-width
+                             content-height
+                             y
+                             window-height
+                             raw-data
+                             state)
+  (let ([result-style (UIStyles-text (ui-styles))]
+        [highlight-style (UIStyles-active (ui-styles))])
     (cond
       [(and (list? raw-data) (not (null? raw-data)) (equal? (car raw-data) 'search-data))
        (let* ([result-count (cadr raw-data)]
@@ -169,28 +199,43 @@
                                           " Found "
                                           (to-string result-count)
                                           " results")]
-              [formatted-results (map format-search-result results)]
-              [all-lines (cons status-line formatted-results)]
-              [max-visible-lines (- content-height 1)]
-              [display-lines (if (> (length all-lines) max-visible-lines)
-                                 (take-right all-lines max-visible-lines)
-                                 all-lines)])
-         (let loop ([remaining-lines display-lines]
-                    [current-row 0])
-           (when (and (not (null? remaining-lines))
-                      (< current-row max-visible-lines)
-                      (< (+ content-y current-row) (+ y window-height -2)))
-             (let ([line (car remaining-lines)]
-                   [row-y (+ content-y current-row)])
-               (cond
-                 ;; Styled segments: render each segment with its own style
-                 [(list? line)
-                  (render-styled-segments frame content-x row-y line (- content-height 4))]
-                 [else
-                  ;; Plain string (status line): render with result style
-                  (let ([truncated-line (truncate-string line (- content-height 4))])
-                    (frame-set-string! frame content-x row-y truncated-line result-style))])
-               (loop (cdr remaining-lines) (+ current-row 1))))))]
+              [selected-index (get-selected-index state)]
+              [scroll-offset (get-scroll-offset state)]
+              [status-height 1]
+              [gap-height 1]
+              [results-start-y (+ content-y status-height gap-height)]
+              [results-height (- content-height status-height gap-height 1)]
+              [results-count (length results)])
+
+         ;; Store content height for navigation
+         (set-content-height! state results-height)
+
+         ;; Draw status line at fixed position
+         (let ([truncated-status (truncate-string status-line (- content-width 4))])
+           (frame-set-string! frame content-x content-y truncated-status result-style))
+
+         ;; Draw search results with scrolling
+         (when (> results-count 0)
+           (let loop ([index 0]
+                      [current-row 0])
+             (when (and (< index results-count) (< current-row results-height))
+               (let ([result-index (+ index scroll-offset)])
+                 (when (< result-index results-count)
+                   (let* ([result (list-ref results result-index)]
+                          [segments (format-search-result result)]
+                          [row-y (+ results-start-y current-row)]
+                          [is-selected (= result-index selected-index)]
+                          [styled-segments (if is-selected
+                                               ;; Apply highlight style to all segments
+                                               (map (lambda (seg) (cons (car seg) highlight-style))
+                                                    segments)
+                                               segments)])
+                     (render-styled-segments frame
+                                             content-x
+                                             row-y
+                                             styled-segments
+                                             (- content-width 4))))
+                 (loop (+ index 1) (+ current-row 1)))))))]
       [else
        ;; Legacy format: handle old-style lines
        (let* ([max-visible-lines (- content-height 1)]
@@ -208,10 +253,10 @@
                  [(and (list? line) (equal? (car line) 'styled-segments))
                   ;; Styled segments: render each segment with its own style
                   (let ([segments (cadr line)])
-                    (render-styled-segments frame content-x row-y segments (- content-height 4)))]
+                    (render-styled-segments frame content-x row-y segments (- content-width 4)))]
                  [else
                   ;; Plain string: render as before
-                  (let ([truncated-line (truncate-string line (- content-height 4))])
+                  (let ([truncated-line (truncate-string line (- content-width 4))])
                     (frame-set-string! frame content-x row-y truncated-line result-style))])
                (loop (cdr remaining-lines) (+ current-row 1))))))])))
 
@@ -324,10 +369,12 @@
          (draw-search-results frame
                               (WindowLayout-content-x layout)
                               (WindowLayout-content-y layout)
+                              (WindowLayout-content-width layout)
                               (WindowLayout-content-height layout)
                               (WindowLayout-y layout)
                               (WindowLayout-height layout)
-                              lines))])))
+                              lines
+                              state))])))
 
 (define (handle-paste-event state paste-text)
   (when paste-text
@@ -377,8 +424,50 @@
 
   event-result/consume)
 
-(define (handle-search-results-mode-event _state event)
-  (if (key-event? event) event-result/close event-result/consume))
+(define (navigate-search-results state direction)
+  "Navigate search results with smart scrolling. Direction: -1 for up, 1 for down."
+  (let ([lines (get-lines state)])
+    (when (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data))
+      (let* ([results (cadddr lines)]
+             [results-count (length results)]
+             [current-selected (get-selected-index state)]
+             [current-scroll (get-scroll-offset state)]
+             [new-selected (max 0 (min (- results-count 1) (+ current-selected direction)))])
+
+        (when (> results-count 0)
+          (set-selected-index! state new-selected)
+
+          ;; Smart scrolling logic
+          (let* ([results-height (get-content-height state)] ; Use actual content height
+                 [scroll-margin 2] ; Start scrolling when 2 from edge
+                 [visible-start current-scroll]
+                 [visible-end (+ current-scroll results-height -1)]
+                 [new-scroll current-scroll])
+
+            ;; Scroll down if selected is near or past the bottom
+            (when (> new-selected (- visible-end scroll-margin))
+              (set! new-scroll
+                    (max 0
+                         (min (- results-count results-height)
+                              (- new-selected results-height (- scroll-margin))))))
+
+            ;; Scroll up if selected is near or above the top
+            (when (< new-selected (+ visible-start scroll-margin))
+              (set! new-scroll (max 0 (- new-selected scroll-margin))))
+
+            (set-scroll-offset! state new-scroll)))))))
+
+(define (handle-search-results-mode-event state event)
+  (cond
+    ;; Up navigation: arrow up or 'k'
+    [(or (key-event-up? event) (and (key-event-char event) (equal? (key-event-char event) #\k)))
+     (navigate-search-results state -1)
+     event-result/consume]
+    ;; Down navigation: arrow down or 'j'
+    [(or (key-event-down? event) (and (key-event-char event) (equal? (key-event-char event) #\j)))
+     (navigate-search-results state 1)
+     event-result/consume]
+    [else event-result/consume]))
 
 (define (scooter-event-handler state event)
   (let ([mode (get-mode state)])
@@ -398,6 +487,8 @@
   (set-mode! state 'search-results)
   (set-lines! state '())
   (set-completed! state #f)
+  (set-selected-index! state 0) ; Reset selection to first result
+  (set-scroll-offset! state 0) ; Reset scroll to top
   (execute-search-process! state))
 
 (define (execute-search-process! state)
