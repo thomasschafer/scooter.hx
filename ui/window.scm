@@ -25,6 +25,9 @@
 (define WINDOW-SIZE-RATIO 0.9)
 (define CONTENT-PADDING 3)
 (define BORDER-PADDING 2)
+(define SCROLL-MARGIN 2)
+(define STATUS-HEIGHT 1)
+(define GAP-HEIGHT 1)
 
 (struct ScooterWindow
         (mode-box ; 'search-fields, 'search-results
@@ -201,10 +204,8 @@
                                           " results")]
               [selected-index (get-selected-index state)]
               [scroll-offset (get-scroll-offset state)]
-              [status-height 1]
-              [gap-height 1]
-              [results-start-y (+ content-y status-height gap-height)]
-              [results-height (- content-height status-height gap-height 1)]
+              [results-start-y (+ content-y STATUS-HEIGHT GAP-HEIGHT)]
+              [results-height (- content-height STATUS-HEIGHT GAP-HEIGHT 1)]
               [results-count (length results)])
 
          ;; Store content height for navigation
@@ -409,181 +410,108 @@
 (define (handle-search-fields-mode-event state event)
   (cond
     [(paste-event? event) (handle-paste-event state (paste-event-string event))]
-
     [(key-event-tab? event) (handle-tab-key state (key-event-modifier event))]
-
     [(key-event-enter? event) (handle-enter-key state)]
-
     [(key-event-left? event) (move-cursor-left state (get-current-field state))]
-
     [(key-event-right? event) (move-cursor-right state (get-current-field state))]
-
     [(key-event-backspace? event) (delete-char-at-cursor state (get-current-field state))]
-
     [(key-event-char event) (handle-char-input state (key-event-char event))])
-
   event-result/consume)
 
-(define (jump-to-top state)
-  "Jump to the first search result."
+;; Helper to get search results data, returns #f if invalid
+(define (get-search-data state)
   (let ([lines (get-lines state)])
-    (when (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data))
-      (let ([results (cadddr lines)])
-        (when (> (length results) 0)
-          (set-selected-index! state 0)
-          (set-scroll-offset! state 0))))))
+    (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data) lines)))
 
-(define (jump-to-bottom state)
-  "Jump to the last search result."
-  (let ([lines (get-lines state)])
-    (when (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data))
-      (let* ([results (cadddr lines)]
-             [results-count (length results)])
-        (when (> results-count 0)
-          (let* ([last-index (- results-count 1)]
-                 [results-height (get-content-height state)]
-                 [new-scroll (max 0 (- results-count results-height))])
-            (set-selected-index! state last-index)
-            (set-scroll-offset! state new-scroll)))))))
-
-(define (scroll-page state direction)
-  "Scroll by full page. Direction: -1 for up, 1 for down."
-  (let ([lines (get-lines state)])
-    (when (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data))
-      (let* ([results (cadddr lines)]
-             [results-count (length results)]
-             [results-height (get-content-height state)]
-             [current-selected (get-selected-index state)]
-             [page-size results-height]
-             [new-selected
-              (max 0 (min (- results-count 1) (+ current-selected (* direction page-size))))])
-        (when (> results-count 0)
-          (set-selected-index! state new-selected)
-          (navigate-search-results-adjust-scroll state))))))
-
-(define (scroll-half-page state direction)
-  "Scroll by half page. Direction: -1 for up, 1 for down."
-  (let ([lines (get-lines state)])
-    (when (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data))
-      (let* ([results (cadddr lines)]
-             [results-count (length results)]
-             [results-height (get-content-height state)]
-             [current-selected (get-selected-index state)]
-             [half-page-size (max 1 (quotient results-height 2))]
-             [new-selected
-              (max 0 (min (- results-count 1) (+ current-selected (* direction half-page-size))))])
-        (when (> results-count 0)
-          (set-selected-index! state new-selected)
-          (navigate-search-results-adjust-scroll state))))))
-
-(define (navigate-search-results-adjust-scroll state)
-  "Adjust scroll position based on current selection (helper for page/half-page scrolling)."
-  (let ([lines (get-lines state)])
-    (when (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data))
-      (let* ([results (cadddr lines)]
+;; Adjust scroll position to keep selection visible
+(define (adjust-scroll-for-selection state)
+  (let ([data (get-search-data state)])
+    (when data
+      (let* ([results (cadddr data)]
              [results-count (length results)]
              [selected-index (get-selected-index state)]
              [current-scroll (get-scroll-offset state)]
              [results-height (get-content-height state)]
-             [scroll-margin 2]
              [visible-start current-scroll]
              [visible-end (+ current-scroll results-height -1)]
              [new-scroll current-scroll])
 
         ;; Scroll down if selected is near or past the bottom
-        (when (> selected-index (- visible-end scroll-margin))
+        (when (> selected-index (- visible-end SCROLL-MARGIN))
           (set! new-scroll
                 (max 0
                      (min (- results-count results-height)
-                          (- selected-index results-height (- scroll-margin))))))
+                          (- selected-index results-height (- SCROLL-MARGIN))))))
 
         ;; Scroll up if selected is near or above the top
-        (when (< selected-index (+ visible-start scroll-margin))
-          (set! new-scroll (max 0 (- selected-index scroll-margin))))
+        (when (< selected-index (+ visible-start SCROLL-MARGIN))
+          (set! new-scroll (max 0 (- selected-index SCROLL-MARGIN))))
 
         (set-scroll-offset! state new-scroll)))))
 
-(define (navigate-search-results state direction)
-  "Navigate search results with smart scrolling. Direction: -1 for up, 1 for down."
-  (let ([lines (get-lines state)])
-    (when (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data))
-      (let* ([results (cadddr lines)]
+;; Navigate by a specific amount (positive = down, negative = up)
+(define (navigate-by-amount state amount)
+  (let ([data (get-search-data state)])
+    (when data
+      (let* ([results (cadddr data)]
              [results-count (length results)]
              [current-selected (get-selected-index state)]
-             [current-scroll (get-scroll-offset state)]
-             [new-selected (max 0 (min (- results-count 1) (+ current-selected direction)))])
-
+             [new-selected (max 0 (min (- results-count 1) (+ current-selected amount)))])
         (when (> results-count 0)
           (set-selected-index! state new-selected)
+          (adjust-scroll-for-selection state))))))
 
-          ;; Smart scrolling logic
-          (let* ([results-height (get-content-height state)] ; Use actual content height
-                 [scroll-margin 2] ; Start scrolling when 2 from edge
-                 [visible-start current-scroll]
-                 [visible-end (+ current-scroll results-height -1)]
-                 [new-scroll current-scroll])
+;; Jump to specific position
+(define (jump-to-position state index scroll-offset)
+  (let ([data (get-search-data state)])
+    (when data
+      (let* ([results (cadddr data)]
+             [results-count (length results)])
+        (when (> results-count 0)
+          (set-selected-index! state (max 0 (min (- results-count 1) index)))
+          (set-scroll-offset! state scroll-offset))))))
 
-            ;; Scroll down if selected is near or past the bottom
-            (when (> new-selected (- visible-end scroll-margin))
-              (set! new-scroll
-                    (max 0
-                         (min (- results-count results-height)
-                              (- new-selected results-height (- scroll-margin))))))
+(define (jump-to-top state)
+  (jump-to-position state 0 0))
 
-            ;; Scroll up if selected is near or above the top
-            (when (< new-selected (+ visible-start scroll-margin))
-              (set! new-scroll (max 0 (- new-selected scroll-margin))))
+(define (jump-to-bottom state)
+  (let ([data (get-search-data state)])
+    (when data
+      (let* ([results (cadddr data)]
+             [results-count (length results)]
+             [results-height (get-content-height state)]
+             [last-index (- results-count 1)]
+             [optimal-scroll (max 0 (- results-count results-height))])
+        (jump-to-position state last-index optimal-scroll)))))
 
-            (set-scroll-offset! state new-scroll)))))))
+(define (scroll-page state direction)
+  (let ([results-height (get-content-height state)])
+    (navigate-by-amount state (* direction results-height))))
+
+(define (scroll-half-page state direction)
+  (let ([results-height (get-content-height state)])
+    (navigate-by-amount state (* direction (max 1 (quotient results-height 2))))))
+
+(define (navigate-search-results state direction)
+  (navigate-by-amount state direction))
+
+(define (key-matches-char? event char)
+  (and (key-event-char event) (equal? (key-event-char event) char)))
+
+(define (key-with-ctrl? event char)
+  (and (key-matches-char? event char) (equal? (key-event-modifier event) key-modifier-ctrl)))
 
 (define (handle-search-results-mode-event state event)
   (cond
-    ;; Up navigation: arrow up or 'k'
-    [(or (key-event-up? event) (and (key-event-char event) (equal? (key-event-char event) #\k)))
-     (navigate-search-results state -1)
-     event-result/consume]
-
-    ;; Down navigation: arrow down or 'j'
-    [(or (key-event-down? event) (and (key-event-char event) (equal? (key-event-char event) #\j)))
-     (navigate-search-results state 1)
-     event-result/consume]
-
-    ;; Half-page up: Ctrl+U
-    [(and (key-event-char event)
-          (equal? (key-event-char event) #\u)
-          (equal? (key-event-modifier event) key-modifier-ctrl))
-     (scroll-half-page state -1)
-     event-result/consume]
-
-    ;; Half-page down: Ctrl+D
-    [(and (key-event-char event)
-          (equal? (key-event-char event) #\d)
-          (equal? (key-event-modifier event) key-modifier-ctrl))
-     (scroll-half-page state 1)
-     event-result/consume]
-
-    ;; Full page up: Page Up
-    [(key-event-page-up? event)
-     (scroll-page state -1)
-     event-result/consume]
-
-    ;; Full page down: Page Down
-    [(key-event-page-down? event)
-     (scroll-page state 1)
-     event-result/consume]
-
-    ;; Jump to top: 'g'
-    [(and (key-event-char event) (equal? (key-event-char event) #\g))
-     (jump-to-top state)
-     event-result/consume]
-
-    ;; Jump to bottom: 'G' (Shift+g)
-    [(and (key-event-char event) (equal? (key-event-char event) #\G))
-     (jump-to-bottom state)
-     event-result/consume]
-
-    [(key-event? event) event-result/close]
-    [else event-result/consume]))
+    [(or (key-event-up? event) (key-matches-char? event #\k)) (navigate-search-results state -1)]
+    [(or (key-event-down? event) (key-matches-char? event #\j)) (navigate-search-results state 1)]
+    [(key-with-ctrl? event #\u) (scroll-half-page state -1)]
+    [(key-with-ctrl? event #\d) (scroll-half-page state 1)]
+    [(key-event-page-up? event) (scroll-page state -1)]
+    [(key-event-page-down? event) (scroll-page state 1)]
+    [(key-matches-char? event #\g) (jump-to-top state)]
+    [(key-matches-char? event #\G) (jump-to-bottom state)])
+  event-result/consume)
 
 (define (scooter-event-handler state event)
   (let ([mode (get-mode state)])
