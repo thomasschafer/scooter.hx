@@ -121,8 +121,8 @@
 
 (define (get-field-style active?)
   (if active?
-      (UIStyles-active ui-styles)
-      (UIStyles-text ui-styles)))
+      (UIStyles-active (ui-styles))
+      (UIStyles-text (ui-styles))))
 
 (define (calculate-field-layout content-x content-width)
   (let* ([available-width (- content-width (* 2 FIELD-PADDING-HORIZONTAL))]

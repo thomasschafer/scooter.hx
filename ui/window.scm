@@ -127,27 +127,85 @@
       (set-field-value! state field-id new-value)
       (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
 
-(define (draw-search-results frame
-                             content-x
-                             content-y
-                             content-height
-                             y
-                             window-height
-                             lines
-                             result-style)
-  (let* ([max-visible-lines (- content-height 1)]
-         [display-lines (if (> (length lines) max-visible-lines)
-                            (take-right lines max-visible-lines)
-                            lines)])
-    (let loop ([remaining-lines display-lines]
-               [current-row 0])
-      (when (and (not (null? remaining-lines))
-                 (< current-row max-visible-lines)
-                 (< (+ content-y current-row) (+ y window-height -2)))
-        (let* ([line (car remaining-lines)]
-               [truncated-line (truncate-string line (- content-height 4))])
-          (frame-set-string! frame content-x (+ content-y current-row) truncated-line result-style)
-          (loop (cdr remaining-lines) (+ current-row 1)))))))
+(define (render-styled-segments frame x y segments max-width)
+  "Render a list of (text . style) segments on a single line."
+  (let loop ([segments segments]
+             [current-x x]
+             [remaining-width max-width])
+    (when (and (not (null? segments)) (> remaining-width 0))
+      (let* ([segment (car segments)]
+             [text (car segment)]
+             [style (cdr segment)]
+             [truncated-text (if (> (string-length text) remaining-width)
+                                 (truncate-string text remaining-width)
+                                 text)])
+        (frame-set-string! frame current-x y truncated-text style)
+        (loop (cdr segments)
+              (+ current-x (string-length truncated-text))
+              (- remaining-width (string-length truncated-text)))))))
+
+(define (format-search-result result)
+  "Convert a raw search result to styled segments."
+  (list (cons (SteelSearchResult-display-path result) (UIStyles-search (ui-styles)))
+        (cons ":" (UIStyles-search (ui-styles)))
+        (cons (int->string (SteelSearchResult-line-num result)) (UIStyles-line-num (ui-styles)))))
+
+(define (draw-search-results frame content-x content-y content-height y window-height raw-data)
+  (let ([result-style (UIStyles-search (ui-styles))])
+    (cond
+      [(and (list? raw-data) (not (null? raw-data)) (equal? (car raw-data) 'search-data))
+       (let* ([result-count (cadr raw-data)]
+              [is-complete (caddr raw-data)]
+              [results (cadddr raw-data)]
+              [status-line (string-append (if is-complete "Search complete!" "Searching...")
+                                          " Found "
+                                          (to-string result-count)
+                                          " results")]
+              [formatted-results (map format-search-result results)]
+              [all-lines (cons status-line formatted-results)]
+              [max-visible-lines (- content-height 1)]
+              [display-lines (if (> (length all-lines) max-visible-lines)
+                                 (take-right all-lines max-visible-lines)
+                                 all-lines)])
+         (let loop ([remaining-lines display-lines]
+                    [current-row 0])
+           (when (and (not (null? remaining-lines))
+                      (< current-row max-visible-lines)
+                      (< (+ content-y current-row) (+ y window-height -2)))
+             (let ([line (car remaining-lines)]
+                   [row-y (+ content-y current-row)])
+               (cond
+                 ;; Styled segments: render each segment with its own style
+                 [(list? line)
+                  (render-styled-segments frame content-x row-y line (- content-height 4))]
+                 [else
+                  ;; Plain string (status line): render with result style
+                  (let ([truncated-line (truncate-string line (- content-height 4))])
+                    (frame-set-string! frame content-x row-y truncated-line result-style))])
+               (loop (cdr remaining-lines) (+ current-row 1))))))]
+      [else
+       ;; Legacy format: handle old-style lines
+       (let* ([max-visible-lines (- content-height 1)]
+              [display-lines (if (> (length raw-data) max-visible-lines)
+                                 (take-right raw-data max-visible-lines)
+                                 raw-data)])
+         (let loop ([remaining-lines display-lines]
+                    [current-row 0])
+           (when (and (not (null? remaining-lines))
+                      (< current-row max-visible-lines)
+                      (< (+ content-y current-row) (+ y window-height -2)))
+             (let ([line (car remaining-lines)]
+                   [row-y (+ content-y current-row)])
+               (cond
+                 [(and (list? line) (equal? (car line) 'styled-segments))
+                  ;; Styled segments: render each segment with its own style
+                  (let ([segments (cadr line)])
+                    (render-styled-segments frame content-x row-y segments (- content-height 4)))]
+                 [else
+                  ;; Plain string: render as before
+                  (let ([truncated-line (truncate-string line (- content-height 4))])
+                    (frame-set-string! frame content-x row-y truncated-line result-style))])
+               (loop (cdr remaining-lines) (+ current-row 1))))))])))
 
 (define (draw-status-line frame
                           content-x
@@ -225,7 +283,7 @@
                        (WindowLayout-y layout)
                        (WindowLayout-width layout)
                        (WindowLayout-height layout)
-                       (UIStyles-popup ui-styles)
+                       (UIStyles-popup (ui-styles))
                        title)
 
     (cond
@@ -264,28 +322,17 @@
                          (WindowLayout-content-x layout)
                          (WindowLayout-y layout)
                          (WindowLayout-height layout)
-                         (UIStyles-dim ui-styles)))]
+                         (UIStyles-dim (ui-styles))))]
 
       [(equal? mode 'search-results)
-       (let ([lines (get-lines state)]
-             [completed? (get-completed state)])
+       (let ([lines (get-lines state)])
          (draw-search-results frame
                               (WindowLayout-content-x layout)
                               (WindowLayout-content-y layout)
                               (WindowLayout-content-height layout)
                               (WindowLayout-y layout)
                               (WindowLayout-height layout)
-                              lines
-                              (UIStyles-search ui-styles))
-
-         (draw-status-line frame
-                           (WindowLayout-content-x layout)
-                           (+ (WindowLayout-y layout) (WindowLayout-height layout) -3)
-                           (WindowLayout-content-width layout)
-                           lines
-                           completed?
-                           (UIStyles-status ui-styles)
-                           (UIStyles-dim ui-styles)))])))
+                              lines))])))
 
 (define (handle-paste-event state paste-text)
   (when paste-text
@@ -418,19 +465,8 @@
                  0
                  (max 0 (- result-count 1)))]) ;; TODO - just show correct num, add scrolling etc.
            (set-box! (ScooterWindow-lines-box state)
-                     (cons (string-append (cond
-                                            [is-complete "Search complete!"]
-                                            [else "Searching..."])
-                                          " Found "
-                                          (to-string result-count)
-                                          " results")
-                           (map (lambda (s)
-                                  (string-append (SteelSearchResult-display-path s)
-                                                 ":"
-                                                 (int->string (SteelSearchResult-line-num
-                                                               s)))) ; TODO: use line num colour
-                                results))))
+                     (list 'search-data result-count is-complete results))
 
-         (cond
-           [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
-           [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))
+           (cond
+             [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
+             [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))])))))))
