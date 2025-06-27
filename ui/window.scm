@@ -35,7 +35,8 @@
          completed-box
          cursor-position
          debug-events-box
-         engine-box))
+         engine-box
+         search-id-box)) ; Track current search to avoid stale callbacks
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -76,6 +77,12 @@
 (define (get-engine state)
   (unbox (ScooterWindow-engine-box state)))
 
+(define (get-search-id state)
+  (unbox (ScooterWindow-search-id-box state)))
+
+(define (increment-search-id! state)
+  (set-box! (ScooterWindow-search-id-box state) (+ 1 (unbox (ScooterWindow-search-id-box state)))))
+
 (define (create-scooter-window directory)
   "Create a new ScooterWindow with organized initialization."
   (ScooterWindow (box 'search-fields) ; mode-box
@@ -86,7 +93,8 @@
                  (box #f) ; completed-box
                  (position 0 0) ; cursor-position
                  (box '()) ; debug-events-box
-                 (box (Scooter-new directory)))) ; engine-box
+                 (box (Scooter-new directory)) ; engine-box
+                 (box 0))) ; search-id-box
 
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
@@ -206,19 +214,6 @@
                   (let ([truncated-line (truncate-string line (- content-height 4))])
                     (frame-set-string! frame content-x row-y truncated-line result-style))])
                (loop (cdr remaining-lines) (+ current-row 1))))))])))
-
-(define (draw-status-line frame
-                          content-x
-                          position-y
-                          content-width
-                          lines
-                          completed?
-                          status-style
-                          dim-style)
-  (let* ([line-count (length lines)]
-         [status-text (if completed? "Done." "Searching...")]
-         [style (if completed? status-style dim-style)])
-    (frame-set-string! frame content-x position-y (truncate-string status-text content-width) style)))
 
 (struct WindowLayout
         (x ; Window X position
@@ -399,20 +394,11 @@
        (ScooterWindow-cursor-position state)))
 
 (define (start-scooter-search state)
+  (increment-search-id! state) ; Cancel any pending callbacks from previous searches
   (set-mode! state 'search-results)
   (set-lines! state '())
   (set-completed! state #f)
   (execute-search-process! state))
-
-(define (extract-search-params field-values)
-  "Extract search parameters from field values hash."
-  (list (hash-ref field-values 'search)
-        (hash-ref field-values 'replace)
-        (hash-ref field-values 'fixed-strings)
-        (hash-ref field-values 'match-whole-word)
-        (hash-ref field-values 'match-case)
-        (hash-ref field-values 'files-include)
-        (hash-ref field-values 'files-exclude)))
 
 (define (execute-search-process! state)
   (let* ([field-values (unbox (ScooterWindow-field-values-box state))]
@@ -446,27 +432,23 @@
       (Scooter-search-results-window engine 0 (max 0 (- result-count 1)))
       '()))
 
-(define (format-search-status is-complete result-count)
-  (string-append (if is-complete "Search complete!" "Searching...")
-                 " Found "
-                 (to-string result-count)
-                 " results"))
-
 (define (poll-search-results state)
-  (let ([engine (get-engine state)])
+  (let ([engine (get-engine state)]
+        [current-search-id (get-search-id state)]) ; Capture current search ID
     (enqueue-thread-local-callback
      (lambda ()
-       (let ([result-count (Scooter-search-result-count engine)]
-             [is-complete (Scooter-search-complete? engine)])
+       ;; Check if this callback is for the current search
+       (when (= current-search-id (get-search-id state))
+         (let ([result-count (Scooter-search-result-count engine)]
+               [is-complete (Scooter-search-complete? engine)])
 
-         (let ([results
-                (Scooter-search-results-window
-                 engine
-                 0
-                 (max 0 (- result-count 1)))]) ;; TODO - just show correct num, add scrolling etc.
-           (set-box! (ScooterWindow-lines-box state)
-                     (list 'search-data result-count is-complete results))
+           (let ([results (Scooter-search-results-window
+                           engine
+                           0
+                           (max 0 (- result-count 1)))]) ;; TODO: add scrolling support
+             (set-box! (ScooterWindow-lines-box state)
+                       (list 'search-data result-count is-complete results))
 
-           (cond
-             [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
-             [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))])))))))
+             (cond
+               [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
+               [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))))
