@@ -6,6 +6,8 @@
          draw-text-field-box
          draw-field
          draw-all-fields
+         create-initial-field-values
+         create-initial-cursor-positions
          get-field-cursor-column
          get-all-fields
          get-field-by-id
@@ -241,3 +243,17 @@
   (let* ([layout (calculate-field-layout content-x content-width)]
          [field-x (car layout)])
     (+ field-x 1 (- CURSOR-PADDING 1) cursor-pos)))
+
+(define (create-initial-field-values)
+  (fold (lambda (field-def values)
+          (hash-insert values (field-id field-def) (field-default-value field-def)))
+        (hash)
+        (get-all-fields)))
+
+(define (create-initial-cursor-positions)
+  (fold (lambda (field-def positions)
+          (if (equal? (field-type field-def) FIELD-TYPE-TEXT)
+              (hash-insert positions (field-id field-def) 0)
+              positions))
+        (hash)
+        (get-all-fields)))

@@ -7,7 +7,7 @@
 (#%require-dylib "libscooter_hx" (only-in Scooter-new))
 
 (require "ui/window.scm")
-(require "ui/state-init.scm")
+(require "ui/fields.scm")
 
 (provide scooter)
 
