@@ -205,7 +205,7 @@
               [selected-index (get-selected-index state)]
               [scroll-offset (get-scroll-offset state)]
               [results-start-y (+ content-y STATUS-HEIGHT GAP-HEIGHT)]
-              [results-height (- content-height STATUS-HEIGHT GAP-HEIGHT 1)]
+              [results-height (- content-height STATUS-HEIGHT GAP-HEIGHT)]
               [results-count (length results)])
 
          ;; Store content height for navigation
@@ -213,7 +213,11 @@
 
          ;; Draw status line at fixed position
          (let ([truncated-status (truncate-string status-line (- content-width 4))])
-           (frame-set-string! frame content-x content-y truncated-status result-style))
+           (frame-set-string! frame
+                              content-x
+                              content-y
+                              truncated-status
+                              (UIStyles-popup (ui-styles))))
 
          ;; Draw search results with scrolling
          (when (> results-count 0)
