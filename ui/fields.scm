@@ -119,7 +119,7 @@
                 next-y
                 (hash-insert positions (field-id field) (cons current-y current-y)))))))
 
-(define (get-field-style active? ui-styles)
+(define (get-field-style active?)
   (if active?
       (UIStyles-active ui-styles)
       (UIStyles-text ui-styles)))
@@ -133,17 +133,10 @@
          [field-x (+ content-x FIELD-PADDING-HORIZONTAL offset)])
     (list field-x field-width)))
 
-(define (draw-boolean-field frame
-                            content-x
-                            content-width
-                            label-y
-                            field-def
-                            field-value
-                            active?
-                            ui-styles)
+(define (draw-boolean-field frame content-x content-width label-y field-def field-value active?)
   (let* ([title (field-label field-def)]
          [checkbox-mark (if field-value "X" " ")]
-         [field-style (get-field-style active? ui-styles)]
+         [field-style (get-field-style active?)]
          [layout (calculate-field-layout content-x content-width)]
          [field-x (car layout)])
 
@@ -161,16 +154,9 @@
                      title
                      field-style)))
 
-(define (draw-text-field-box frame
-                             content-x
-                             label-y
-                             content-width
-                             field-def
-                             field-value
-                             active?
-                             ui-styles)
+(define (draw-text-field-box frame content-x label-y content-width field-def field-value active?)
   (let* ([title (field-label field-def)]
-         [field-style (get-field-style active? ui-styles)]
+         [field-style (get-field-style active?)]
          [layout (calculate-field-layout content-x content-width)]
          [field-x (car layout)]
          [box-width (cadr layout)]
@@ -196,27 +182,19 @@
          [trailing-spaces (make-space-string (- inner-width text-start-pos text-length))])
     (string-append leading-spaces truncated-text trailing-spaces)))
 
-(define (draw-field frame content-x content-width field-def field-value active? field-y-pos ui-styles)
+(define (draw-field frame content-x content-width field-def field-value active? field-y-pos)
   (let* ([field-id (field-id field-def)]
          [field-type (field-type field-def)])
 
     (if (equal? field-type FIELD-TYPE-BOOLEAN)
-        (draw-boolean-field frame
-                            content-x
-                            content-width
-                            field-y-pos
-                            field-def
-                            field-value
-                            active?
-                            ui-styles)
+        (draw-boolean-field frame content-x content-width field-y-pos field-def field-value active?)
         (draw-text-field-box frame
                              content-x
                              field-y-pos
                              content-width
                              field-def
                              field-value
-                             active?
-                             ui-styles))))
+                             active?))))
 
 (define (draw-all-fields frame
                          content-x
@@ -224,7 +202,6 @@
                          content-width
                          current-field
                          state
-                         ui-styles
                          field-value-getter)
   (let ([field-positions (calculate-field-positions content-y)])
     (let process-fields ([fields (get-all-fields)])
@@ -235,7 +212,7 @@
                [y-pos (car (hash-ref field-positions field-id))]
                [field-value (field-value-getter state field-id)])
 
-          (draw-field frame content-x content-width field-def field-value active? y-pos ui-styles)
+          (draw-field frame content-x content-width field-def field-value active? y-pos)
 
           (process-fields (cdr fields)))))))
 

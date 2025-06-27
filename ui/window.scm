@@ -215,7 +215,6 @@
 
 (define (scooter-render state rect frame)
   (let* ([layout (calculate-window-layout rect)]
-         [styles (create-ui-styles)]
          [mode (get-mode state)]
          [search-term (get-field-value state 'search)]
          [current-field (get-current-field state)]
@@ -226,7 +225,7 @@
                        (WindowLayout-y layout)
                        (WindowLayout-width layout)
                        (WindowLayout-height layout)
-                       (UIStyles-popup styles)
+                       (UIStyles-popup ui-styles)
                        title)
 
     (cond
@@ -253,7 +252,6 @@
                           (WindowLayout-content-width layout)
                           current-field
                           state
-                          styles
                           get-field-value)
 
          (position-cursor-in-text-field state
@@ -266,7 +264,7 @@
                          (WindowLayout-content-x layout)
                          (WindowLayout-y layout)
                          (WindowLayout-height layout)
-                         (UIStyles-dim styles)))]
+                         (UIStyles-dim ui-styles)))]
 
       [(equal? mode 'search-results)
        (let ([lines (get-lines state)]
@@ -278,7 +276,7 @@
                               (WindowLayout-y layout)
                               (WindowLayout-height layout)
                               lines
-                              (UIStyles-search styles))
+                              (UIStyles-search ui-styles))
 
          (draw-status-line frame
                            (WindowLayout-content-x layout)
@@ -286,8 +284,8 @@
                            (WindowLayout-content-width layout)
                            lines
                            completed?
-                           (UIStyles-status styles)
-                           (UIStyles-dim styles)))])))
+                           (UIStyles-status ui-styles)
+                           (UIStyles-dim ui-styles)))])))
 
 (define (handle-paste-event state paste-text)
   (when paste-text
