@@ -12,18 +12,7 @@
 (provide scooter)
 
 (define (scooter)
-  (define state
-    (ScooterWindow (box 'search-fields)
-                   (box (create-initial-field-values))
-                   (box (create-initial-cursor-positions))
-                   (box 'search)
-                   (box '())
-                   (box #f)
-                   (box #f)
-                   (box #f)
-                   (position 0 0)
-                   (box '())
-                   (box (Scooter-new (get-helix-cwd)))))
+  (define state (create-scooter-window (get-helix-cwd)))
 
   (push-component!
    (new-component! "scooter-window"

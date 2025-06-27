@@ -2,7 +2,8 @@
 (require "helix/misc.scm")
 
 (#%require-dylib "libscooter_hx"
-                 (only-in Scooter-start-search
+                 (only-in Scooter-new
+                          Scooter-start-search
                           Scooter-search-complete?
                           Scooter-search-result-count
                           Scooter-search-results-window
@@ -14,6 +15,7 @@
 (require "drawing.scm")
 
 (provide ScooterWindow
+         create-scooter-window
          scooter-render
          scooter-event-handler
          scooter-cursor-handler
@@ -29,12 +31,10 @@
          cursor-positions-box
          current-field-box
          lines-box
-         process-box
-         stdout-port-box
          completed-box
          cursor-position
          debug-events-box
-         scooter-hx-box))
+         engine-box))
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -48,6 +48,44 @@
 
 (define-hash-accessors get-field-value set-field-value! ScooterWindow-field-values-box)
 (define-hash-accessors get-field-cursor-pos set-field-cursor-pos! ScooterWindow-cursor-positions-box)
+
+(define (get-mode state)
+  (unbox (ScooterWindow-mode-box state)))
+(define (set-mode! state value)
+  (set-box! (ScooterWindow-mode-box state) value))
+
+(define (get-field-values state)
+  (unbox (ScooterWindow-field-values-box state)))
+
+(define (get-current-field state)
+  (unbox (ScooterWindow-current-field-box state)))
+(define (set-current-field! state value)
+  (set-box! (ScooterWindow-current-field-box state) value))
+
+(define (get-lines state)
+  (unbox (ScooterWindow-lines-box state)))
+(define (set-lines! state value)
+  (set-box! (ScooterWindow-lines-box state) value))
+
+(define (get-completed state)
+  (unbox (ScooterWindow-completed-box state)))
+(define (set-completed! state value)
+  (set-box! (ScooterWindow-completed-box state) value))
+
+(define (get-engine state)
+  (unbox (ScooterWindow-engine-box state)))
+
+(define (create-scooter-window directory)
+  "Create a new ScooterWindow with organized initialization."
+  (ScooterWindow (box 'search-fields) ; mode-box
+                 (box (create-initial-field-values)) ; field-values-box
+                 (box (create-initial-cursor-positions)) ; cursor-positions-box
+                 (box 'search) ; current-field-box
+                 (box '()) ; lines-box
+                 (box #f) ; completed-box
+                 (position 0 0) ; cursor-position
+                 (box '()) ; debug-events-box
+                 (box (Scooter-new directory)))) ; engine-box
 
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
@@ -177,9 +215,9 @@
 (define (scooter-render state rect frame)
   (let* ([layout (calculate-window-layout rect)]
          [styles (create-ui-styles)]
-         [mode (unbox (ScooterWindow-mode-box state))]
+         [mode (get-mode state)]
          [search-term (get-field-value state 'search)]
-         [current-field (unbox (ScooterWindow-current-field-box state))]
+         [current-field (get-current-field state)]
          [title " Scooter "])
 
     (draw-window-frame frame
@@ -230,8 +268,8 @@
                          (UIStyles-dim styles)))]
 
       [(equal? mode 'search-results)
-       (let ([lines (unbox (ScooterWindow-lines-box state))]
-             [completed? (unbox (ScooterWindow-completed-box state))])
+       (let ([lines (get-lines state)]
+             [completed? (get-completed state)])
          (draw-search-results frame
                               (WindowLayout-content-x layout)
                               (WindowLayout-content-y layout)
@@ -252,16 +290,16 @@
 
 (define (handle-paste-event state paste-text)
   (when paste-text
-    (let ([current-field-id (unbox (ScooterWindow-current-field-box state))])
+    (let ([current-field-id (get-current-field state)])
       (when (field-is-text? current-field-id)
         (insert-text-at-cursor state current-field-id paste-text)))))
 
 (define (handle-tab-key state modifier)
-  (let* ([current-field-id (unbox (ScooterWindow-current-field-box state))]
+  (let* ([current-field-id (get-current-field state)]
          [new-field-id (if (equal? modifier key-modifier-shift)
                            (get-previous-field current-field-id)
                            (get-next-field current-field-id))])
-    (set-box! (ScooterWindow-current-field-box state) new-field-id)))
+    (set-current-field! state new-field-id)))
 
 (define (handle-enter-key state)
   (let ([search-term (get-field-value state 'search)])
@@ -269,7 +307,7 @@
       (start-scooter-search state))))
 
 (define (handle-char-input state char)
-  (let* ([current-field-id (unbox (ScooterWindow-current-field-box state))]
+  (let* ([current-field-id (get-current-field state)]
          [field-def (get-field-by-id current-field-id)])
     (when (and (char? char) field-def)
       (cond
@@ -288,13 +326,11 @@
 
     [(key-event-enter? event) (handle-enter-key state)]
 
-    [(key-event-left? event) (move-cursor-left state (unbox (ScooterWindow-current-field-box state)))]
+    [(key-event-left? event) (move-cursor-left state (get-current-field state))]
 
-    [(key-event-right? event)
-     (move-cursor-right state (unbox (ScooterWindow-current-field-box state)))]
+    [(key-event-right? event) (move-cursor-right state (get-current-field state))]
 
-    [(key-event-backspace? event)
-     (delete-char-at-cursor state (unbox (ScooterWindow-current-field-box state)))]
+    [(key-event-backspace? event) (delete-char-at-cursor state (get-current-field state))]
 
     [(key-event-char event) (handle-char-input state (key-event-char event))])
 
@@ -304,7 +340,7 @@
   (if (key-event? event) event-result/close event-result/consume))
 
 (define (scooter-event-handler state event)
-  (let ([mode (unbox [ScooterWindow-mode-box state])])
+  (let ([mode (get-mode state)])
     (cond
       [(key-event-escape? event) event-result/close]
       [(equal? mode 'search-fields) (handle-search-fields-mode-event state event)]
@@ -312,20 +348,29 @@
       [else event-result/consume])))
 
 (define (scooter-cursor-handler state _)
-  (and (equal? (unbox (ScooterWindow-mode-box state)) 'search-fields)
-       (field-is-text? (unbox (ScooterWindow-current-field-box state)))
+  (and (equal? (get-mode state) 'search-fields)
+       (field-is-text? (get-current-field state))
        (ScooterWindow-cursor-position state)))
 
 (define (start-scooter-search state)
-  (set-box! (ScooterWindow-mode-box state) 'search-results)
-  (set-box! (ScooterWindow-lines-box state) '())
-  (set-box! (ScooterWindow-completed-box state) #f)
-
+  (set-mode! state 'search-results)
+  (set-lines! state '())
+  (set-completed! state #f)
   (execute-search-process! state))
+
+(define (extract-search-params field-values)
+  "Extract search parameters from field values hash."
+  (list (hash-ref field-values 'search)
+        (hash-ref field-values 'replace)
+        (hash-ref field-values 'fixed-strings)
+        (hash-ref field-values 'match-whole-word)
+        (hash-ref field-values 'match-case)
+        (hash-ref field-values 'files-include)
+        (hash-ref field-values 'files-exclude)))
 
 (define (execute-search-process! state)
   (let* ([field-values (unbox (ScooterWindow-field-values-box state))]
-         [scooter-hx (unbox (ScooterWindow-scooter-hx-box state))]
+         [engine (get-engine state)]
          [search-term (hash-ref field-values 'search)]
          [replace-term (hash-ref field-values 'replace)]
          [fixed-strings (hash-ref field-values 'fixed-strings)]
@@ -334,7 +379,7 @@
          [include-pattern (hash-ref field-values 'files-include)]
          [exclude-pattern (hash-ref field-values 'files-exclude)])
 
-    (Scooter-start-search scooter-hx
+    (Scooter-start-search engine
                           search-term
                           replace-term
                           fixed-strings
@@ -345,17 +390,35 @@
 
     (poll-search-results state)))
 
-(define (poll-search-results state)
-  (let ([scooter-hx (unbox (ScooterWindow-scooter-hx-box state))])
+(define (get-search-status engine)
+  (let ([result-count (Scooter-search-result-count engine)]
+        [is-complete (Scooter-search-complete? engine)])
+    (list is-complete result-count)))
 
+(define (get-search-results engine result-count)
+  (if (> result-count 0)
+      (Scooter-search-results-window engine 0 (max 0 (- result-count 1)))
+      '()))
+
+(define (format-search-status is-complete result-count)
+  (string-append (if is-complete "Search complete!" "Searching...")
+                 " Found "
+                 (to-string result-count)
+                 " results"))
+
+(define (update-search-display state status-message results)
+  (set-lines! state (cons status-message (map SteelSearchResult-display results))))
+
+(define (poll-search-results state)
+  (let ([engine (get-engine state)])
     (enqueue-thread-local-callback
      (lambda ()
-       (let ([result-count (Scooter-search-result-count scooter-hx)]
-             [is-complete (Scooter-search-complete? scooter-hx)])
+       (let ([result-count (Scooter-search-result-count engine)]
+             [is-complete (Scooter-search-complete? engine)])
 
          (let ([results
                 (Scooter-search-results-window
-                 scooter-hx
+                 engine
                  0
                  (max 0 (- result-count 1)))]) ;; TODO - just show correct num, add scrolling etc.
            (set-box! (ScooterWindow-lines-box state)
