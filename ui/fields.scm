@@ -1,9 +1,6 @@
-(require "helix/components.scm")
-(require "helix/configuration.scm")
-
-(require "utils.scm")
-(require "styles.scm")
 (require "drawing.scm")
+(require "styles.scm")
+(require "utils.scm")
 
 (provide draw-boolean-field
          draw-text-field-box

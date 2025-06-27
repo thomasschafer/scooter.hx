@@ -1,5 +1,3 @@
-(require "fields.scm")
-
 (provide build-scooter-args)
 
 (define (build-scooter-args field-values)

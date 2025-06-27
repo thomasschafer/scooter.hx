@@ -1,12 +1,5 @@
-(require-builtin helix/components)
 (require "helix/components.scm")
-(require "helix/editor.scm")
 (require "helix/misc.scm")
-(require "helix/configuration.scm")
-(require (prefix-in helix. "helix/commands.scm"))
-(require (prefix-in helix.static. "helix/static.scm"))
-
-(require-builtin steel/ffi)
 
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-start-search
@@ -15,7 +8,6 @@
                           Scooter-search-results-window
                           SteelSearchResult-display))
 
-(require "command-builder.scm")
 (require "utils.scm")
 (require "styles.scm")
 (require "fields.scm")
