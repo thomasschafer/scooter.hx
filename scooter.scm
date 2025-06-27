@@ -13,7 +13,7 @@
 
 (define (scooter)
   (define state
-    (ScooterWindow (box 'input)
+    (ScooterWindow (box 'search-fields)
                    (box (create-initial-field-values))
                    (box (create-initial-cursor-positions))
                    (box 'search)
