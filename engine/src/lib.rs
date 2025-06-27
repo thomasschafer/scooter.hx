@@ -60,8 +60,12 @@ fn create_module() -> FFIModule {
             scooter_hx::ScooterHx::replacement_stats,
         )
         .register_fn(
-            "SteelSearchResult-display",
-            scooter_hx::SteelSearchResult::display,
+            "SteelSearchResult-display-path",
+            scooter_hx::SteelSearchResult::display_path,
+        )
+        .register_fn(
+            "SteelSearchResult-line-num",
+            scooter_hx::SteelSearchResult::line_num,
         );
 
     module

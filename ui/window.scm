@@ -7,7 +7,8 @@
                           Scooter-search-complete?
                           Scooter-search-result-count
                           Scooter-search-results-window
-                          SteelSearchResult-display))
+                          SteelSearchResult-display-path
+                          SteelSearchResult-line-num))
 
 (require "utils.scm")
 (require "styles.scm")
@@ -406,9 +407,6 @@
                  (to-string result-count)
                  " results"))
 
-(define (update-search-display state status-message results)
-  (set-lines! state (cons status-message (map SteelSearchResult-display results))))
-
 (define (poll-search-results state)
   (let ([engine (get-engine state)])
     (enqueue-thread-local-callback
@@ -428,7 +426,12 @@
                                           " Found "
                                           (to-string result-count)
                                           " results")
-                           (map SteelSearchResult-display results))))
+                           (map (lambda (s)
+                                  (string-append (SteelSearchResult-display-path s)
+                                                 ":"
+                                                 (int->string (SteelSearchResult-line-num
+                                                               s)))) ; TODO: use line num colour
+                                results))))
 
          (cond
            [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
