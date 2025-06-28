@@ -39,7 +39,6 @@
          cursor-position
          debug-events-box
          engine-box
-         search-id-box ; Track current search to avoid stale callbacks
          selected-index-box ; Index of currently selected result
          scroll-offset-box ; Offset for scrolling results
          content-height-box)) ; Available height for results
@@ -83,12 +82,6 @@
 (define (get-engine state)
   (unbox (ScooterWindow-engine-box state)))
 
-(define (get-search-id state)
-  (unbox (ScooterWindow-search-id-box state)))
-
-(define (increment-search-id! state)
-  (set-box! (ScooterWindow-search-id-box state) (+ 1 (unbox (ScooterWindow-search-id-box state)))))
-
 (define (get-selected-index state)
   (unbox (ScooterWindow-selected-index-box state)))
 (define (set-selected-index! state value)
@@ -115,7 +108,6 @@
                  (position 0 0) ; cursor-position
                  (box '()) ; debug-events-box
                  (box (Scooter-new directory)) ; engine-box
-                 (box 0) ; search-id-box
                  (box 0) ; selected-index-box
                  (box 0) ; scroll-offset-box
                  (box 10))) ; content-height-box (placeholder, set during rendering)
@@ -198,6 +190,9 @@
        (let* ([result-count (cadr raw-data)]
               [is-complete (caddr raw-data)]
               [results (cadddr raw-data)]
+              [data-scroll-offset (if (> (length raw-data) 4)
+                                      (list-ref raw-data 4)
+                                      0)]
               [status-line (string-append (if is-complete "Search complete!" "Searching...")
                                           " Found "
                                           (to-string result-count)
@@ -219,28 +214,23 @@
                               truncated-status
                               (UIStyles-popup (ui-styles))))
 
-         ;; Draw search results with scrolling
+         ;; Draw search results - results are already relative to scroll offset
          (when (> results-count 0)
            (let loop ([index 0]
                       [current-row 0])
              (when (and (< index results-count) (< current-row results-height))
-               (let ([result-index (+ index scroll-offset)])
-                 (when (< result-index results-count)
-                   (let* ([result (list-ref results result-index)]
-                          [segments (format-search-result result)]
-                          [row-y (+ results-start-y current-row)]
-                          [is-selected (= result-index selected-index)]
-                          [styled-segments (if is-selected
-                                               ;; Apply highlight style to all segments
-                                               (map (lambda (seg) (cons (car seg) highlight-style))
-                                                    segments)
-                                               segments)])
-                     (render-styled-segments frame
-                                             content-x
-                                             row-y
-                                             styled-segments
-                                             (- content-width 4))))
-                 (loop (+ index 1) (+ current-row 1)))))))]
+               (let* ([result (list-ref results index)]
+                      [absolute-index (+ index data-scroll-offset)]
+                      [segments (format-search-result result)]
+                      [row-y (+ results-start-y current-row)]
+                      [is-selected (= absolute-index selected-index)]
+                      [styled-segments (if is-selected
+                                           ;; Apply highlight style to all segments
+                                           (map (lambda (seg) (cons (car seg) highlight-style))
+                                                segments)
+                                           segments)])
+                 (render-styled-segments frame content-x row-y styled-segments (- content-width 4)))
+               (loop (+ index 1) (+ current-row 1))))))]
       [else
        ;; Legacy format: handle old-style lines
        (let* ([max-visible-lines (- content-height 1)]
@@ -427,12 +417,29 @@
   (let ([lines (get-lines state)])
     (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data) lines)))
 
+;; Update visible results based on current scroll position
+(define (update-visible-results state)
+  (let ([engine (get-engine state)]
+        [data (get-search-data state)])
+    (when data
+      (let* ([result-count (cadr data)]
+             [is-complete (caddr data)]
+             [scroll-offset (get-scroll-offset state)]
+             [content-height (get-content-height state)]
+             ;; Fetch a bit more than visible to handle scrolling
+             [fetch-start scroll-offset]
+             [fetch-end (min (max 0 (- result-count 1)) (+ scroll-offset content-height 10))]
+             [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
+                          (Scooter-search-results-window engine fetch-start fetch-end)
+                          '())])
+        (set-box! (ScooterWindow-lines-box state)
+                  (list 'search-data result-count is-complete results scroll-offset))))))
+
 ;; Adjust scroll position to keep selection visible
 (define (adjust-scroll-for-selection state)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([results (cadddr data)]
-             [results-count (length results)]
+      (let* ([result-count (cadr data)]
              [selected-index (get-selected-index state)]
              [current-scroll (get-scroll-offset state)]
              [results-height (get-content-height state)]
@@ -444,24 +451,26 @@
         (when (> selected-index (- visible-end SCROLL-MARGIN))
           (set! new-scroll
                 (max 0
-                     (min (- results-count results-height)
+                     (min (- result-count results-height)
                           (- selected-index results-height (- SCROLL-MARGIN))))))
 
         ;; Scroll up if selected is near or above the top
         (when (< selected-index (+ visible-start SCROLL-MARGIN))
           (set! new-scroll (max 0 (- selected-index SCROLL-MARGIN))))
 
-        (set-scroll-offset! state new-scroll)))))
+        (when (not (= new-scroll current-scroll))
+          (set-scroll-offset! state new-scroll)
+          ;; Re-fetch results for new scroll position
+          (update-visible-results state))))))
 
 ;; Navigate by a specific amount (positive = down, negative = up)
 (define (navigate-by-amount state amount)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([results (cadddr data)]
-             [results-count (length results)]
+      (let* ([result-count (cadr data)]
              [current-selected (get-selected-index state)]
-             [new-selected (max 0 (min (- results-count 1) (+ current-selected amount)))])
-        (when (> results-count 0)
+             [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
+        (when (> result-count 0)
           (set-selected-index! state new-selected)
           (adjust-scroll-for-selection state))))))
 
@@ -469,11 +478,11 @@
 (define (jump-to-position state index scroll-offset)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([results (cadddr data)]
-             [results-count (length results)])
-        (when (> results-count 0)
-          (set-selected-index! state (max 0 (min (- results-count 1) index)))
-          (set-scroll-offset! state scroll-offset))))))
+      (let* ([result-count (cadr data)])
+        (when (> result-count 0)
+          (set-selected-index! state (max 0 (min (- result-count 1) index)))
+          (set-scroll-offset! state scroll-offset)
+          (update-visible-results state))))))
 
 (define (jump-to-top state)
   (jump-to-position state 0 0))
@@ -481,11 +490,10 @@
 (define (jump-to-bottom state)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([results (cadddr data)]
-             [results-count (length results)]
+      (let* ([result-count (cadr data)]
              [results-height (get-content-height state)]
-             [last-index (- results-count 1)]
-             [optimal-scroll (max 0 (- results-count results-height))])
+             [last-index (- result-count 1)]
+             [optimal-scroll (max 0 (- result-count results-height))])
         (jump-to-position state last-index optimal-scroll)))))
 
 (define (scroll-page state direction)
@@ -531,7 +539,6 @@
        (ScooterWindow-cursor-position state)))
 
 (define (start-scooter-search state)
-  (increment-search-id! state) ; Cancel any pending callbacks from previous searches
   (set-mode! state 'search-results)
   (set-lines! state '())
   (set-completed! state #f)
@@ -572,22 +579,24 @@
       '()))
 
 (define (poll-search-results state)
-  (let ([engine (get-engine state)]
-        [current-search-id (get-search-id state)]) ; Capture current search ID
+  (let ([engine (get-engine state)])
     (enqueue-thread-local-callback
      (lambda ()
-       ;; Check if this callback is for the current search
-       (when (= current-search-id (get-search-id state))
-         (let ([result-count (Scooter-search-result-count engine)]
-               [is-complete (Scooter-search-complete? engine)])
+       (let ([result-count (Scooter-search-result-count engine)]
+             [is-complete (Scooter-search-complete? engine)])
 
-           (let ([results (Scooter-search-results-window
-                           engine
-                           0
-                           (max 0 (- result-count 1)))]) ;; TODO: add scrolling support
-             (set-box! (ScooterWindow-lines-box state)
-                       (list 'search-data result-count is-complete results))
+         ;; Only fetch visible results based on current scroll position and window height
+         (let* ([scroll-offset (get-scroll-offset state)]
+                [content-height (get-content-height state)]
+                ;; Fetch a bit more than visible to handle scrolling
+                [fetch-start scroll-offset]
+                [fetch-end (min (max 0 (- result-count 1)) (+ scroll-offset content-height 10))]
+                [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
+                             (Scooter-search-results-window engine fetch-start fetch-end)
+                             '())])
+           (set-box! (ScooterWindow-lines-box state)
+                     (list 'search-data result-count is-complete results scroll-offset))
 
-             (cond
-               [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
-               [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))))
+           (cond
+             [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
+             [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))])))))))
