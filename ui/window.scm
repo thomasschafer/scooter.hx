@@ -16,6 +16,7 @@
 (require "drawing.scm")
 
 (provide ScooterWindow
+         SearchData
          create-scooter-window
          scooter-render
          scooter-event-handler
@@ -103,7 +104,7 @@
                  (box (create-initial-field-values)) ; field-values-box
                  (box (create-initial-cursor-positions)) ; cursor-positions-box
                  (box 'search) ; current-field-box
-                 (box '()) ; lines-box
+                 (box (SearchData 0 #f '() 0)) ; lines-box - initialize with empty SearchData
                  (box #f) ; completed-box
                  (position 0 0) ; cursor-position
                  (box '()) ; debug-events-box
@@ -174,86 +175,45 @@
         (cons ":" (UIStyles-text (ui-styles)))
         (cons (int->string (SteelSearchResult-line-num result)) (UIStyles-line-num (ui-styles)))))
 
-(define (draw-search-results frame
-                             content-x
-                             content-y
-                             content-width
-                             content-height
-                             y
-                             window-height
-                             raw-data
-                             state)
-  (let ([result-style (UIStyles-text (ui-styles))]
-        [highlight-style (UIStyles-active (ui-styles))])
-    (cond
-      [(and (list? raw-data) (not (null? raw-data)) (equal? (car raw-data) 'search-data))
-       (let* ([result-count (cadr raw-data)]
-              [is-complete (caddr raw-data)]
-              [results (cadddr raw-data)]
-              [data-scroll-offset (if (> (length raw-data) 4)
-                                      (list-ref raw-data 4)
-                                      0)]
-              [status-line (string-append (if is-complete "Search complete!" "Searching...")
-                                          " Found "
-                                          (to-string result-count)
-                                          " results")]
-              [selected-index (get-selected-index state)]
-              [scroll-offset (get-scroll-offset state)]
-              [results-start-y (+ content-y STATUS-HEIGHT GAP-HEIGHT)]
-              [results-height (- content-height STATUS-HEIGHT GAP-HEIGHT)]
-              [results-count (length results)])
+(define (draw-search-results frame content-x content-y content-width content-height raw-data state)
 
-         ;; Store content height for navigation
-         (set-content-height! state results-height)
+  (let* ([result-style (UIStyles-text (ui-styles))]
+         [highlight-style (UIStyles-active (ui-styles))]
+         [result-count (SearchData-result-count raw-data)]
+         [is-complete (SearchData-is-complete raw-data)]
+         [results (SearchData-results raw-data)]
+         [data-scroll-offset (SearchData-scroll-offset raw-data)]
+         [status-line (string-append (if is-complete "Search complete!" "Searching...")
+                                     " Found "
+                                     (to-string result-count)
+                                     " results")]
+         [selected-index (get-selected-index state)]
+         [scroll-offset (get-scroll-offset state)]
+         [results-start-y (+ content-y STATUS-HEIGHT GAP-HEIGHT)]
+         [results-height (- content-height STATUS-HEIGHT GAP-HEIGHT)]
+         [results-count (length results)])
 
-         ;; Draw status line at fixed position
-         (let ([truncated-status (truncate-string status-line (- content-width 4))])
-           (frame-set-string! frame
-                              content-x
-                              content-y
-                              truncated-status
-                              (UIStyles-popup (ui-styles))))
+    (set-content-height! state results-height)
 
-         ;; Draw search results - results are already relative to scroll offset
-         (when (> results-count 0)
-           (let loop ([index 0]
-                      [current-row 0])
-             (when (and (< index results-count) (< current-row results-height))
-               (let* ([result (list-ref results index)]
-                      [absolute-index (+ index data-scroll-offset)]
-                      [segments (format-search-result result)]
-                      [row-y (+ results-start-y current-row)]
-                      [is-selected (= absolute-index selected-index)]
-                      [styled-segments (if is-selected
-                                           ;; Apply highlight style to all segments
-                                           (map (lambda (seg) (cons (car seg) highlight-style))
-                                                segments)
-                                           segments)])
-                 (render-styled-segments frame content-x row-y styled-segments (- content-width 4)))
-               (loop (+ index 1) (+ current-row 1))))))]
-      [else
-       ;; Legacy format: handle old-style lines
-       (let* ([max-visible-lines (- content-height 1)]
-              [display-lines (if (> (length raw-data) max-visible-lines)
-                                 (take-right raw-data max-visible-lines)
-                                 raw-data)])
-         (let loop ([remaining-lines display-lines]
-                    [current-row 0])
-           (when (and (not (null? remaining-lines))
-                      (< current-row max-visible-lines)
-                      (< (+ content-y current-row) (+ y window-height -2)))
-             (let ([line (car remaining-lines)]
-                   [row-y (+ content-y current-row)])
-               (cond
-                 [(and (list? line) (equal? (car line) 'styled-segments))
-                  ;; Styled segments: render each segment with its own style
-                  (let ([segments (cadr line)])
-                    (render-styled-segments frame content-x row-y segments (- content-width 4)))]
-                 [else
-                  ;; Plain string: render as before
-                  (let ([truncated-line (truncate-string line (- content-width 4))])
-                    (frame-set-string! frame content-x row-y truncated-line result-style))])
-               (loop (cdr remaining-lines) (+ current-row 1))))))])))
+    (let ([truncated-status (truncate-string status-line (- content-width 4))])
+      (frame-set-string! frame content-x content-y truncated-status (UIStyles-popup (ui-styles))))
+
+    ;; Draw search results - results are already relative to scroll offset
+    (when (> results-count 0)
+      (let loop ([index 0]
+                 [current-row 0])
+        (when (and (< index results-count) (< current-row results-height))
+          (let* ([result (list-ref results index)]
+                 [absolute-index (+ index data-scroll-offset)]
+                 [segments (format-search-result result)]
+                 [row-y (+ results-start-y current-row)]
+                 [is-selected (= absolute-index selected-index)]
+                 [styled-segments (if is-selected
+                                      ;; Apply highlight style to all segments
+                                      (map (lambda (seg) (cons (car seg) highlight-style)) segments)
+                                      segments)])
+            (render-styled-segments frame content-x row-y styled-segments (- content-width 4)))
+          (loop (+ index 1) (+ current-row 1)))))))
 
 (struct WindowLayout
         (x ; Window X position
@@ -366,8 +326,6 @@
                               (WindowLayout-content-y layout)
                               (WindowLayout-content-width layout)
                               (WindowLayout-content-height layout)
-                              (WindowLayout-y layout)
-                              (WindowLayout-height layout)
                               lines
                               state))])))
 
@@ -412,34 +370,43 @@
     [(key-event-char event) (handle-char-input state (key-event-char event))])
   event-result/consume)
 
-;; Helper to get search results data, returns #f if invalid
-(define (get-search-data state)
-  (let ([lines (get-lines state)])
-    (and (list? lines) (not (null? lines)) (equal? (car lines) 'search-data) lines)))
+(define RESULT-FETCH-BUFFER 10)
 
-;; Update visible results based on current scroll position
+(struct SearchData (result-count is-complete results scroll-offset))
+
+(define (get-search-data state)
+  (let ([lines (get-lines state)]) (and (SearchData? lines) lines)))
+
+(define (calculate-fetch-window scroll-offset content-height result-count)
+  (let* ([fetch-start scroll-offset]
+         [fetch-end (min (max 0 (- result-count 1))
+                         (+ scroll-offset content-height RESULT-FETCH-BUFFER))])
+    (values fetch-start fetch-end)))
+
+(define (fetch-and-set-visible-results state engine result-count is-complete)
+  (let* ([scroll-offset (get-scroll-offset state)]
+         [content-height (get-content-height state)])
+    (call-with-values
+     (lambda () (calculate-fetch-window scroll-offset content-height result-count))
+     (lambda (fetch-start fetch-end)
+       (let ([results (if (and (>= result-count 0) (>= fetch-end fetch-start))
+                          (Scooter-search-results-window engine fetch-start fetch-end)
+                          '())])
+         (set-box! (ScooterWindow-lines-box state)
+                   (SearchData result-count is-complete results scroll-offset)))))))
+
 (define (update-visible-results state)
   (let ([engine (get-engine state)]
         [data (get-search-data state)])
     (when data
-      (let* ([result-count (cadr data)]
-             [is-complete (caddr data)]
-             [scroll-offset (get-scroll-offset state)]
-             [content-height (get-content-height state)]
-             ;; Fetch a bit more than visible to handle scrolling
-             [fetch-start scroll-offset]
-             [fetch-end (min (max 0 (- result-count 1)) (+ scroll-offset content-height 10))]
-             [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
-                          (Scooter-search-results-window engine fetch-start fetch-end)
-                          '())])
-        (set-box! (ScooterWindow-lines-box state)
-                  (list 'search-data result-count is-complete results scroll-offset))))))
+      (let ([result-count (SearchData-result-count data)]
+            [is-complete (SearchData-is-complete data)])
+        (fetch-and-set-visible-results state engine result-count is-complete)))))
 
-;; Adjust scroll position to keep selection visible
 (define (adjust-scroll-for-selection state)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([result-count (cadr data)]
+      (let* ([result-count (SearchData-result-count data)]
              [selected-index (get-selected-index state)]
              [current-scroll (get-scroll-offset state)]
              [results-height (get-content-height state)]
@@ -467,7 +434,7 @@
 (define (navigate-by-amount state amount)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([result-count (cadr data)]
+      (let* ([result-count (SearchData-result-count data)]
              [current-selected (get-selected-index state)]
              [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
         (when (> result-count 0)
@@ -478,7 +445,7 @@
 (define (jump-to-position state index scroll-offset)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([result-count (cadr data)])
+      (let* ([result-count (SearchData-result-count data)])
         (when (> result-count 0)
           (set-selected-index! state (max 0 (min (- result-count 1) index)))
           (set-scroll-offset! state scroll-offset)
@@ -490,7 +457,7 @@
 (define (jump-to-bottom state)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([result-count (cadr data)]
+      (let* ([result-count (SearchData-result-count data)]
              [results-height (get-content-height state)]
              [last-index (- result-count 1)]
              [optimal-scroll (max 0 (- result-count results-height))])
@@ -540,7 +507,7 @@
 
 (define (start-scooter-search state)
   (set-mode! state 'search-results)
-  (set-lines! state '())
+  (set-lines! state (SearchData 0 #f '() 0))
   (set-completed! state #f)
   (set-selected-index! state 0) ; Reset selection to first result
   (set-scroll-offset! state 0) ; Reset scroll to top
@@ -585,18 +552,8 @@
        (let ([result-count (Scooter-search-result-count engine)]
              [is-complete (Scooter-search-complete? engine)])
 
-         ;; Only fetch visible results based on current scroll position and window height
-         (let* ([scroll-offset (get-scroll-offset state)]
-                [content-height (get-content-height state)]
-                ;; Fetch a bit more than visible to handle scrolling
-                [fetch-start scroll-offset]
-                [fetch-end (min (max 0 (- result-count 1)) (+ scroll-offset content-height 10))]
-                [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
-                             (Scooter-search-results-window engine fetch-start fetch-end)
-                             '())])
-           (set-box! (ScooterWindow-lines-box state)
-                     (list 'search-data result-count is-complete results scroll-offset))
+         (fetch-and-set-visible-results state engine result-count is-complete)
 
-           (cond
-             [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
-             [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))])))))))
+         (cond
+           [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
+           [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))
