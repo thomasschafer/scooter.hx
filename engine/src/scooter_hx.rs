@@ -150,6 +150,19 @@ impl ScooterHx {
                 cancelled: cancellation_token.clone(),
             };
 
+            let state_clone = state.clone();
+            let consumer_handle = thread::spawn(move || {
+                while let Ok(additional_results) = rx.recv() {
+                    let mut state = state_clone.lock().unwrap();
+                    match &mut *state {
+                        State::SearchInProgress { results, .. } => {
+                            results.extend(additional_results);
+                        }
+                        _ => break, // Search was cancelled
+                    }
+                }
+            });
+
             searcher.walk_files(Some(&cancellation_token), || {
                 let tx = tx.clone();
                 Box::new(move |results| {
@@ -162,15 +175,7 @@ impl ScooterHx {
             // Drop the original sender so the receiver loop can terminate
             drop(tx);
 
-            while let Ok(additional_results) = rx.recv() {
-                let mut state = state.lock().unwrap();
-                match &mut *state {
-                    State::SearchInProgress { results, .. } => {
-                        results.extend(additional_results);
-                    }
-                    _ => break, // Search was cancelled
-                }
-            }
+            consumer_handle.join().unwrap();
 
             let mut state = state.lock().unwrap();
             if let State::SearchInProgress { results, .. } =
