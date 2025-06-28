@@ -24,11 +24,10 @@
          start-scooter-search)
 
 (define WINDOW-SIZE-RATIO 0.9)
-(define CONTENT-PADDING 3)
-(define BORDER-PADDING 2)
+(define CONTENT-PADDING 2)
 (define SCROLL-MARGIN 2)
-(define STATUS-HEIGHT 1)
-(define GAP-HEIGHT 1)
+(define STATUS-HEIGHT 2)
+(define GAP-HEIGHT 0)
 
 (struct ScooterWindow
         (mode-box ; 'search-fields, 'search-results
@@ -154,27 +153,48 @@
 (define (render-styled-segments frame x y segments max-width)
   (let loop ([segments segments]
              [current-x x]
-             [remaining-width max-width])
-    (when (and (not (null? segments)) (> remaining-width 0))
-      (let* ([segment (car segments)]
-             [text (car segment)]
-             [style (cdr segment)]
-             [truncated-text (if (> (string-length text) remaining-width)
-                                 (truncate-string text remaining-width)
-                                 text)])
-        (frame-set-string! frame current-x y truncated-text style)
-        (loop (cdr segments)
-              (+ current-x (string-length truncated-text))
-              (- remaining-width (string-length truncated-text)))))))
+             [remaining-width max-width]
+             [last-style #f])
+    (cond
+      [(and (not (null? segments)) (> remaining-width 0))
+       (let* ([segment (car segments)]
+              [text (car segment)]
+              [style (cdr segment)]
+              [truncated-text (if (> (string-length text) remaining-width)
+                                  (truncate-string text remaining-width)
+                                  text)])
+         (frame-set-string! frame current-x y truncated-text style)
+         (loop (cdr segments)
+               (+ current-x (string-length truncated-text))
+               (- remaining-width (string-length truncated-text))
+               style))]
+
+      ;; Fill remaining width with spaces using the last style
+      [(and (> remaining-width 0) last-style)
+       (frame-set-string! frame current-x y (make-space-string remaining-width) last-style)])))
 
 ;; Render styled segments within a given area at a specific row
 (define (render-styled-segments-in-area frame area row segments)
   (render-styled-segments frame (area-x area) (+ (area-y area) row) segments (area-width area)))
 
-(define (format-search-result result)
-  (list (cons (SteelSearchResult-display-path result) (UIStyles-text (ui-styles)))
-        (cons ":" (UIStyles-text (ui-styles)))
-        (cons (int->string (SteelSearchResult-line-num result)) (UIStyles-line-num (ui-styles)))))
+(define (format-search-result result is-selected styles)
+  (let ([prefix (if is-selected " > " "   ")]
+        [prefix-style (if is-selected
+                          (UIStyles-selection styles)
+                          (UIStyles-text styles))])
+    (list (cons prefix prefix-style)
+          (cons (SteelSearchResult-display-path result)
+                (if is-selected
+                    (UIStyles-selection styles)
+                    (UIStyles-text styles)))
+          (cons ":"
+                (if is-selected
+                    (UIStyles-selection styles)
+                    (UIStyles-text styles)))
+          (cons (int->string (SteelSearchResult-line-num result))
+                (if is-selected
+                    (UIStyles-selection styles)
+                    (UIStyles-line-num styles))))))
 
 ;; Calculate sub-areas for search results rendering
 (define (calculate-status-area content-area)
@@ -182,15 +202,15 @@
 
 (define (calculate-results-area content-area)
   (area (area-x content-area)
-        (+ (area-y content-area) STATUS-HEIGHT GAP-HEIGHT)
+        (+ (area-y content-area) STATUS-HEIGHT)
         (area-width content-area)
-        (- (area-height content-area) STATUS-HEIGHT GAP-HEIGHT)))
+        (- (area-height content-area) STATUS-HEIGHT)))
 
 (define (draw-search-results frame content-area raw-data state)
 
-  (let* ([theme-colors (get-theme-colors)]
-         [result-style (UIStyles-text (ui-styles))]
-         [highlight-style (hash-ref theme-colors "selection")]
+  (let* ([styles (ui-styles)]
+         [result-style (UIStyles-text styles)]
+         [highlight-style (UIStyles-selection styles)]
          [result-count (SearchData-result-count raw-data)]
          [is-complete (SearchData-is-complete raw-data)]
          [results (SearchData-results raw-data)]
@@ -218,11 +238,11 @@
                              bg-style)
           (loop (+ row 1)))))
 
-    ;; Draw status line in status area
+    ;; Draw status line in status area (centered vertically)
     (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
       (frame-set-string! frame
                          (area-x status-area)
-                         (area-y status-area)
+                         (+ (area-y status-area) 1)
                          truncated-status
                          (UIStyles-popup (ui-styles))))
 
@@ -232,12 +252,8 @@
         (when (and (< index results-count) (< current-row (area-height results-area)))
           (let* ([result (list-ref results index)]
                  [absolute-index (+ index data-scroll-offset)]
-                 [segments (format-search-result result)]
                  [is-selected (= absolute-index selected-index)]
-                 [styled-segments (if is-selected
-                                      ;; Apply highlight style to all segments
-                                      (map (lambda (seg) (cons (car seg) highlight-style)) segments)
-                                      segments)])
+                 [styled-segments (format-search-result result is-selected styles)])
             (render-styled-segments-in-area frame results-area current-row styled-segments))
           (loop (+ index 1) (+ current-row 1)))))))
 
@@ -252,9 +268,9 @@
 
 (define (calculate-content-area window-area)
   (area (+ (area-x window-area) CONTENT-PADDING)
-        (+ (area-y window-area) BORDER-PADDING)
+        (+ (area-y window-area) CONTENT-PADDING)
         (- (area-width window-area) (* CONTENT-PADDING 2))
-        (- (area-height window-area) (* BORDER-PADDING 2))))
+        (- (area-height window-area) (* CONTENT-PADDING 2))))
 
 (define (position-cursor-in-text-field state current-field field-positions content-x content-width)
   (let ([active-field-def (get-field-by-id current-field)])
