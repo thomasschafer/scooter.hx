@@ -7,6 +7,7 @@
          make-border-string
          make-space-string
          draw-border!
+         draw-block-border!
          calculate-centered-layout
          CenteredLayout
          CenteredLayout-x
@@ -45,6 +46,9 @@
   (frame-set-string! frame (+ x width -1) y BORDER-TOP-RIGHT style)
   (frame-set-string! frame x (+ y height -1) BORDER-BOTTOM-LEFT style)
   (frame-set-string! frame (+ x width -1) (+ y height -1) BORDER-BOTTOM-RIGHT style))
+
+(define (draw-block-border! frame area style #:border-type [border-type "plain"])
+  (block/render frame area (make-block style style "all" border-type)))
 
 (define (make-space-string length)
   (make-string length #\space))

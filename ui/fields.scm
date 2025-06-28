@@ -1,3 +1,4 @@
+(require "helix/components.scm")
 (require "drawing.scm")
 (require "styles.scm")
 (require "utils.scm")
@@ -140,13 +141,13 @@
          [layout (calculate-field-layout content-x content-width)]
          [field-x (car layout)])
 
-    (draw-box! frame
-               field-x
-               label-y
-               CHECKBOX-WIDTH
-               3
-               field-style
-               #:content (list (string-append " " checkbox-mark " ")))
+    (let ([checkbox-area (area field-x label-y CHECKBOX-WIDTH 3)])
+      (block/render frame checkbox-area (make-block field-style field-style "all" "plain"))
+      (frame-set-string! frame
+                         (+ field-x 1)
+                         (+ label-y 1)
+                         (string-append " " checkbox-mark " ")
+                         field-style))
 
     (draw-text-line! frame
                      (+ field-x CHECKBOX-WIDTH CHECKBOX-TEXT-GAP)
@@ -162,15 +163,10 @@
          [box-width (cadr layout)]
          [field-text (format-field-text (or field-value "") box-width)])
 
-    (draw-box! frame
-               field-x
-               label-y
-               box-width
-               3
-               field-style
-               #:title title
-               #:content (list field-text)
-               #:padding 0)))
+    (let ([field-area (area field-x label-y box-width 3)])
+      (block/render frame field-area (make-block field-style field-style "all" "plain"))
+      (frame-set-string! frame (+ field-x 1) label-y title field-style)
+      (frame-set-string! frame (+ field-x 1) (+ label-y 1) field-text field-style))))
 
 (define (format-field-text text box-width)
   (let* ([inner-width (- box-width 2)]
@@ -196,14 +192,11 @@
                              field-value
                              active?))))
 
-(define (draw-all-fields frame
-                         content-x
-                         content-y
-                         content-width
-                         current-field
-                         state
-                         field-value-getter)
-  (let ([field-positions (calculate-field-positions content-y)])
+(define (draw-all-fields frame content-area current-field state field-value-getter)
+  (let* ([content-x (area-x content-area)]
+         [content-y (area-y content-area)]
+         [content-width (area-width content-area)]
+         [field-positions (calculate-field-positions content-y)])
     (let process-fields ([fields (get-all-fields)])
       (when (not (null? fields))
         (let* ([field-def (car fields)]

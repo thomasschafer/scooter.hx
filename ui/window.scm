@@ -107,8 +107,7 @@
                  (box #f) ; completed-box
                  (position 0 0) ; cursor-position
                  (box '()) ; debug-events-box
-                 (box (Scooter-new directory
-                                   #f)) ; engine-box ;; TODO: let users enable/disable logging
+                 (box (Scooter-new directory #f)) ; engine-box
                  (box 0) ; selected-index-box
                  (box 0) ; scroll-offset-box
                  (box 10))) ; content-height-box (placeholder, set during rendering)
@@ -168,15 +167,30 @@
               (+ current-x (string-length truncated-text))
               (- remaining-width (string-length truncated-text)))))))
 
+;; Render styled segments within a given area at a specific row
+(define (render-styled-segments-in-area frame area row segments)
+  (render-styled-segments frame (area-x area) (+ (area-y area) row) segments (area-width area)))
+
 (define (format-search-result result)
   (list (cons (SteelSearchResult-display-path result) (UIStyles-text (ui-styles)))
         (cons ":" (UIStyles-text (ui-styles)))
         (cons (int->string (SteelSearchResult-line-num result)) (UIStyles-line-num (ui-styles)))))
 
-(define (draw-search-results frame content-x content-y content-width content-height raw-data state)
+;; Calculate sub-areas for search results rendering
+(define (calculate-status-area content-area)
+  (area (area-x content-area) (area-y content-area) (area-width content-area) STATUS-HEIGHT))
 
-  (let* ([result-style (UIStyles-text (ui-styles))]
-         [highlight-style (UIStyles-active (ui-styles))]
+(define (calculate-results-area content-area)
+  (area (area-x content-area)
+        (+ (area-y content-area) STATUS-HEIGHT GAP-HEIGHT)
+        (area-width content-area)
+        (- (area-height content-area) STATUS-HEIGHT GAP-HEIGHT)))
+
+(define (draw-search-results frame content-area raw-data state)
+
+  (let* ([theme-colors (get-theme-colors)]
+         [result-style (UIStyles-text (ui-styles))]
+         [highlight-style (hash-ref theme-colors "selection")]
          [result-count (SearchData-result-count raw-data)]
          [is-complete (SearchData-is-complete raw-data)]
          [results (SearchData-results raw-data)]
@@ -187,65 +201,60 @@
                                      " results")]
          [selected-index (get-selected-index state)]
          [scroll-offset (get-scroll-offset state)]
-         [results-start-y (+ content-y STATUS-HEIGHT GAP-HEIGHT)]
-         [results-height (- content-height STATUS-HEIGHT GAP-HEIGHT)]
+         [status-area (calculate-status-area content-area)]
+         [results-area (calculate-results-area content-area)]
          [results-count (length results)])
 
-    (set-content-height! state results-height)
+    (set-content-height! state (area-height results-area))
 
-    (let ([truncated-status (truncate-string status-line (- content-width 4))])
-      (frame-set-string! frame content-x content-y truncated-status (UIStyles-popup (ui-styles))))
+    (buffer/clear frame content-area)
+    (let ([bg-style (UIStyles-popup (ui-styles))])
+      (let loop ([row 0])
+        (when (< row (area-height content-area))
+          (frame-set-string! frame
+                             (area-x content-area)
+                             (+ (area-y content-area) row)
+                             (make-space-string (area-width content-area))
+                             bg-style)
+          (loop (+ row 1)))))
 
-    ;; Draw search results - results are already relative to scroll offset
+    ;; Draw status line in status area
+    (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
+      (frame-set-string! frame
+                         (area-x status-area)
+                         (area-y status-area)
+                         truncated-status
+                         (UIStyles-popup (ui-styles))))
+
     (when (> results-count 0)
       (let loop ([index 0]
                  [current-row 0])
-        (when (and (< index results-count) (< current-row results-height))
+        (when (and (< index results-count) (< current-row (area-height results-area)))
           (let* ([result (list-ref results index)]
                  [absolute-index (+ index data-scroll-offset)]
                  [segments (format-search-result result)]
-                 [row-y (+ results-start-y current-row)]
                  [is-selected (= absolute-index selected-index)]
                  [styled-segments (if is-selected
                                       ;; Apply highlight style to all segments
                                       (map (lambda (seg) (cons (car seg) highlight-style)) segments)
                                       segments)])
-            (render-styled-segments frame content-x row-y styled-segments (- content-width 4)))
+            (render-styled-segments-in-area frame results-area current-row styled-segments))
           (loop (+ index 1) (+ current-row 1)))))))
 
-(struct WindowLayout
-        (x ; Window X position
-         y ; Window Y position
-         width ; Total window width
-         height ; Total window height
-         content-x ; Content area X position
-         content-y ; Content area Y position
-         content-width ; Content area width
-         content-height ; Content area height
-         ))
-
-(define (calculate-window-layout rect)
+(define (calculate-window-area rect)
   (let* ([screen-width (area-width rect)]
          [screen-height (area-height rect)]
          [window-width (exact (round (* screen-width WINDOW-SIZE-RATIO)))]
          [window-height (exact (round (* screen-height WINDOW-SIZE-RATIO)))]
          [x (exact (max 1 (- (round (/ screen-width 2)) (round (/ window-width 2)))))]
-         [y (exact (max 0 (- (round (/ screen-height 2)) (round (/ window-height 2)))))]
-         [content-x (+ x CONTENT-PADDING)]
-         [content-y (+ y BORDER-PADDING)]
-         [content-width (- window-width (* CONTENT-PADDING 2))]
-         [content-height (- window-height (* BORDER-PADDING 2))])
-    (WindowLayout x y window-width window-height content-x content-y content-width content-height)))
+         [y (exact (max 0 (- (round (/ screen-height 2)) (round (/ window-height 2)))))])
+    (area x y window-width window-height)))
 
-(define (draw-window-frame frame x y width height style title)
-  (let* ([window-area (area x y width height)]
-         [title-x (+ x 2)]
-         [max-title-width (- width 4)]
-         [truncated-title (truncate-string title max-title-width)])
-
-    (buffer/clear-with frame window-area style)
-    (draw-border! frame x y width height style)
-    (frame-set-string! frame title-x y truncated-title style)))
+(define (calculate-content-area window-area)
+  (area (+ (area-x window-area) CONTENT-PADDING)
+        (+ (area-y window-area) BORDER-PADDING)
+        (- (area-width window-area) (* CONTENT-PADDING 2))
+        (- (area-height window-area) (* BORDER-PADDING 2))))
 
 (define (position-cursor-in-text-field state current-field field-positions content-x content-width)
   (let ([active-field-def (get-field-by-id current-field)])
@@ -265,19 +274,17 @@
     (frame-set-string! frame content-x hint-y hint-text hint-style)))
 
 (define (scooter-render state rect frame)
-  (let* ([layout (calculate-window-layout rect)]
+  (let* ([window-area (calculate-window-area rect)]
+         [content-area (calculate-content-area window-area)]
          [mode (get-mode state)]
          [search-term (get-field-value state 'search)]
          [current-field (get-current-field state)]
-         [title " Scooter "])
+         [title " Scooter "]
+         [popup-style (UIStyles-popup (ui-styles))])
 
-    (draw-window-frame frame
-                       (WindowLayout-x layout)
-                       (WindowLayout-y layout)
-                       (WindowLayout-width layout)
-                       (WindowLayout-height layout)
-                       (UIStyles-popup (ui-styles))
-                       title)
+    (buffer/clear frame window-area)
+    (block/render frame window-area (make-block popup-style popup-style "all" "plain"))
+    (frame-set-string! frame (+ (area-x window-area) 2) (area-y window-area) title popup-style)
 
     (cond
       [(equal? mode 'search-fields)
@@ -285,47 +292,38 @@
               [field-count (length all-fields)]
               [total-fields-height (* field-count 3)] ; Each field is 3 rows high
               [hint-text-height 1] ; Space for hint text at bottom
-              [content-height (- (WindowLayout-content-height layout) hint-text-height)]
-              [centered-layout (calculate-centered-layout (WindowLayout-content-x layout)
-                                                          (WindowLayout-content-y layout)
-                                                          (WindowLayout-content-width layout)
-                                                          content-height
-                                                          (WindowLayout-content-width layout)
+              [available-height (- (area-height content-area) hint-text-height)]
+              [centered-layout (calculate-centered-layout (area-x content-area)
+                                                          (area-y content-area)
+                                                          (area-width content-area)
+                                                          available-height
+                                                          (area-width content-area)
                                                           total-fields-height
                                                           #f
                                                           #f
                                                           #f
                                                           #t)]
               [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
-         (draw-all-fields frame
-                          (WindowLayout-content-x layout)
-                          (CenteredLayout-y centered-layout)
-                          (WindowLayout-content-width layout)
-                          current-field
-                          state
-                          get-field-value)
+         (let ([fields-area (area (area-x content-area)
+                                  (CenteredLayout-y centered-layout)
+                                  (area-width content-area)
+                                  total-fields-height)])
+           (draw-all-fields frame fields-area current-field state get-field-value))
 
          (position-cursor-in-text-field state
                                         current-field
                                         field-positions
-                                        (WindowLayout-content-x layout)
-                                        (WindowLayout-content-width layout))
+                                        (area-x content-area)
+                                        (area-width content-area))
 
          (draw-hint-text frame
-                         (WindowLayout-content-x layout)
-                         (WindowLayout-y layout)
-                         (WindowLayout-height layout)
+                         (area-x content-area)
+                         (area-y window-area)
+                         (area-height window-area)
                          (UIStyles-dim (ui-styles))))]
 
       [(equal? mode 'search-results)
-       (let ([lines (get-lines state)])
-         (draw-search-results frame
-                              (WindowLayout-content-x layout)
-                              (WindowLayout-content-y layout)
-                              (WindowLayout-content-width layout)
-                              (WindowLayout-content-height layout)
-                              lines
-                              state))])))
+       (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))])))
 
 (define (handle-paste-event state paste-text)
   (when paste-text
