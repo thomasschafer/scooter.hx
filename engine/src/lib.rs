@@ -7,6 +7,7 @@ use steel::{
 #[macro_use]
 mod test_utils;
 
+mod logging;
 pub mod scooter_hx;
 mod validation;
 

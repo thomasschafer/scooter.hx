@@ -4,8 +4,6 @@
 
 (require-builtin steel/ffi)
 
-(#%require-dylib "libscooter_hx" (only-in Scooter-new))
-
 (require "ui/window.scm")
 (require "ui/fields.scm")
 

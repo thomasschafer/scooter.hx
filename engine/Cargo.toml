@@ -10,9 +10,12 @@ crate-type = ["cdylib"]
 [dependencies]
 abi_stable = "0.11.1"
 crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
+etcetera = "0.10.0"
 frep-core = "0.1.2"
 ignore = "0.4.23"
+log = "0.4.27"
 scooter-core = { version = "0.1.2", path = "../../../scooter/scooter-core" } # TODO: remove path
+simple-log = "2.3.0"
 steel-core = { git = "https://github.com/mattwparas/steel.git", version = "0.7.0", features = [
   "dylibs",
   "sync",

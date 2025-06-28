@@ -48,63 +48,63 @@ macro_rules! text {
     };
 }
 
-#[cfg(test)]
-macro_rules! binary {
-    ($($line:expr),+ $(,)?) => {{
-        &[$($line, b"\n" as &[u8]),+].concat()
-    }};
-}
+// #[cfg(test)]
+// macro_rules! binary {
+//     ($($line:expr),+ $(,)?) => {{
+//         &[$($line, b"\n" as &[u8]),+].concat()
+//     }};
+// }
 
-#[cfg(test)]
-macro_rules! overwrite_files {
-    ($base_dir:expr, $($name:expr => {$($line:expr),+ $(,)?}),+ $(,)?) => {
-        {
-            use std::fs::File;
-            use std::io::Write;
-            use std::path::Path;
+// #[cfg(test)]
+// macro_rules! overwrite_files {
+//     ($base_dir:expr, $($name:expr => {$($line:expr),+ $(,)?}),+ $(,)?) => {
+//         {
+//             use std::fs::File;
+//             use std::io::Write;
+//             use std::path::Path;
 
-            $(
-                let contents = concat!($($line,"\n",)+);
-                let path = Path::new($base_dir).join($name);
+//             $(
+//                 let contents = concat!($($line,"\n",)+);
+//                 let path = Path::new($base_dir).join($name);
 
-                if !path.exists() {
-                    panic!("File does not exist: {}", path.display());
-                }
-                let mut file = File::create(&path).unwrap();
-                file.write_all(contents.as_bytes()).unwrap();
-                file.sync_all().unwrap();
-            )+
+//                 if !path.exists() {
+//                     panic!("File does not exist: {}", path.display());
+//                 }
+//                 let mut file = File::create(&path).unwrap();
+//                 file.write_all(contents.as_bytes()).unwrap();
+//                 file.sync_all().unwrap();
+//             )+
 
-            #[cfg(windows)]
-            {
-                use std::time::Duration;
-                std::thread::sleep(Duration::from_millis(100));
-            }
-        }
-    };
-}
+//             #[cfg(windows)]
+//             {
+//                 use std::time::Duration;
+//                 std::thread::sleep(Duration::from_millis(100));
+//             }
+//         }
+//     };
+// }
 
-#[cfg(test)]
-macro_rules! delete_files {
-    ($base_dir:expr, $($path:expr),*) => {
-        {
-            use std::fs;
-            use std::path::Path;
-            $(
-                let full_path = Path::new($base_dir).join($path);
-                if !full_path.exists() {
-                    panic!("Path does not exist: {}", full_path.display());
-                }
+// #[cfg(test)]
+// macro_rules! delete_files {
+//     ($base_dir:expr, $($path:expr),*) => {
+//         {
+//             use std::fs;
+//             use std::path::Path;
+//             $(
+//                 let full_path = Path::new($base_dir).join($path);
+//                 if !full_path.exists() {
+//                     panic!("Path does not exist: {}", full_path.display());
+//                 }
 
-                if full_path.is_dir() {
-                    fs::remove_dir_all(&full_path).unwrap();
-                } else {
-                    fs::remove_file(&full_path).unwrap();
-                }
-            )*
-        }
-    };
-}
+//                 if full_path.is_dir() {
+//                     fs::remove_dir_all(&full_path).unwrap();
+//                 } else {
+//                     fs::remove_file(&full_path).unwrap();
+//                 }
+//             )*
+//         }
+//     };
+// }
 
 #[cfg(test)]
 pub fn collect_files(dir: &Path, base: &Path, files: &mut Vec<String>) {

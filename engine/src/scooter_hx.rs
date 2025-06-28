@@ -15,6 +15,7 @@ use frep_core::{
 };
 use scooter_core::utils::relative_path_from;
 
+use crate::logging;
 use crate::validation::{
     ErrorHandler, error_response, success_response, validation_error_response,
 };
@@ -77,7 +78,13 @@ impl SteelSearchResult {
 }
 
 impl ScooterHx {
-    pub(crate) fn new(directory: String) -> Self {
+    pub(crate) fn new(directory: String, logging_enabled: bool) -> Self {
+        let log_level = if logging_enabled {
+            log::LevelFilter::Error
+        } else {
+            log::LevelFilter::Off
+        };
+        logging::setup_logging(log_level).expect("Failed to initialize logging");
         ScooterHx {
             state: Arc::new(Mutex::new(State::NotStarted)),
             directory: directory.into(),
@@ -371,7 +378,7 @@ mod tests {
             ),
             "binary.bin" => &[10, 19, 3, 92],
         );
-        let mut scooter = ScooterHx::new(temp_dir.path().to_string_lossy().into());
+        let mut scooter = ScooterHx::new(temp_dir.path().to_string_lossy().into(), true);
 
         scooter.start_search(
             "TEST_PATTERN".into(),

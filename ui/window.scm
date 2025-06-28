@@ -99,7 +99,6 @@
   (set-box! (ScooterWindow-content-height-box state) value))
 
 (define (create-scooter-window directory)
-  "Create a new ScooterWindow with organized initialization."
   (ScooterWindow (box 'search-fields) ; mode-box
                  (box (create-initial-field-values)) ; field-values-box
                  (box (create-initial-cursor-positions)) ; cursor-positions-box
@@ -108,7 +107,8 @@
                  (box #f) ; completed-box
                  (position 0 0) ; cursor-position
                  (box '()) ; debug-events-box
-                 (box (Scooter-new directory)) ; engine-box
+                 (box (Scooter-new directory
+                                   #f)) ; engine-box ;; TODO: let users enable/disable logging
                  (box 0) ; selected-index-box
                  (box 0) ; scroll-offset-box
                  (box 10))) ; content-height-box (placeholder, set during rendering)
@@ -153,7 +153,6 @@
       (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
 
 (define (render-styled-segments frame x y segments max-width)
-  "Render a list of (text . style) segments on a single line."
   (let loop ([segments segments]
              [current-x x]
              [remaining-width max-width])
@@ -170,7 +169,6 @@
               (- remaining-width (string-length truncated-text)))))))
 
 (define (format-search-result result)
-  "Convert a raw search result to styled segments."
   (list (cons (SteelSearchResult-display-path result) (UIStyles-text (ui-styles)))
         (cons ":" (UIStyles-text (ui-styles)))
         (cons (int->string (SteelSearchResult-line-num result)) (UIStyles-line-num (ui-styles)))))
