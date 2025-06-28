@@ -123,6 +123,7 @@ impl ScooterHx {
             include_hidden: false,
             directory: self.directory.clone(),
         };
+        // TODO: handle errors in UI
         let mut error_handler = ErrorHandler::new();
         let result = validation::validate_search_configuration(search_config, &mut error_handler);
         let searcher = match result {
