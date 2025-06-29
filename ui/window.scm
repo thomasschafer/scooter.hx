@@ -42,7 +42,8 @@
          selected-index-box ; Index of currently selected result
          scroll-offset-box ; Offset for scrolling results
          content-height-box ; Available height for results
-         field-errors-box)) ; Hash of field validation errors
+         field-errors-box ; Hash of field validation errors
+         general-error-box)) ; General error message to display
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -99,6 +100,17 @@
 (define (set-content-height! state value)
   (set-box! (ScooterWindow-content-height-box state) value))
 
+(define (get-general-error state)
+  (unbox (ScooterWindow-general-error-box state)))
+(define (set-general-error! state value)
+  (set-box! (ScooterWindow-general-error-box state) value))
+(define (clear-general-error! state)
+  (set-box! (ScooterWindow-general-error-box state) #f))
+
+(define (clear-all-errors! state)
+  (clear-all-field-errors! state)
+  (clear-general-error! state))
+
 (define (clear-all-field-errors! state)
   (set-box! (ScooterWindow-field-errors-box state) (hash)))
 
@@ -123,7 +135,8 @@
                  (box 0) ; selected-index-box
                  (box 0) ; scroll-offset-box
                  (box 10) ; content-height-box (placeholder, set during rendering)
-                 (box (hash)))) ; field-errors-box
+                 (box (hash)) ; field-errors-box
+                 (box #f))) ; general-error-box
 
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
@@ -136,10 +149,13 @@
           [field-value (get-field-value state field-id)])
       (set-field-cursor-pos! state field-id (min (string-length field-value) (+ current-pos 1))))))
 
+(define (clear-errors-on-input! state field-id)
+  (clear-field-error! state field-id)
+  (clear-general-error! state))
+
 (define (insert-char-at-cursor state field-id char)
   (when (field-is-text? field-id)
-    ;; Clear any error for this field when user starts typing
-    (clear-field-error! state field-id)
+    (clear-errors-on-input! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
            [before (substring field-value 0 cursor-pos)]
@@ -149,8 +165,7 @@
 
 (define (delete-char-at-cursor state field-id)
   (when (and (field-is-text? field-id) (> (get-field-cursor-pos state field-id) 0))
-    ;; Clear any error for this field when user edits
-    (clear-field-error! state field-id)
+    (clear-errors-on-input! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
            [before (substring field-value 0 (- cursor-pos 1))]
@@ -160,8 +175,7 @@
 
 (define (insert-text-at-cursor state field-id text)
   (when (field-is-text? field-id)
-    ;; Clear any error for this field when user pastes
-    (clear-field-error! state field-id)
+    (clear-errors-on-input! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
            [before (substring field-value 0 cursor-pos)]
@@ -304,6 +318,21 @@
         (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
         (set-position-col! (ScooterWindow-cursor-position state) cursor-col)))))
 
+(define (strip-newlines text)
+  (string-replace (string-replace text "\n" " ") "\r" " "))
+
+(define (draw-error-message frame content-area error-message)
+  (when error-message
+    (let* ([error-style (UIStyles-error (ui-styles))]
+           [clean-message (strip-newlines error-message)]
+           [error-text (string-append "Error: " clean-message)]
+           [truncated-error (truncate-string error-text (- (area-width content-area) 4))])
+      (frame-set-string! frame
+                         (area-x content-area)
+                         (area-y content-area)
+                         truncated-error
+                         error-style))))
+
 (define (draw-hint-text frame content-x y window-height hint-style)
   (let ([hint-y (+ y window-height -2)]
         [hint-text
@@ -325,13 +354,15 @@
 
     (cond
       [(equal? mode 'search-fields)
-       (let* ([all-fields (get-all-fields)]
+       (let* ([general-error (get-general-error state)]
+              [error-height 2] ; Always reserve 2 rows for error display (1 for text + 1 for spacing)
+              [all-fields (get-all-fields)]
               [field-count (length all-fields)]
               [total-fields-height (* field-count 3)] ; Each field is 3 rows high
               [hint-text-height 1] ; Space for hint text at bottom
-              [available-height (- (area-height content-area) hint-text-height)]
+              [available-height (- (area-height content-area) hint-text-height error-height)]
               [centered-layout (calculate-centered-layout (area-x content-area)
-                                                          (area-y content-area)
+                                                          (+ (area-y content-area) error-height)
                                                           (area-width content-area)
                                                           available-height
                                                           (area-width content-area)
@@ -341,6 +372,9 @@
                                                           #f
                                                           #t)]
               [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
+
+         (draw-error-message frame content-area general-error)
+
          (let ([fields-area (area (area-x content-area)
                                   (CenteredLayout-y centered-layout)
                                   (area-width content-area)
@@ -382,8 +416,9 @@
 
 (define (handle-enter-key state)
   (let ([search-term (get-field-value state 'search)])
-    (when (> (string-length search-term) 0) ; TODO: add nice error message
-      (start-scooter-search state))))
+    (if (> (string-length search-term) 0)
+        (start-scooter-search state)
+        (set-general-error! state "Search text is required"))))
 
 (define (handle-char-input state char)
   (let* ([current-field-id (get-current-field state)]
@@ -396,7 +431,6 @@
         [(and (equal? (field-type field-def) FIELD-TYPE-BOOLEAN) (equal? char #\space))
          (let ([current-value (get-field-value state current-field-id)])
            (set-field-value! state current-field-id (not current-value))
-           ;; If toggling fixed-strings, clear search text errors
            (when (equal? current-field-id 'fixed-strings)
              (clear-field-error! state 'search)))]))))
 
@@ -547,8 +581,7 @@
        (ScooterWindow-cursor-position state)))
 
 (define (start-scooter-search state)
-  ;; Clear any previous field errors before starting new search
-  (clear-all-field-errors! state)
+  (clear-all-errors! state)
   (execute-search-process! state))
 
 (define (execute-search-process! state)
@@ -570,33 +603,36 @@
                                          include-pattern
                                          exclude-pattern)])
 
-    ;; Clear any previous errors
-    (clear-all-field-errors! state)
-
-    ;; Check if the response indicates success
     (if (hash-ref response "success")
-        ;; Success - switch to search results mode and start polling
         (begin
           (set-mode! state 'search-results)
           (set-lines! state (SearchData 0 #f '() 0))
           (set-completed! state #f)
-          (set-selected-index! state 0) ; Reset selection to first result
-          (set-scroll-offset! state 0) ; Reset scroll to top
+          (set-selected-index! state 0)
+          (set-scroll-offset! state 0)
           (poll-search-results state))
-        ;; Error - handle validation errors (stay in search-fields mode)
         (handle-search-errors! state response))))
 
 (define (handle-search-errors! state response)
-  ;; Handle field validation errors
-  (let ([error-type (hash-try-get response "error-type")])
-    (when (equal? error-type "validation-error")
-      ;; Map error response keys to field IDs
-      (when (hash-contains? response "search-text-errors")
-        (set-field-errors! state 'search (hash-ref response "search-text-errors")))
-      (when (hash-contains? response "include-files-errors")
-        (set-field-errors! state 'files-include (hash-ref response "include-files-errors")))
-      (when (hash-contains? response "exclude-files-errors")
-        (set-field-errors! state 'files-exclude (hash-ref response "exclude-files-errors"))))))
+  (let ([error-type (hash-try-get response "error-type")]
+        [message (hash-try-get response "message")])
+    (cond
+      [(equal? error-type "validation-error") (handle-validation-errors! state response)]
+      [(equal? error-type "configuration-error")
+       (set-general-error! state (or message "Configuration error occurred"))]
+      [error-type
+       (set-general-error! state
+                           (string-append "Error (" error-type "): " (or message "Unknown error")))]
+      [else (set-general-error! state "An unexpected error occurred")])))
+
+(define (handle-validation-errors! state response)
+  ;; Map validation error response keys to field IDs
+  (when (hash-contains? response "search-text-errors")
+    (set-field-errors! state 'search (hash-ref response "search-text-errors")))
+  (when (hash-contains? response "include-files-errors")
+    (set-field-errors! state 'files-include (hash-ref response "include-files-errors")))
+  (when (hash-contains? response "exclude-files-errors")
+    (set-field-errors! state 'files-exclude (hash-ref response "exclude-files-errors"))))
 
 (define (get-search-status engine)
   (let ([result-count (Scooter-search-result-count engine)]
