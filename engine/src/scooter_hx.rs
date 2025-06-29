@@ -214,12 +214,7 @@ impl ScooterHx {
         let state = self.state.lock().unwrap();
         let results = match &*state {
             State::SearchInProgress { results, .. } | State::SearchComplete(results) => results,
-            res => {
-                panic!(
-                    "Attempted to get search results window on {name}",
-                    name = res.name()
-                )
-            }
+            _ => return vec![],
         };
 
         results
