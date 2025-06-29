@@ -323,17 +323,16 @@
 (define (strip-newlines text)
   (string-replace (string-replace text "\n" " ") "\r" " "))
 
-(define (draw-error-message frame content-area error-message)
+(define (calculate-error-message-area content-area)
+  (area (area-x content-area) (area-y content-area) (area-width content-area) 1))
+
+(define (draw-error-message frame error-area error-message)
   (when error-message
     (let* ([error-style (UIStyles-error (ui-styles))]
            [clean-message (strip-newlines error-message)]
            [error-text (string-append "Error: " clean-message)]
-           [truncated-error (truncate-string error-text (- (area-width content-area) 4))])
-      (frame-set-string! frame
-                         (area-x content-area)
-                         (area-y content-area)
-                         truncated-error
-                         error-style))))
+           [truncated-error (truncate-string error-text (area-width error-area))])
+      (frame-set-string! frame (area-x error-area) (area-y error-area) truncated-error error-style))))
 
 (define (get-keybinding-help mode)
   (cond
@@ -341,14 +340,29 @@
     [(equal? mode 'search-results) "<ctrl+o> back | <esc> cancel"]
     [else ""]))
 
-(define (draw-keybinding-help frame content-area mode)
+(define (calculate-title-area window-area)
+  (area (+ (area-x window-area) 2) (area-y window-area) (- (area-width window-area) 4) 1))
+
+(define (draw-title frame title-area title)
+  (let ([popup-style (UIStyles-popup (ui-styles))])
+    (frame-set-string! frame (area-x title-area) (area-y title-area) title popup-style)))
+
+(define (calculate-keybinding-help-area content-area)
+  (area (area-x content-area)
+        (+ (area-y content-area) (area-height content-area) 1)
+        (area-width content-area)
+        1))
+
+(define (draw-keybinding-help frame help-area mode)
   (let* ([hint-style (UIStyles-dim (ui-styles))]
          [hint-text (get-keybinding-help mode)]
-         [hint-y (+ (area-y content-area) (area-height content-area) -2)]
-         [hint-x (+ (area-x content-area) 2)]
-         [truncated-hint (truncate-string hint-text (- (area-width content-area) 4))])
+         [truncated-hint (truncate-string hint-text (area-width help-area))]
+         [text-length (string-length truncated-hint)]
+         [available-width (area-width help-area)]
+         [padding (max 0 (quotient (- available-width text-length) 2))]
+         [centered-x (+ (area-x help-area) padding)])
     (when (> (string-length hint-text) 0)
-      (frame-set-string! frame hint-x hint-y truncated-hint hint-style))))
+      (frame-set-string! frame centered-x (area-y help-area) truncated-hint hint-style))))
 
 (define (scooter-render state rect frame)
   (let* ([window-area (calculate-window-area rect)]
@@ -361,7 +375,7 @@
 
     (buffer/clear frame window-area)
     (block/render frame window-area (make-block popup-style popup-style "all" "plain"))
-    (frame-set-string! frame (+ (area-x window-area) 2) (area-y window-area) title popup-style)
+    (let ([title-area (calculate-title-area window-area)]) (draw-title frame title-area title))
 
     (cond
       [(equal? mode 'search-fields)
@@ -383,7 +397,8 @@
                                                           #t)]
               [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
 
-         (draw-error-message frame content-area general-error)
+         (let ([error-area (calculate-error-message-area content-area)])
+           (draw-error-message frame error-area general-error))
 
          (let ([fields-area (area (area-x content-area)
                                   (CenteredLayout-y centered-layout)
@@ -405,7 +420,8 @@
       [(equal? mode 'search-results)
        (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))])
 
-    (draw-keybinding-help frame window-area mode)))
+    (let ([help-area (calculate-keybinding-help-area content-area)])
+      (draw-keybinding-help frame help-area mode))))
 
 (define (handle-paste-event state paste-text)
   (when paste-text
@@ -424,7 +440,7 @@
   (let ([search-term (get-field-value state 'search)])
     (if (> (string-length search-term) 0)
         (start-scooter-search state)
-        (set-general-error! state "Search text is required"))))
+        (set-field-errors! state 'search '("Search text is required")))))
 
 (define (handle-char-input state char)
   (let* ([current-field-id (get-current-field state)]
