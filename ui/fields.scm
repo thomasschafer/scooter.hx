@@ -167,11 +167,13 @@
          [field-text (format-field-text (or field-value "") box-width)]
          [title-with-error (if has-error?
                                (string-append title " - " (car field-errors))
-                               title)])
+                               title)]
+         [max-title-width (- box-width 2)]
+         [truncated-title (truncate-string title-with-error max-title-width)])
 
     (let ([field-area (area field-x label-y box-width 3)])
       (block/render frame field-area (make-block field-style field-style "all" "plain"))
-      (frame-set-string! frame (+ field-x 1) label-y title-with-error field-style)
+      (frame-set-string! frame (+ field-x 1) label-y truncated-title field-style)
       (frame-set-string! frame (+ field-x 1) (+ label-y 1) field-text field-style))))
 
 (define (format-field-text text box-width)

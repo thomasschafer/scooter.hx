@@ -251,10 +251,11 @@
          [results (SearchData-results raw-data)]
          [data-scroll-offset (SearchData-scroll-offset raw-data)]
          [status-line (string-append "   "
-                                     (if is-complete "Search complete!" "Searching...")
-                                     " Found "
+                                     "Results: "
                                      (to-string result-count)
-                                     " results")]
+                                     " ["
+                                     (if is-complete "Search complete" "Searching...")
+                                     "]")]
          [selected-index (get-selected-index state)]
          [scroll-offset (get-scroll-offset state)]
          [status-area (calculate-status-area content-area)]
