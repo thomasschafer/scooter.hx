@@ -4,6 +4,7 @@
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-new
                           Scooter-start-search
+                          Scooter-cancel-search
                           Scooter-search-complete?
                           Scooter-search-result-count
                           Scooter-search-results-window
@@ -302,10 +303,11 @@
     (area x y window-width window-height)))
 
 (define (calculate-content-area window-area)
-  (area (+ (area-x window-area) CONTENT-PADDING)
-        (+ (area-y window-area) CONTENT-PADDING)
-        (- (area-width window-area) (* CONTENT-PADDING 2))
-        (- (area-height window-area) (* CONTENT-PADDING 2))))
+  (let ([help-height 1])
+    (area (+ (area-x window-area) CONTENT-PADDING)
+          (+ (area-y window-area) CONTENT-PADDING)
+          (- (area-width window-area) (* CONTENT-PADDING 2))
+          (- (area-height window-area) (* CONTENT-PADDING 2) help-height))))
 
 (define (position-cursor-in-text-field state current-field field-positions content-x content-width)
   (let ([active-field-def (get-field-by-id current-field)])
@@ -333,11 +335,20 @@
                          truncated-error
                          error-style))))
 
-(define (draw-hint-text frame content-x y window-height hint-style)
-  (let ([hint-y (+ y window-height -2)]
-        [hint-text
-         "<tab> next field | <shift+tab> prev field | <space> toggle | <enter> search | <esc> cancel"])
-    (frame-set-string! frame content-x hint-y hint-text hint-style)))
+(define (get-keybinding-help mode)
+  (cond
+    [(equal? mode 'search-fields) "<tab> next field | <space> toggle | <enter> search | <esc> cancel"]
+    [(equal? mode 'search-results) "<ctrl+o> back | <esc> cancel"]
+    [else ""]))
+
+(define (draw-keybinding-help frame content-area mode)
+  (let* ([hint-style (UIStyles-dim (ui-styles))]
+         [hint-text (get-keybinding-help mode)]
+         [hint-y (+ (area-y content-area) (area-height content-area) -2)]
+         [hint-x (+ (area-x content-area) 2)]
+         [truncated-hint (truncate-string hint-text (- (area-width content-area) 4))])
+    (when (> (string-length hint-text) 0)
+      (frame-set-string! frame hint-x hint-y truncated-hint hint-style))))
 
 (define (scooter-render state rect frame)
   (let* ([window-area (calculate-window-area rect)]
@@ -355,12 +366,11 @@
     (cond
       [(equal? mode 'search-fields)
        (let* ([general-error (get-general-error state)]
-              [error-height 2] ; Always reserve 2 rows for error display (1 for text + 1 for spacing)
+              [error-height 2]
               [all-fields (get-all-fields)]
               [field-count (length all-fields)]
               [total-fields-height (* field-count 3)] ; Each field is 3 rows high
-              [hint-text-height 1] ; Space for hint text at bottom
-              [available-height (- (area-height content-area) hint-text-height error-height)]
+              [available-height (- (area-height content-area) error-height)]
               [centered-layout (calculate-centered-layout (area-x content-area)
                                                           (+ (area-y content-area) error-height)
                                                           (area-width content-area)
@@ -390,16 +400,12 @@
                                         current-field
                                         field-positions
                                         (area-x content-area)
-                                        (area-width content-area))
-
-         (draw-hint-text frame
-                         (area-x content-area)
-                         (area-y window-area)
-                         (area-height window-area)
-                         (UIStyles-dim (ui-styles))))]
+                                        (area-width content-area)))]
 
       [(equal? mode 'search-results)
-       (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))])))
+       (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))])
+
+    (draw-keybinding-help frame window-area mode)))
 
 (define (handle-paste-event state paste-text)
   (when paste-text
@@ -557,6 +563,7 @@
 
 (define (handle-search-results-mode-event state event)
   (cond
+    [(key-with-ctrl? event #\o) (cancel-search-and-return-to-fields state)]
     [(or (key-event-up? event) (key-matches-char? event #\k)) (navigate-search-results state -1)]
     [(or (key-event-down? event) (key-matches-char? event #\j)) (navigate-search-results state 1)]
     [(key-with-ctrl? event #\u) (scroll-half-page state -1)]
@@ -583,6 +590,12 @@
 (define (start-scooter-search state)
   (clear-all-errors! state)
   (execute-search-process! state))
+
+(define (cancel-search-and-return-to-fields state)
+  (let ([engine (get-engine state)])
+    (Scooter-cancel-search engine)
+    (set-mode! state 'search-fields)
+    (clear-all-errors! state)))
 
 (define (execute-search-process! state)
   (let* ([field-values (unbox (ScooterWindow-field-values-box state))]
