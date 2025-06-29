@@ -41,7 +41,8 @@
          engine-box
          selected-index-box ; Index of currently selected result
          scroll-offset-box ; Offset for scrolling results
-         content-height-box)) ; Available height for results
+         content-height-box ; Available height for results
+         field-errors-box)) ; Hash of field validation errors
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -55,6 +56,7 @@
 
 (define-hash-accessors get-field-value set-field-value! ScooterWindow-field-values-box)
 (define-hash-accessors get-field-cursor-pos set-field-cursor-pos! ScooterWindow-cursor-positions-box)
+(define-hash-accessors get-field-errors set-field-errors! ScooterWindow-field-errors-box)
 
 (define (get-mode state)
   (unbox (ScooterWindow-mode-box state)))
@@ -97,6 +99,17 @@
 (define (set-content-height! state value)
   (set-box! (ScooterWindow-content-height-box state) value))
 
+(define (clear-all-field-errors! state)
+  (set-box! (ScooterWindow-field-errors-box state) (hash)))
+
+(define (clear-field-error! state field-id)
+  (let ([errors (unbox (ScooterWindow-field-errors-box state))])
+    (when (hash-contains? errors field-id)
+      (set-box! (ScooterWindow-field-errors-box state) (hash-remove errors field-id)))))
+
+(define (get-field-errors-safe state field-id)
+  (or (hash-try-get (unbox (ScooterWindow-field-errors-box state)) field-id) '()))
+
 (define (create-scooter-window directory)
   (ScooterWindow (box 'search-fields) ; mode-box
                  (box (create-initial-field-values)) ; field-values-box
@@ -109,7 +122,8 @@
                  (box (Scooter-new directory #f)) ; engine-box
                  (box 0) ; selected-index-box
                  (box 0) ; scroll-offset-box
-                 (box 10))) ; content-height-box (placeholder, set during rendering)
+                 (box 10) ; content-height-box (placeholder, set during rendering)
+                 (box (hash)))) ; field-errors-box
 
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
@@ -124,6 +138,8 @@
 
 (define (insert-char-at-cursor state field-id char)
   (when (field-is-text? field-id)
+    ;; Clear any error for this field when user starts typing
+    (clear-field-error! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
            [before (substring field-value 0 cursor-pos)]
@@ -133,6 +149,8 @@
 
 (define (delete-char-at-cursor state field-id)
   (when (and (field-is-text? field-id) (> (get-field-cursor-pos state field-id) 0))
+    ;; Clear any error for this field when user edits
+    (clear-field-error! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
            [before (substring field-value 0 (- cursor-pos 1))]
@@ -142,6 +160,8 @@
 
 (define (insert-text-at-cursor state field-id text)
   (when (field-is-text? field-id)
+    ;; Clear any error for this field when user pastes
+    (clear-field-error! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
            [before (substring field-value 0 cursor-pos)]
@@ -325,7 +345,12 @@
                                   (CenteredLayout-y centered-layout)
                                   (area-width content-area)
                                   total-fields-height)])
-           (draw-all-fields frame fields-area current-field state get-field-value))
+           (draw-all-fields frame
+                            fields-area
+                            current-field
+                            state
+                            get-field-value
+                            get-field-errors-safe))
 
          (position-cursor-in-text-field state
                                         current-field
@@ -370,7 +395,10 @@
 
         [(and (equal? (field-type field-def) FIELD-TYPE-BOOLEAN) (equal? char #\space))
          (let ([current-value (get-field-value state current-field-id)])
-           (set-field-value! state current-field-id (not current-value)))]))))
+           (set-field-value! state current-field-id (not current-value))
+           ;; If toggling fixed-strings, clear search text errors
+           (when (equal? current-field-id 'fixed-strings)
+             (clear-field-error! state 'search)))]))))
 
 (define (handle-search-fields-mode-event state event)
   (cond
@@ -519,11 +547,8 @@
        (ScooterWindow-cursor-position state)))
 
 (define (start-scooter-search state)
-  (set-mode! state 'search-results)
-  (set-lines! state (SearchData 0 #f '() 0))
-  (set-completed! state #f)
-  (set-selected-index! state 0) ; Reset selection to first result
-  (set-scroll-offset! state 0) ; Reset scroll to top
+  ;; Clear any previous field errors before starting new search
+  (clear-all-field-errors! state)
   (execute-search-process! state))
 
 (define (execute-search-process! state)
@@ -535,18 +560,43 @@
          [match-whole-word (hash-ref field-values 'match-whole-word)]
          [match-case (hash-ref field-values 'match-case)]
          [include-pattern (hash-ref field-values 'files-include)]
-         [exclude-pattern (hash-ref field-values 'files-exclude)])
+         [exclude-pattern (hash-ref field-values 'files-exclude)]
+         [response (Scooter-start-search engine
+                                         search-term
+                                         replace-term
+                                         fixed-strings
+                                         match-whole-word
+                                         match-case
+                                         include-pattern
+                                         exclude-pattern)])
 
-    (Scooter-start-search engine
-                          search-term
-                          replace-term
-                          fixed-strings
-                          match-whole-word
-                          match-case
-                          include-pattern
-                          exclude-pattern)
+    ;; Clear any previous errors
+    (clear-all-field-errors! state)
 
-    (poll-search-results state)))
+    ;; Check if the response indicates success
+    (if (hash-ref response "success")
+        ;; Success - switch to search results mode and start polling
+        (begin
+          (set-mode! state 'search-results)
+          (set-lines! state (SearchData 0 #f '() 0))
+          (set-completed! state #f)
+          (set-selected-index! state 0) ; Reset selection to first result
+          (set-scroll-offset! state 0) ; Reset scroll to top
+          (poll-search-results state))
+        ;; Error - handle validation errors (stay in search-fields mode)
+        (handle-search-errors! state response))))
+
+(define (handle-search-errors! state response)
+  ;; Handle field validation errors
+  (let ([error-type (hash-try-get response "error-type")])
+    (when (equal? error-type "validation-error")
+      ;; Map error response keys to field IDs
+      (when (hash-contains? response "search-text-errors")
+        (set-field-errors! state 'search (hash-ref response "search-text-errors")))
+      (when (hash-contains? response "include-files-errors")
+        (set-field-errors! state 'files-include (hash-ref response "include-files-errors")))
+      (when (hash-contains? response "exclude-files-errors")
+        (set-field-errors! state 'files-exclude (hash-ref response "exclude-files-errors"))))))
 
 (define (get-search-status engine)
   (let ([result-count (Scooter-search-result-count engine)]

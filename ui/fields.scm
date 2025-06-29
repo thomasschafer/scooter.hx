@@ -120,10 +120,11 @@
                 next-y
                 (hash-insert positions (field-id field) (cons current-y current-y)))))))
 
-(define (get-field-style active?)
-  (if active?
-      (UIStyles-active (ui-styles))
-      (UIStyles-text (ui-styles))))
+(define (get-field-style active? has-error?)
+  (cond
+    [has-error? (UIStyles-error (ui-styles))]
+    [active? (UIStyles-active (ui-styles))]
+    [else (UIStyles-text (ui-styles))]))
 
 (define (calculate-field-layout content-x content-width)
   (let* ([available-width (- content-width (* 2 FIELD-PADDING-HORIZONTAL))]
@@ -134,10 +135,11 @@
          [field-x (+ content-x FIELD-PADDING-HORIZONTAL offset)])
     (list field-x field-width)))
 
-(define (draw-boolean-field frame content-x content-width label-y field-def field-value active?)
+(define (draw-boolean-field frame content-x content-width label-y field-def field-value active? field-errors)
   (let* ([title (field-label field-def)]
          [checkbox-mark (if field-value "X" " ")]
-         [field-style (get-field-style active?)]
+         [has-error? (and field-errors (> (length field-errors) 0))]
+         [field-style (get-field-style active? has-error?)]
          [layout (calculate-field-layout content-x content-width)]
          [field-x (car layout)])
 
@@ -155,17 +157,21 @@
                      title
                      field-style)))
 
-(define (draw-text-field-box frame content-x label-y content-width field-def field-value active?)
+(define (draw-text-field-box frame content-x label-y content-width field-def field-value active? field-errors)
   (let* ([title (field-label field-def)]
-         [field-style (get-field-style active?)]
+         [has-error? (and field-errors (> (length field-errors) 0))]
+         [field-style (get-field-style active? has-error?)]
          [layout (calculate-field-layout content-x content-width)]
          [field-x (car layout)]
          [box-width (cadr layout)]
-         [field-text (format-field-text (or field-value "") box-width)])
+         [field-text (format-field-text (or field-value "") box-width)]
+         [title-with-error (if has-error?
+                               (string-append title " - " (car field-errors))
+                               title)])
 
     (let ([field-area (area field-x label-y box-width 3)])
       (block/render frame field-area (make-block field-style field-style "all" "plain"))
-      (frame-set-string! frame (+ field-x 1) label-y title field-style)
+      (frame-set-string! frame (+ field-x 1) label-y title-with-error field-style)
       (frame-set-string! frame (+ field-x 1) (+ label-y 1) field-text field-style))))
 
 (define (format-field-text text box-width)
@@ -178,21 +184,22 @@
          [trailing-spaces (make-space-string (- inner-width text-start-pos text-length))])
     (string-append leading-spaces truncated-text trailing-spaces)))
 
-(define (draw-field frame content-x content-width field-def field-value active? field-y-pos)
+(define (draw-field frame content-x content-width field-def field-value active? field-y-pos field-errors)
   (let* ([field-id (field-id field-def)]
          [field-type (field-type field-def)])
 
     (if (equal? field-type FIELD-TYPE-BOOLEAN)
-        (draw-boolean-field frame content-x content-width field-y-pos field-def field-value active?)
+        (draw-boolean-field frame content-x content-width field-y-pos field-def field-value active? field-errors)
         (draw-text-field-box frame
                              content-x
                              field-y-pos
                              content-width
                              field-def
                              field-value
-                             active?))))
+                             active?
+                             field-errors))))
 
-(define (draw-all-fields frame content-area current-field state field-value-getter)
+(define (draw-all-fields frame content-area current-field state field-value-getter field-error-getter)
   (let* ([content-x (area-x content-area)]
          [content-y (area-y content-area)]
          [content-width (area-width content-area)]
@@ -203,9 +210,10 @@
                [field-id (field-id field-def)]
                [active? (equal? current-field field-id)]
                [y-pos (car (hash-ref field-positions field-id))]
-               [field-value (field-value-getter state field-id)])
+               [field-value (field-value-getter state field-id)]
+               [field-errors (field-error-getter state field-id)])
 
-          (draw-field frame content-x content-width field-def field-value active? y-pos)
+          (draw-field frame content-x content-width field-def field-value active? y-pos field-errors)
 
           (process-fields (cdr fields)))))))
 
