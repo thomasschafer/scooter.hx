@@ -215,7 +215,8 @@
          [is-complete (SearchData-is-complete raw-data)]
          [results (SearchData-results raw-data)]
          [data-scroll-offset (SearchData-scroll-offset raw-data)]
-         [status-line (string-append (if is-complete "Search complete!" "Searching...")
+         [status-line (string-append "   "
+                                     (if is-complete "Search complete!" "Searching...")
                                      " Found "
                                      (to-string result-count)
                                      " results")]
@@ -238,11 +239,11 @@
                              bg-style)
           (loop (+ row 1)))))
 
-    ;; Draw status line in status area (centered vertically)
+    ;; Draw status line in status area
     (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
       (frame-set-string! frame
                          (area-x status-area)
-                         (+ (area-y status-area) 1)
+                         (area-y status-area)
                          truncated-status
                          (UIStyles-popup (ui-styles))))
 
