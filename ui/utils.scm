@@ -5,7 +5,7 @@
          index-of)
 
 (define (truncate-string str max-width)
-  (if (> (string-length str) max-width)
+  (if (and (> max-width 0) (> (string-length str) max-width))
       (substring str 0 max-width)
       str))
 

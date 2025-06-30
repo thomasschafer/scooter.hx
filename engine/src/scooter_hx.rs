@@ -4,7 +4,7 @@ use steel::rvals::Custom;
 use steel::steel_vm::ffi::FFIValue;
 use steel_derive::Steel;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
@@ -15,7 +15,7 @@ use frep_core::{
 };
 use scooter_core::{
     diff::{Diff, line_diff},
-    utils::relative_path_from,
+    utils::{read_lines_range, relative_path_from, split_indexed_lines, strip_control_chars},
 };
 
 use crate::logging;
@@ -28,50 +28,6 @@ pub(crate) struct ReplacementStats {
     pub(crate) num_successes: usize,
     pub(crate) num_ignored: usize,
     pub(crate) errors: Vec<SearchResult>,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct LineDiff {
-    before_segments: Vec<Diff>,
-    after_segments: Vec<Diff>,
-}
-
-impl Custom for LineDiff {}
-
-impl LineDiff {
-    fn diff_to_segment(diff: &Diff) -> Vec<String> {
-        vec![
-            diff.text.clone(),
-            diff.fg_colour.to_str().to_owned(),
-            diff.bg_colour
-                .clone()
-                .map(|c| c.to_str().to_owned())
-                .unwrap_or_default(),
-        ]
-    }
-
-    pub(crate) fn before_count(&self) -> usize {
-        self.before_segments.len()
-    }
-
-    pub(crate) fn after_count(&self) -> usize {
-        self.after_segments.len()
-    }
-
-    pub(crate) fn before_diff(&self, index: usize) -> Vec<String> {
-        self.get_segment(&self.before_segments, index)
-    }
-
-    pub(crate) fn after_diff(&self, index: usize) -> Vec<String> {
-        self.get_segment(&self.after_segments, index)
-    }
-
-    fn get_segment(&self, segments: &[Diff], index: usize) -> Vec<String> {
-        segments
-            .get(index)
-            .map(Self::diff_to_segment)
-            .unwrap_or_default()
-    }
 }
 
 pub(crate) enum State {
@@ -110,6 +66,7 @@ impl Custom for ScooterHx {}
 #[derive(Clone, Debug, Eq, Steel, PartialEq)]
 pub(crate) struct SteelSearchResult {
     pub(crate) display_path: String,
+    pub(crate) full_path: String,
     pub(crate) line_num: usize,
     pub(crate) line: String,
     pub(crate) replacement: String,
@@ -125,13 +82,80 @@ impl SteelSearchResult {
         self.line_num
     }
 
-    pub(crate) fn diff(&self) -> LineDiff {
-        let (before_segments, after_segments) = line_diff(&self.line, &self.replacement);
-        LineDiff {
-            before_segments,
-            after_segments,
+    pub(crate) fn build_preview(
+        &self,
+        screen_height: usize,
+        _screen_width: usize,
+    ) -> Vec<Vec<Vec<String>>> {
+        match self.try_build_preview(screen_height, _screen_width) {
+            Ok(preview) => preview,
+            Err(error) => {
+                // Return error message as red text
+                vec![vec![vec![
+                    format!("Failed to render diff: {}", error),
+                    "red".to_string(),
+                    "".to_string(),
+                ]]]
+            }
         }
     }
+
+    fn try_build_preview(
+        &self,
+        screen_height: usize,
+        _screen_width: usize,
+    ) -> Result<Vec<Vec<Vec<String>>>, String> {
+        let line_idx = self.line_num.saturating_sub(1); // Convert to 0-based index
+        let start = line_idx.saturating_sub(screen_height);
+        let end = line_idx + screen_height;
+
+        let file_path = Path::new(&self.full_path);
+        let lines = read_lines_range(file_path, start, end)
+            .map_err(|e| format!("file read error: {}", e))?
+            .collect::<Vec<_>>();
+
+        let (before, cur, after) = split_indexed_lines(lines, line_idx, screen_height - 1)
+            .map_err(|e| format!("line split error: {}", e))?;
+        assert_eq!(&cur.1, &self.line);
+
+        let (before_segments, after_segments) = line_diff(&self.line, &self.replacement);
+
+        let preview_lines = before
+            .iter()
+            .map(|(_, l)| str_to_vec(l))
+            .chain(vec![
+                diffs_to_vec(&before_segments),
+                diffs_to_vec(&after_segments),
+            ])
+            .chain(after.iter().map(|(_, l)| str_to_vec(l)))
+            .collect();
+
+        Ok(preview_lines)
+    }
+}
+
+fn str_to_vec(line: &str) -> Vec<Vec<String>> {
+    vec![vec![
+        strip_control_chars(line),
+        "".to_string(),
+        "".to_string(),
+    ]]
+}
+
+fn diffs_to_vec(diffs: &[Diff]) -> Vec<Vec<String>> {
+    diffs
+        .iter()
+        .map(|d| {
+            vec![
+                strip_control_chars(&d.text),
+                d.fg_colour.to_str().to_owned(),
+                d.bg_colour
+                    .clone()
+                    .map(|c| c.to_str().to_owned())
+                    .unwrap_or_default(),
+            ]
+        })
+        .collect()
 }
 
 impl ScooterHx {
@@ -280,6 +304,7 @@ impl ScooterHx {
             .iter()
             .map(|s| SteelSearchResult {
                 display_path: relative_path_from(&self.directory, &s.path),
+                full_path: s.path.to_string_lossy().to_string(),
                 line_num: s.line_number,
                 line: s.line.clone(),
                 replacement: s.replacement.clone(),

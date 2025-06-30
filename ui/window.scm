@@ -12,11 +12,7 @@
                           SteelSearchResult-line-num
                           SteelSearchResult-line
                           SteelSearchResult-replacement
-                          SteelSearchResult-diff
-                          LineDiff-before-count
-                          LineDiff-after-count
-                          LineDiff-before-diff
-                          LineDiff-after-diff))
+                          SteelSearchResult-build-preview))
 
 (require "utils.scm")
 (require "styles.scm")
@@ -251,36 +247,30 @@
         (style-bg base-style (color-string-to-color bg-color))
         base-style)))
 
-(define (convert-diff-segment-to-styled segment)
-  (let ([text (list-ref segment 0)]
-        [fg-color (list-ref segment 1)]
-        [bg-color (list-ref segment 2)])
-    (cons text (create-segment-style fg-color bg-color))))
+(define (preview-line-to-styled-segments line-segments)
+  (map (lambda (segment)
+         (let ([text (list-ref segment 0)]
+               [fg-color (list-ref segment 1)]
+               [bg-color (list-ref segment 2)])
+           (cons text
+                 (if (and (equal? fg-color "") (equal? bg-color ""))
+                     (UIStyles-text (ui-styles)) ; Use proper theme text color for context lines
+                     (create-segment-style fg-color bg-color))))) ; Use diff colors for diff segments
+       line-segments))
 
-(define (collect-diff-segments diff count-fn segment-fn)
-  (let loop ([i 0]
-             [acc '()])
-    (if (< i (count-fn diff))
-        (loop (+ i 1) (cons (convert-diff-segment-to-styled (segment-fn diff i)) acc))
-        (reverse acc))))
+(define (draw-file-preview frame preview-area result)
+  (let* ([screen-height (area-height preview-area)]
+         [screen-width (area-width preview-area)]
+         [preview-lines (SteelSearchResult-build-preview result screen-height screen-width)])
 
-(define (draw-diff-preview frame preview-area result)
-  (let ([diff (SteelSearchResult-diff result)])
-    ;; Draw before line
-    (when (< 0 (area-height preview-area))
-      (render-styled-segments-in-area
-       frame
-       preview-area
-       0
-       (collect-diff-segments diff LineDiff-before-count LineDiff-before-diff)))
-
-    ;; Draw after line
-    (when (< 1 (area-height preview-area))
-      (render-styled-segments-in-area
-       frame
-       preview-area
-       1
-       (collect-diff-segments diff LineDiff-after-count LineDiff-after-diff)))))
+    ;; Render each line in the preview
+    (let loop ([lines preview-lines]
+               [row 0])
+      (when (and (not (null? lines)) (< row screen-height))
+        (let* ([line-segments (car lines)]
+               [styled-segments (preview-line-to-styled-segments line-segments)])
+          (render-styled-segments-in-area frame preview-area row styled-segments)
+          (loop (cdr lines) (+ row 1)))))))
 
 ;; Calculate sub-areas for search results rendering
 (define (calculate-status-area content-area)
@@ -359,7 +349,7 @@
                   (< selected-index (+ data-scroll-offset results-count)))
          (let* ([local-index (- selected-index data-scroll-offset)]
                 [selected-result (list-ref results local-index)])
-           (draw-diff-preview frame preview-area selected-result)))))))
+           (draw-file-preview frame preview-area selected-result)))))))
 
 (define (calculate-window-area rect)
   (let* ([screen-width (area-width rect)]
