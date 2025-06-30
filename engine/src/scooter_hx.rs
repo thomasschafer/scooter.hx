@@ -13,7 +13,10 @@ use frep_core::{
     search::SearchResult,
     validation::{self, SearchConfiguration, ValidationResult},
 };
-use scooter_core::utils::relative_path_from;
+use scooter_core::{
+    diff::{Diff, line_diff},
+    utils::relative_path_from,
+};
 
 use crate::logging;
 use crate::validation::{
@@ -25,6 +28,50 @@ pub(crate) struct ReplacementStats {
     pub(crate) num_successes: usize,
     pub(crate) num_ignored: usize,
     pub(crate) errors: Vec<SearchResult>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct LineDiff {
+    before_segments: Vec<Diff>,
+    after_segments: Vec<Diff>,
+}
+
+impl Custom for LineDiff {}
+
+impl LineDiff {
+    fn diff_to_segment(diff: &Diff) -> Vec<String> {
+        vec![
+            diff.text.clone(),
+            diff.fg_colour.to_str().to_owned(),
+            diff.bg_colour
+                .clone()
+                .map(|c| c.to_str().to_owned())
+                .unwrap_or_default(),
+        ]
+    }
+
+    pub(crate) fn before_count(&self) -> usize {
+        self.before_segments.len()
+    }
+
+    pub(crate) fn after_count(&self) -> usize {
+        self.after_segments.len()
+    }
+
+    pub(crate) fn before_diff(&self, index: usize) -> Vec<String> {
+        self.get_segment(&self.before_segments, index)
+    }
+
+    pub(crate) fn after_diff(&self, index: usize) -> Vec<String> {
+        self.get_segment(&self.after_segments, index)
+    }
+
+    fn get_segment(&self, segments: &[Diff], index: usize) -> Vec<String> {
+        segments
+            .get(index)
+            .map(Self::diff_to_segment)
+            .unwrap_or_default()
+    }
 }
 
 pub(crate) enum State {
@@ -78,12 +125,12 @@ impl SteelSearchResult {
         self.line_num
     }
 
-    pub(crate) fn line(&self) -> String {
-        self.line.clone()
-    }
-
-    pub(crate) fn replacement(&self) -> String {
-        self.replacement.clone()
+    pub(crate) fn diff(&self) -> LineDiff {
+        let (before_segments, after_segments) = line_diff(&self.line, &self.replacement);
+        LineDiff {
+            before_segments,
+            after_segments,
+        }
     }
 }
 

@@ -11,7 +11,12 @@
                           SteelSearchResult-display-path
                           SteelSearchResult-line-num
                           SteelSearchResult-line
-                          SteelSearchResult-replacement))
+                          SteelSearchResult-replacement
+                          SteelSearchResult-diff
+                          LineDiff-before-count
+                          LineDiff-after-count
+                          LineDiff-before-diff
+                          LineDiff-after-diff))
 
 (require "utils.scm")
 (require "styles.scm")
@@ -233,21 +238,49 @@
                     (UIStyles-selection styles)
                     (UIStyles-line-num styles))))))
 
-(define (draw-diff-preview frame preview-area result styles)
-  (let* ([original-line (SteelSearchResult-line result)]
-         [replacement-line (SteelSearchResult-replacement result)]
-         [red-style (style-fg (style) Color/Red)]
-         [green-style (style-fg (style) Color/Green)]
-         [removal-segments (list (cons "- " red-style) (cons original-line red-style))]
-         [addition-segments (list (cons "+ " green-style) (cons replacement-line green-style))])
+(define (color-string-to-color color-str)
+  (cond
+    [(equal? color-str "red") Color/Red]
+    [(equal? color-str "green") Color/Green]
+    [(equal? color-str "black") Color/Black]
+    [else Color/Reset]))
 
-    ;; Draw the removal line (red)
+(define (create-segment-style fg-color bg-color)
+  (let ([base-style (style-fg (style) (color-string-to-color fg-color))])
+    (if (> (string-length bg-color) 0)
+        (style-bg base-style (color-string-to-color bg-color))
+        base-style)))
+
+(define (convert-diff-segment-to-styled segment)
+  (let ([text (list-ref segment 0)]
+        [fg-color (list-ref segment 1)]
+        [bg-color (list-ref segment 2)])
+    (cons text (create-segment-style fg-color bg-color))))
+
+(define (collect-diff-segments diff count-fn segment-fn)
+  (let loop ([i 0]
+             [acc '()])
+    (if (< i (count-fn diff))
+        (loop (+ i 1) (cons (convert-diff-segment-to-styled (segment-fn diff i)) acc))
+        (reverse acc))))
+
+(define (draw-diff-preview frame preview-area result)
+  (let ([diff (SteelSearchResult-diff result)])
+    ;; Draw before line
     (when (< 0 (area-height preview-area))
-      (render-styled-segments-in-area frame preview-area 0 removal-segments))
+      (render-styled-segments-in-area
+       frame
+       preview-area
+       0
+       (collect-diff-segments diff LineDiff-before-count LineDiff-before-diff)))
 
-    ;; Draw the addition line (green)
+    ;; Draw after line
     (when (< 1 (area-height preview-area))
-      (render-styled-segments-in-area frame preview-area 1 addition-segments))))
+      (render-styled-segments-in-area
+       frame
+       preview-area
+       1
+       (collect-diff-segments diff LineDiff-after-count LineDiff-after-diff)))))
 
 ;; Calculate sub-areas for search results rendering
 (define (calculate-status-area content-area)
@@ -287,46 +320,46 @@
      (lambda () (calculate-split-areas content-area))
      (lambda (results-list-area preview-area)
 
-    (set-content-height! state (area-height results-list-area))
+       (set-content-height! state (area-height results-list-area))
 
-    (buffer/clear frame content-area)
-    (let ([bg-style (UIStyles-popup (ui-styles))])
-      (let loop ([row 0])
-        (when (< row (area-height content-area))
-          (frame-set-string! frame
-                             (area-x content-area)
-                             (+ (area-y content-area) row)
-                             (make-space-string (area-width content-area))
-                             bg-style)
-          (loop (+ row 1)))))
+       (buffer/clear frame content-area)
+       (let ([bg-style (UIStyles-popup (ui-styles))])
+         (let loop ([row 0])
+           (when (< row (area-height content-area))
+             (frame-set-string! frame
+                                (area-x content-area)
+                                (+ (area-y content-area) row)
+                                (make-space-string (area-width content-area))
+                                bg-style)
+             (loop (+ row 1)))))
 
-    ;; Draw status line in status area
-    (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
-      (frame-set-string! frame
-                         (area-x status-area)
-                         (area-y status-area)
-                         truncated-status
-                         (UIStyles-popup (ui-styles))))
+       ;; Draw status line in status area
+       (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
+         (frame-set-string! frame
+                            (area-x status-area)
+                            (area-y status-area)
+                            truncated-status
+                            (UIStyles-popup (ui-styles))))
 
-    ;; Draw results list
-    (when (> results-count 0)
-      (let loop ([index 0]
-                 [current-row 0])
-        (when (and (< index results-count) (< current-row (area-height results-list-area)))
-          (let* ([result (list-ref results index)]
-                 [absolute-index (+ index data-scroll-offset)]
-                 [is-selected (= absolute-index selected-index)]
-                 [styled-segments (format-search-result result is-selected styles)])
-            (render-styled-segments-in-area frame results-list-area current-row styled-segments))
-          (loop (+ index 1) (+ current-row 1)))))
+       ;; Draw results list
+       (when (> results-count 0)
+         (let loop ([index 0]
+                    [current-row 0])
+           (when (and (< index results-count) (< current-row (area-height results-list-area)))
+             (let* ([result (list-ref results index)]
+                    [absolute-index (+ index data-scroll-offset)]
+                    [is-selected (= absolute-index selected-index)]
+                    [styled-segments (format-search-result result is-selected styles)])
+               (render-styled-segments-in-area frame results-list-area current-row styled-segments))
+             (loop (+ index 1) (+ current-row 1)))))
 
-    ;; Draw preview for selected result
-    (when (and (> results-count 0)
-               (>= selected-index data-scroll-offset)
-               (< selected-index (+ data-scroll-offset results-count)))
-      (let* ([local-index (- selected-index data-scroll-offset)]
-             [selected-result (list-ref results local-index)])
-        (draw-diff-preview frame preview-area selected-result styles)))))))
+       ;; Draw preview for selected result
+       (when (and (> results-count 0)
+                  (>= selected-index data-scroll-offset)
+                  (< selected-index (+ data-scroll-offset results-count)))
+         (let* ([local-index (- selected-index data-scroll-offset)]
+                [selected-result (list-ref results local-index)])
+           (draw-diff-preview frame preview-area selected-result)))))))
 
 (define (calculate-window-area rect)
   (let* ([screen-width (area-width rect)]

@@ -69,13 +69,13 @@ fn create_module() -> FFIModule {
             scooter_hx::SteelSearchResult::line_num,
         )
         .register_fn(
-            "SteelSearchResult-line",
-            scooter_hx::SteelSearchResult::line,
+            "SteelSearchResult-diff",
+            scooter_hx::SteelSearchResult::diff,
         )
-        .register_fn(
-            "SteelSearchResult-replacement",
-            scooter_hx::SteelSearchResult::replacement,
-        );
+        .register_fn("LineDiff-before-count", scooter_hx::LineDiff::before_count)
+        .register_fn("LineDiff-after-count", scooter_hx::LineDiff::after_count)
+        .register_fn("LineDiff-before-diff", scooter_hx::LineDiff::before_diff)
+        .register_fn("LineDiff-after-diff", scooter_hx::LineDiff::after_diff);
 
     module
 }
