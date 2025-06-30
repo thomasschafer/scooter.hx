@@ -9,7 +9,9 @@
                           Scooter-search-result-count
                           Scooter-search-results-window
                           SteelSearchResult-display-path
-                          SteelSearchResult-line-num))
+                          SteelSearchResult-line-num
+                          SteelSearchResult-line
+                          SteelSearchResult-replacement))
 
 (require "utils.scm")
 (require "styles.scm")
@@ -231,15 +233,35 @@
                     (UIStyles-selection styles)
                     (UIStyles-line-num styles))))))
 
+(define (draw-diff-preview frame preview-area result styles)
+  (let* ([original-line (SteelSearchResult-line result)]
+         [replacement-line (SteelSearchResult-replacement result)]
+         [red-style (style-fg (style) Color/Red)]
+         [green-style (style-fg (style) Color/Green)]
+         [removal-segments (list (cons "- " red-style) (cons original-line red-style))]
+         [addition-segments (list (cons "+ " green-style) (cons replacement-line green-style))])
+
+    ;; Draw the removal line (red)
+    (when (< 0 (area-height preview-area))
+      (render-styled-segments-in-area frame preview-area 0 removal-segments))
+
+    ;; Draw the addition line (green)
+    (when (< 1 (area-height preview-area))
+      (render-styled-segments-in-area frame preview-area 1 addition-segments))))
+
 ;; Calculate sub-areas for search results rendering
 (define (calculate-status-area content-area)
   (area (area-x content-area) (area-y content-area) (area-width content-area) STATUS-HEIGHT))
 
-(define (calculate-results-area content-area)
-  (area (area-x content-area)
-        (+ (area-y content-area) STATUS-HEIGHT)
-        (area-width content-area)
-        (- (area-height content-area) STATUS-HEIGHT)))
+(define (calculate-split-areas content-area)
+  (let* ([results-y (+ (area-y content-area) STATUS-HEIGHT)]
+         [results-height (- (area-height content-area) STATUS-HEIGHT)]
+         [list-width (quotient (area-width content-area) 2)]
+         [preview-x (+ (area-x content-area) list-width 1)]
+         [preview-width (- (area-width content-area) list-width 1)]
+         [list-area (area (area-x content-area) results-y list-width results-height)]
+         [preview-area (area preview-x results-y preview-width results-height)])
+    (values list-area preview-area)))
 
 (define (draw-search-results frame content-area raw-data state)
 
@@ -259,10 +281,13 @@
          [selected-index (get-selected-index state)]
          [scroll-offset (get-scroll-offset state)]
          [status-area (calculate-status-area content-area)]
-         [results-area (calculate-results-area content-area)]
          [results-count (length results)])
 
-    (set-content-height! state (area-height results-area))
+    (call-with-values
+     (lambda () (calculate-split-areas content-area))
+     (lambda (results-list-area preview-area)
+
+    (set-content-height! state (area-height results-list-area))
 
     (buffer/clear frame content-area)
     (let ([bg-style (UIStyles-popup (ui-styles))])
@@ -283,16 +308,25 @@
                          truncated-status
                          (UIStyles-popup (ui-styles))))
 
+    ;; Draw results list
     (when (> results-count 0)
       (let loop ([index 0]
                  [current-row 0])
-        (when (and (< index results-count) (< current-row (area-height results-area)))
+        (when (and (< index results-count) (< current-row (area-height results-list-area)))
           (let* ([result (list-ref results index)]
                  [absolute-index (+ index data-scroll-offset)]
                  [is-selected (= absolute-index selected-index)]
                  [styled-segments (format-search-result result is-selected styles)])
-            (render-styled-segments-in-area frame results-area current-row styled-segments))
-          (loop (+ index 1) (+ current-row 1)))))))
+            (render-styled-segments-in-area frame results-list-area current-row styled-segments))
+          (loop (+ index 1) (+ current-row 1)))))
+
+    ;; Draw preview for selected result
+    (when (and (> results-count 0)
+               (>= selected-index data-scroll-offset)
+               (< selected-index (+ data-scroll-offset results-count)))
+      (let* ([local-index (- selected-index data-scroll-offset)]
+             [selected-result (list-ref results local-index)])
+        (draw-diff-preview frame preview-area selected-result styles)))))))
 
 (define (calculate-window-area rect)
   (let* ([screen-width (area-width rect)]

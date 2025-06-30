@@ -64,6 +64,8 @@ impl Custom for ScooterHx {}
 pub(crate) struct SteelSearchResult {
     pub(crate) display_path: String,
     pub(crate) line_num: usize,
+    pub(crate) line: String,
+    pub(crate) replacement: String,
     pub(crate) replace_result: Option<ReplaceResult>,
 }
 
@@ -74,6 +76,14 @@ impl SteelSearchResult {
 
     pub(crate) fn line_num(&self) -> usize {
         self.line_num
+    }
+
+    pub(crate) fn line(&self) -> String {
+        self.line.clone()
+    }
+
+    pub(crate) fn replacement(&self) -> String {
+        self.replacement.clone()
     }
 }
 
@@ -224,6 +234,8 @@ impl ScooterHx {
             .map(|s| SteelSearchResult {
                 display_path: relative_path_from(&self.directory, &s.path),
                 line_num: s.line_number,
+                line: s.line.clone(),
+                replacement: s.replacement.clone(),
                 replace_result: s.replace_result.clone(),
             })
             .collect()

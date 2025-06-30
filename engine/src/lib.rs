@@ -67,6 +67,14 @@ fn create_module() -> FFIModule {
         .register_fn(
             "SteelSearchResult-line-num",
             scooter_hx::SteelSearchResult::line_num,
+        )
+        .register_fn(
+            "SteelSearchResult-line",
+            scooter_hx::SteelSearchResult::line,
+        )
+        .register_fn(
+            "SteelSearchResult-replacement",
+            scooter_hx::SteelSearchResult::replacement,
         );
 
     module
