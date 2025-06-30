@@ -188,32 +188,36 @@
       (set-field-value! state field-id new-value)
       (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
 
-(define (render-styled-segments frame x y segments max-width)
-  (let loop ([segments segments]
-             [current-x x]
-             [remaining-width max-width]
-             [last-style #f])
-    (cond
-      [(and (not (null? segments)) (> remaining-width 0))
-       (let* ([segment (car segments)]
-              [text (car segment)]
-              [style (cdr segment)]
-              [truncated-text (if (> (string-length text) remaining-width)
-                                  (truncate-string text remaining-width)
-                                  text)])
-         (frame-set-string! frame current-x y truncated-text style)
-         (loop (cdr segments)
-               (+ current-x (string-length truncated-text))
-               (- remaining-width (string-length truncated-text))
-               style))]
+(define (render-styled-segments frame x y segments max-width . fill-style)
+  (let ([fill-style (if (null? fill-style) #f (car fill-style))])
+    (let loop ([segments segments]
+               [current-x x]
+               [remaining-width max-width]
+               [last-style #f])
+      (cond
+        [(and (not (null? segments)) (> remaining-width 0))
+         (let* ([segment (car segments)]
+                [text (car segment)]
+                [style (cdr segment)]
+                [truncated-text (if (> (string-length text) remaining-width)
+                                    (truncate-string text remaining-width)
+                                    text)])
+           (frame-set-string! frame current-x y truncated-text style)
+           (loop (cdr segments)
+                 (+ current-x (string-length truncated-text))
+                 (- remaining-width (string-length truncated-text))
+                 style))]
 
-      ;; Fill remaining width with spaces using the last style
-      [(and (> remaining-width 0) last-style)
-       (frame-set-string! frame current-x y (make-space-string remaining-width) last-style)])))
+        ;; Fill remaining width with spaces using fill-style or last-style
+        [(> remaining-width 0)
+         (let ([style-to-use (or fill-style last-style)])
+           (when style-to-use
+             (frame-set-string! frame current-x y (make-space-string remaining-width) style-to-use)))]))))
 
 ;; Render styled segments within a given area at a specific row
-(define (render-styled-segments-in-area frame area row segments)
-  (render-styled-segments frame (area-x area) (+ (area-y area) row) segments (area-width area)))
+(define (render-styled-segments-in-area frame area row segments . fill-style)
+  (let ([args (append (list frame (area-x area) (+ (area-y area) row) segments (area-width area)) fill-style)])
+    (apply render-styled-segments args)))
 
 (define (format-search-result result is-selected styles)
   (let ([prefix (if is-selected " > " "   ")]
@@ -268,8 +272,9 @@
                [row 0])
       (when (and (not (null? lines)) (< row screen-height))
         (let* ([line-segments (car lines)]
-               [styled-segments (preview-line-to-styled-segments line-segments)])
-          (render-styled-segments-in-area frame preview-area row styled-segments)
+               [styled-segments (preview-line-to-styled-segments line-segments)]
+               [bg-style (UIStyles-popup (ui-styles))])
+          (render-styled-segments-in-area frame preview-area row styled-segments bg-style)
           (loop (cdr lines) (+ row 1)))))))
 
 ;; Calculate sub-areas for search results rendering
@@ -483,9 +488,10 @@
 
 (define (handle-paste-event state paste-text)
   (when paste-text
-    (let ([current-field-id (get-current-field state)])
+    (let* ([current-field-id (get-current-field state)]
+           [clean-text (strip-newlines paste-text)])
       (when (field-is-text? current-field-id)
-        (insert-text-at-cursor state current-field-id paste-text)))))
+        (insert-text-at-cursor state current-field-id clean-text)))))
 
 (define (handle-tab-key state modifier)
   (let* ([current-field-id (get-current-field state)]

@@ -5,9 +5,13 @@
          index-of)
 
 (define (truncate-string str max-width)
-  (if (and (> max-width 0) (> (string-length str) max-width))
-      (substring str 0 max-width)
-      str))
+  (let ([str-len (string-length str)])
+    (cond
+      [(<= max-width 0) str]
+      [(<= str-len max-width) str]
+      [else
+       (let ([chars (string->list str)])
+         (list->string (take-n chars max-width)))])))
 
 (define (take-right lst n)
   (define len (length lst))
