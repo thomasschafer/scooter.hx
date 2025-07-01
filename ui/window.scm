@@ -434,7 +434,6 @@
          [start-y (+ (area-y content-area) (quotient (area-height content-area) 3))]
          [center-x (+ (area-x content-area) (quotient (area-width content-area) 2))])
 
-    ;; Title
     (let ([title "Replacement complete"]
           [title-y start-y])
       (frame-set-string! frame
@@ -444,33 +443,27 @@
                          title
                          text-style))
 
-    ;; Stats
-    (let* ([success-text (string-append "Successful replacements (lines): "
-                                        (int->string num-successes))]
-           [ignored-text (string-append "Ignored (lines): " (int->string num-ignored))]
-           [errors-text (string-append "Errors: " (int->string num-errors))]
+    (let* ([stats-lines (list (list "Successful replacements (lines):" (int->string num-successes))
+                              (list "Ignored (lines):" (int->string num-ignored))
+                              (list "Errors:" (int->string num-errors)))]
+           [label-col-width (+ 1 (apply max (map (lambda (line) (string-length (car line))) stats-lines)))]
+           [table-width (+ label-col-width
+                           (apply max (map (lambda (line) (string-length (cadr line))) stats-lines)))]
+           [table-start-x (+ (area-x content-area)
+                             (quotient (- (area-width content-area) table-width) 2))]
            [stats-y (+ start-y 3)])
 
-      (frame-set-string! frame
-                         (+ (area-x content-area)
-                            (quotient (- (area-width content-area) (string-length success-text)) 2))
-                         stats-y
-                         success-text
-                         text-style)
-
-      (frame-set-string! frame
-                         (+ (area-x content-area)
-                            (quotient (- (area-width content-area) (string-length ignored-text)) 2))
-                         (+ stats-y 1)
-                         ignored-text
-                         text-style)
-
-      (frame-set-string! frame
-                         (+ (area-x content-area)
-                            (quotient (- (area-width content-area) (string-length errors-text)) 2))
-                         (+ stats-y 2)
-                         errors-text
-                         text-style))))
+      (let loop ([lines stats-lines]
+                 [y stats-y])
+        (when (not (null? lines))
+          (let* ([line (car lines)]
+                 [label (car line)]
+                 [value (cadr line)]
+                 [padded-label (string-append label
+                                              (make-string (- label-col-width (string-length label))
+                                                           #\space))])
+            (frame-set-string! frame table-start-x y (string-append padded-label value) text-style)
+            (loop (cdr lines) (+ y 1))))))))
 
 (define (get-keybinding-help mode)
   (cond
