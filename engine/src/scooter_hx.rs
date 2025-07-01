@@ -71,6 +71,7 @@ pub(crate) struct SteelSearchResult {
     pub(crate) line: String,
     pub(crate) replacement: String,
     pub(crate) replace_result: Option<ReplaceResult>,
+    pub(crate) included: bool,
 }
 
 impl SteelSearchResult {
@@ -98,6 +99,10 @@ impl SteelSearchResult {
                 ]]]
             }
         }
+    }
+
+    pub(crate) fn included(&self) -> bool {
+        self.included
     }
 
     fn try_build_preview(
@@ -309,6 +314,7 @@ impl ScooterHx {
                 line: s.line.clone(),
                 replacement: s.replacement.clone(),
                 replace_result: s.replace_result.clone(),
+                included: s.included,
             })
             .collect()
     }

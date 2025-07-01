@@ -69,6 +69,10 @@ fn create_module() -> FFIModule {
             scooter_hx::SteelSearchResult::line_num,
         )
         .register_fn(
+            "SteelSearchResult-included",
+            scooter_hx::SteelSearchResult::included,
+        )
+        .register_fn(
             "SteelSearchResult-build-preview",
             scooter_hx::SteelSearchResult::build_preview,
         );

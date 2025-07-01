@@ -8,10 +8,12 @@
                           Scooter-search-complete?
                           Scooter-search-result-count
                           Scooter-search-results-window
+                          Scooter-toggle-inclusion
                           SteelSearchResult-display-path
                           SteelSearchResult-line-num
                           SteelSearchResult-line
                           SteelSearchResult-replacement
+                          SteelSearchResult-included
                           SteelSearchResult-build-preview))
 
 (require "utils.scm")
@@ -220,19 +222,20 @@
     (apply render-styled-segments args)))
 
 (define (format-search-result result is-selected styles)
-  (let ([prefix (if is-selected " > " "   ")]
-        [prefix-style (if is-selected
-                          (UIStyles-selection styles)
-                          (UIStyles-text styles))])
+  (let* ([prefix (if is-selected " > " "   ")]
+         [checkbox (if (SteelSearchResult-included result) "[x]" "[ ]")]
+         [prefix-style (if is-selected
+                           (UIStyles-selection styles)
+                           (UIStyles-text styles))]
+         [checkbox-style (UIStyles-info styles)]
+         [text-style (if is-selected
+                         (UIStyles-selection styles)
+                         (UIStyles-text styles))])
     (list (cons prefix prefix-style)
-          (cons (SteelSearchResult-display-path result)
-                (if is-selected
-                    (UIStyles-selection styles)
-                    (UIStyles-text styles)))
-          (cons ":"
-                (if is-selected
-                    (UIStyles-selection styles)
-                    (UIStyles-text styles)))
+          (cons checkbox checkbox-style)
+          (cons " " text-style)
+          (cons (SteelSearchResult-display-path result) text-style)
+          (cons ":" text-style)
           (cons (int->string (SteelSearchResult-line-num result))
                 (if is-selected
                     (UIStyles-selection styles)
@@ -400,7 +403,7 @@
 (define (get-keybinding-help mode)
   (cond
     [(equal? mode 'search-fields) "<tab> next field | <space> toggle | <enter> search | <esc> cancel"]
-    [(equal? mode 'search-results) "<ctrl+o> back | <esc> cancel"]
+    [(equal? mode 'search-results) "<space> toggle | <ctrl+o> back | <esc> cancel"]
     [else ""]))
 
 (define (calculate-title-area window-area)
@@ -641,6 +644,12 @@
 (define (key-with-ctrl? event char)
   (and (key-matches-char? event char) (equal? (key-event-modifier event) key-modifier-ctrl)))
 
+(define (toggle-search-result-inclusion state)
+  (let ([selected-index (get-selected-index state)]
+        [engine (get-engine state)])
+    (Scooter-toggle-inclusion engine selected-index)
+    (update-visible-results state)))
+
 (define (handle-search-results-mode-event state event)
   (cond
     [(key-with-ctrl? event #\o) (cancel-search-and-return-to-fields state)]
@@ -651,7 +660,8 @@
     [(key-event-page-up? event) (scroll-page state -1)]
     [(key-event-page-down? event) (scroll-page state 1)]
     [(key-matches-char? event #\g) (jump-to-top state)]
-    [(key-matches-char? event #\G) (jump-to-bottom state)])
+    [(key-matches-char? event #\G) (jump-to-bottom state)]
+    [(key-matches-char? event #\space) (toggle-search-result-inclusion state)])
   event-result/consume)
 
 (define (scooter-event-handler state event)
