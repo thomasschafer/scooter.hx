@@ -30,6 +30,20 @@ pub(crate) struct ReplacementStats {
     pub(crate) errors: Vec<SearchResult>,
 }
 
+impl ReplacementStats {
+    pub(crate) fn num_successes(&self) -> usize {
+        self.num_successes
+    }
+
+    pub(crate) fn num_ignored(&self) -> usize {
+        self.num_ignored
+    }
+
+    pub(crate) fn num_errors(&self) -> usize {
+        self.errors.len()
+    }
+}
+
 pub(crate) enum State {
     NotStarted,
     SearchInProgress {
@@ -373,12 +387,7 @@ impl ScooterHx {
                     },
                 )
             }
-            res => {
-                panic!(
-                    "Called replace on {name}, expected SearchComplete",
-                    name = res.name()
-                )
-            }
+            _ => return,
         };
         drop(state);
 
@@ -433,7 +442,7 @@ impl ScooterHx {
         match &mut *state {
             State::ReplacementComplete(stats) => stats.clone(),
             res => panic!(
-                "Called replace on {name}, expected ReplacementComplete",
+                "Called replacement_stats on {name}, expected ReplacementComplete",
                 name = res.name()
             ),
         }

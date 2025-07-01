@@ -10,6 +10,14 @@
                           Scooter-search-results-window
                           Scooter-toggle-inclusion
                           Scooter-toggle-all
+                          Scooter-start-replace
+                          Scooter-num-replacements-complete
+                          Scooter-replacement-complete?
+                          Scooter-replacement-stats
+                          Scooter-cancel-replacement
+                          ReplacementStats-num-successes
+                          ReplacementStats-num-ignored
+                          ReplacementStats-num-errors
                           SteelSearchResult-display-path
                           SteelSearchResult-line-num
                           SteelSearchResult-line
@@ -34,17 +42,15 @@
 (define CONTENT-PADDING 2)
 (define SCROLL-MARGIN 2)
 (define STATUS-HEIGHT 2)
-(define GAP-HEIGHT 0)
 
 (struct ScooterWindow
-        (mode-box ; 'search-fields, 'search-results
+        (current-screen-box ; 'search-fields, 'search-results, 'performing-replacement, 'replacement-complete
          field-values-box
          cursor-positions-box
          current-field-box
          lines-box
          completed-box
          cursor-position
-         debug-events-box
          engine-box
          selected-index-box ; Index of currently selected result
          scroll-offset-box ; Offset for scrolling results
@@ -66,10 +72,10 @@
 (define-hash-accessors get-field-cursor-pos set-field-cursor-pos! ScooterWindow-cursor-positions-box)
 (define-hash-accessors get-field-errors set-field-errors! ScooterWindow-field-errors-box)
 
-(define (get-mode state)
-  (unbox (ScooterWindow-mode-box state)))
-(define (set-mode! state value)
-  (set-box! (ScooterWindow-mode-box state) value))
+(define (get-current-screen state)
+  (unbox (ScooterWindow-current-screen-box state)))
+(define (set-current-screen! state value)
+  (set-box! (ScooterWindow-current-screen-box state) value))
 
 (define (get-field-values state)
   (unbox (ScooterWindow-field-values-box state)))
@@ -130,14 +136,13 @@
   (or (hash-try-get (unbox (ScooterWindow-field-errors-box state)) field-id) '()))
 
 (define (create-scooter-window directory)
-  (ScooterWindow (box 'search-fields) ; mode-box
+  (ScooterWindow (box 'search-fields) ; current-screen-box
                  (box (create-initial-field-values)) ; field-values-box
                  (box (create-initial-cursor-positions)) ; cursor-positions-box
                  (box 'search) ; current-field-box
                  (box (SearchData 0 #f '() 0)) ; lines-box - initialize with empty SearchData
                  (box #f) ; completed-box
                  (position 0 0) ; cursor-position
-                 (box '()) ; debug-events-box
                  (box (Scooter-new directory #f)) ; engine-box
                  (box 0) ; selected-index-box
                  (box 0) ; scroll-offset-box
@@ -192,7 +197,9 @@
       (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
 
 (define (render-styled-segments frame x y segments max-width . fill-style)
-  (let ([fill-style (if (null? fill-style) #f (car fill-style))])
+  (let ([fill-style (if (null? fill-style)
+                        #f
+                        (car fill-style))])
     (let loop ([segments segments]
                [current-x x]
                [remaining-width max-width]
@@ -215,11 +222,16 @@
         [(> remaining-width 0)
          (let ([style-to-use (or fill-style last-style)])
            (when style-to-use
-             (frame-set-string! frame current-x y (make-space-string remaining-width) style-to-use)))]))))
+             (frame-set-string! frame
+                                current-x
+                                y
+                                (make-space-string remaining-width)
+                                style-to-use)))]))))
 
 ;; Render styled segments within a given area at a specific row
 (define (render-styled-segments-in-area frame area row segments . fill-style)
-  (let ([args (append (list frame (area-x area) (+ (area-y area) row) segments (area-width area)) fill-style)])
+  (let ([args (append (list frame (area-x area) (+ (area-y area) row) segments (area-width area))
+                      fill-style)])
     (apply render-styled-segments args)))
 
 (define (format-search-result result is-selected styles)
@@ -401,10 +413,72 @@
            [truncated-error (truncate-string error-text (area-width error-area))])
       (frame-set-string! frame (area-x error-area) (area-y error-area) truncated-error error-style))))
 
+(define (draw-performing-replacement frame content-area state)
+  (let* ([engine (get-engine state)]
+         [num-completed (Scooter-num-replacements-complete engine)]
+         [status-text
+          (string-append "Performing replacement... " (int->string num-completed) " completed")]
+         [text-style (UIStyles-text (ui-styles))]
+         [y-pos (+ (area-y content-area) (quotient (area-height content-area) 2))]
+         [x-pos (+ (area-x content-area)
+                   (quotient (- (area-width content-area) (string-length status-text)) 2))])
+    (frame-set-string! frame x-pos y-pos status-text text-style)))
+
+(define (draw-replacement-complete frame content-area state)
+  (let* ([engine (get-engine state)]
+         [stats (Scooter-replacement-stats engine)]
+         [num-successes (ReplacementStats-num-successes stats)]
+         [num-ignored (ReplacementStats-num-ignored stats)]
+         [num-errors (ReplacementStats-num-errors stats)]
+         [text-style (UIStyles-text (ui-styles))]
+         [start-y (+ (area-y content-area) (quotient (area-height content-area) 3))]
+         [center-x (+ (area-x content-area) (quotient (area-width content-area) 2))])
+
+    ;; Title
+    (let ([title "Replacement complete"]
+          [title-y start-y])
+      (frame-set-string! frame
+                         (+ (area-x content-area)
+                            (quotient (- (area-width content-area) (string-length title)) 2))
+                         title-y
+                         title
+                         text-style))
+
+    ;; Stats
+    (let* ([success-text (string-append "Successful replacements (lines): "
+                                        (int->string num-successes))]
+           [ignored-text (string-append "Ignored (lines): " (int->string num-ignored))]
+           [errors-text (string-append "Errors: " (int->string num-errors))]
+           [stats-y (+ start-y 3)])
+
+      (frame-set-string! frame
+                         (+ (area-x content-area)
+                            (quotient (- (area-width content-area) (string-length success-text)) 2))
+                         stats-y
+                         success-text
+                         text-style)
+
+      (frame-set-string! frame
+                         (+ (area-x content-area)
+                            (quotient (- (area-width content-area) (string-length ignored-text)) 2))
+                         (+ stats-y 1)
+                         ignored-text
+                         text-style)
+
+      (frame-set-string! frame
+                         (+ (area-x content-area)
+                            (quotient (- (area-width content-area) (string-length errors-text)) 2))
+                         (+ stats-y 2)
+                         errors-text
+                         text-style))))
+
 (define (get-keybinding-help mode)
   (cond
     [(equal? mode 'search-fields) "<tab> next field | <space> toggle | <enter> search | <esc> cancel"]
-    [(equal? mode 'search-results) "<space> toggle | <a> toggle all | <ctrl+o> back | <esc> cancel"]
+    [(equal? mode 'search-results)
+     "<space> toggle | <a> toggle all | <enter> replace | <ctrl+o> back | <esc> cancel"]
+    [(equal? mode 'performing-replacement) "<esc> cancel replacement"]
+    [(equal? mode 'replacement-complete) "<esc> close"]
     [else ""]))
 
 (define (calculate-title-area window-area)
@@ -434,7 +508,7 @@
 (define (scooter-render state rect frame)
   (let* ([window-area (calculate-window-area rect)]
          [content-area (calculate-content-area window-area)]
-         [mode (get-mode state)]
+         [mode (get-current-screen state)]
          [search-term (get-field-value state 'search)]
          [current-field (get-current-field state)]
          [title " Scooter "]
@@ -485,7 +559,11 @@
                                         (area-width content-area)))]
 
       [(equal? mode 'search-results)
-       (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))])
+       (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))]
+
+      [(equal? mode 'performing-replacement) (draw-performing-replacement frame content-area state)]
+
+      [(equal? mode 'replacement-complete) (draw-replacement-complete frame content-area state)])
 
     (let ([help-area (calculate-keybinding-help-area content-area)])
       (draw-keybinding-help frame help-area mode))))
@@ -656,6 +734,25 @@
     (Scooter-toggle-all engine)
     (update-visible-results state)))
 
+(define (start-replacement state)
+  (let ([engine (get-engine state)])
+    (Scooter-start-replace engine)
+    (set-current-screen! state 'performing-replacement)
+    (poll-replacement-progress state)))
+
+(define (handle-performing-replacement-event state event)
+  (cond
+    [(key-event-escape? event)
+     (let ([engine (get-engine state)])
+       (Scooter-cancel-replacement engine)
+       event-result/close)])
+  event-result/consume)
+
+(define (handle-replacement-complete-event state event)
+  (cond
+    [(key-event-enter? event) event-result/close]
+    [else event-result/consume]))
+
 (define (handle-search-results-mode-event state event)
   (cond
     [(key-with-ctrl? event #\o) (cancel-search-and-return-to-fields state)]
@@ -668,19 +765,30 @@
     [(key-matches-char? event #\g) (jump-to-top state)]
     [(key-matches-char? event #\G) (jump-to-bottom state)]
     [(key-matches-char? event #\space) (toggle-search-result-inclusion state)]
-    [(key-matches-char? event #\a) (toggle-all-search-results state)])
+    [(key-matches-char? event #\a) (toggle-all-search-results state)]
+    [(key-event-enter? event)
+     (let ([engine (get-engine state)])
+       (if (Scooter-search-complete? engine)
+           (start-replacement state)
+           event-result/consume))])
   event-result/consume)
 
 (define (scooter-event-handler state event)
-  (let ([mode (get-mode state)])
+  (let ([mode (get-current-screen state)])
     (cond
-      [(key-event-escape? event) event-result/close]
+      [(key-event-escape? event)
+       (let ([engine (get-engine state)])
+         (Scooter-cancel-search engine)
+         (Scooter-cancel-replacement engine)
+         event-result/close)]
       [(equal? mode 'search-fields) (handle-search-fields-mode-event state event)]
       [(equal? mode 'search-results) (handle-search-results-mode-event state event)]
+      [(equal? mode 'performing-replacement) (handle-performing-replacement-event state event)]
+      [(equal? mode 'replacement-complete) (handle-replacement-complete-event state event)]
       [else event-result/consume])))
 
 (define (scooter-cursor-handler state _)
-  (and (equal? (get-mode state) 'search-fields)
+  (and (equal? (get-current-screen state) 'search-fields)
        (field-is-text? (get-current-field state))
        (ScooterWindow-cursor-position state)))
 
@@ -691,7 +799,7 @@
 (define (cancel-search-and-return-to-fields state)
   (let ([engine (get-engine state)])
     (Scooter-cancel-search engine)
-    (set-mode! state 'search-fields)
+    (set-current-screen! state 'search-fields)
     (clear-all-errors! state)))
 
 (define (execute-search-process! state)
@@ -715,7 +823,7 @@
 
     (if (hash-ref response "success")
         (begin
-          (set-mode! state 'search-results)
+          (set-current-screen! state 'search-results)
           (set-lines! state (SearchData 0 #f '() 0))
           (set-completed! state #f)
           (set-selected-index! state 0)
@@ -753,6 +861,17 @@
   (if (> result-count 0)
       (Scooter-search-results-window engine 0 (max 0 (- result-count 1)))
       '()))
+
+(define (poll-replacement-progress state)
+  (let ([engine (get-engine state)])
+    (enqueue-thread-local-callback
+     (lambda ()
+       (let ([is-complete (Scooter-replacement-complete? engine)])
+         (cond
+           [is-complete (set-current-screen! state 'replacement-complete)]
+           ;; Only continue polling if still on replacement screen
+           [(equal? (get-current-screen state) 'performing-replacement)
+            (enqueue-thread-local-callback (lambda () (poll-replacement-progress state)))]))))))
 
 (define (poll-search-results state)
   (let ([engine (get-engine state)])

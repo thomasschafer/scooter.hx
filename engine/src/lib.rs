@@ -76,6 +76,18 @@ fn create_module() -> FFIModule {
         .register_fn(
             "SteelSearchResult-build-preview",
             scooter_hx::SteelSearchResult::build_preview,
+        )
+        .register_fn(
+            "ReplacementStats-num-successes",
+            scooter_hx::ReplacementStats::num_successes,
+        )
+        .register_fn(
+            "ReplacementStats-num-ignored",
+            scooter_hx::ReplacementStats::num_ignored,
+        )
+        .register_fn(
+            "ReplacementStats-num-errors",
+            scooter_hx::ReplacementStats::num_errors,
         );
 
     module
