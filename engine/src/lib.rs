@@ -40,6 +40,7 @@ fn create_module() -> FFIModule {
             "Scooter-toggle-inclusion",
             scooter_hx::ScooterHx::toggle_inclusion,
         )
+        .register_fn("Scooter-toggle-all", scooter_hx::ScooterHx::toggle_all)
         .register_fn(
             "Scooter-start-replace",
             scooter_hx::ScooterHx::start_replace,

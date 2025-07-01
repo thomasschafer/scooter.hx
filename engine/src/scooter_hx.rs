@@ -339,6 +339,18 @@ impl ScooterHx {
         }
     }
 
+    pub(crate) fn toggle_all(&mut self) {
+        let mut state = self.state.lock().unwrap();
+        let search_results = match &mut *state {
+            State::SearchInProgress { results, .. } | State::SearchComplete(results) => results,
+            _ => return,
+        };
+        let all_included = search_results.iter().all(|res| res.included);
+        search_results
+            .iter_mut()
+            .for_each(|res| res.included = !all_included);
+    }
+
     pub(crate) fn start_replace(&mut self) {
         let cancelled = Arc::new(AtomicBool::new(false));
         let num_replacements_completed = Arc::new(AtomicUsize::new(0));

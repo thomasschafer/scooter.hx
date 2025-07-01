@@ -9,6 +9,7 @@
                           Scooter-search-result-count
                           Scooter-search-results-window
                           Scooter-toggle-inclusion
+                          Scooter-toggle-all
                           SteelSearchResult-display-path
                           SteelSearchResult-line-num
                           SteelSearchResult-line
@@ -403,7 +404,7 @@
 (define (get-keybinding-help mode)
   (cond
     [(equal? mode 'search-fields) "<tab> next field | <space> toggle | <enter> search | <esc> cancel"]
-    [(equal? mode 'search-results) "<space> toggle | <ctrl+o> back | <esc> cancel"]
+    [(equal? mode 'search-results) "<space> toggle | <a> toggle all | <ctrl+o> back | <esc> cancel"]
     [else ""]))
 
 (define (calculate-title-area window-area)
@@ -650,6 +651,11 @@
     (Scooter-toggle-inclusion engine selected-index)
     (update-visible-results state)))
 
+(define (toggle-all-search-results state)
+  (let ([engine (get-engine state)])
+    (Scooter-toggle-all engine)
+    (update-visible-results state)))
+
 (define (handle-search-results-mode-event state event)
   (cond
     [(key-with-ctrl? event #\o) (cancel-search-and-return-to-fields state)]
@@ -661,7 +667,8 @@
     [(key-event-page-down? event) (scroll-page state 1)]
     [(key-matches-char? event #\g) (jump-to-top state)]
     [(key-matches-char? event #\G) (jump-to-bottom state)]
-    [(key-matches-char? event #\space) (toggle-search-result-inclusion state)])
+    [(key-matches-char? event #\space) (toggle-search-result-inclusion state)]
+    [(key-matches-char? event #\a) (toggle-all-search-results state)])
   event-result/consume)
 
 (define (scooter-event-handler state event)
