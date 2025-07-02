@@ -316,15 +316,36 @@
 (define (calculate-status-area content-area)
   (area (area-x content-area) (area-y content-area) (area-width content-area) STATUS-HEIGHT))
 
+(define NARROW-WINDOW-THRESHOLD 110)
+(define VERTICAL-LIST-HEIGHT 5)
+(define VERTICAL-PREVIEW-PADDING 3)
+(define LIST-WIDTH-RATIO 2/5)
+
 (define (calculate-split-areas content-area)
-  (let* ([results-y (+ (area-y content-area) STATUS-HEIGHT)]
-         [results-height (- (area-height content-area) STATUS-HEIGHT)]
-         [list-width (quotient (area-width content-area) 2)]
-         [preview-x (+ (area-x content-area) list-width 1)]
-         [preview-width (- (area-width content-area) list-width 1)]
-         [list-area (area (area-x content-area) results-y list-width results-height)]
-         [preview-area (area preview-x results-y preview-width results-height)])
-    (values list-area preview-area)))
+  (let* ([content-x (area-x content-area)]
+         [content-y (area-y content-area)]
+         [total-width (area-width content-area)]
+         [total-height (area-height content-area)]
+         [results-y (+ content-y STATUS-HEIGHT)]
+         [results-height (- total-height STATUS-HEIGHT)]
+         [is-narrow? (< total-width NARROW-WINDOW-THRESHOLD)])
+
+    (if is-narrow?
+        ;; Vertical layout
+        (let* ([preview-y (+ results-y VERTICAL-LIST-HEIGHT 1)]
+               [preview-height (- results-height VERTICAL-LIST-HEIGHT 1)])
+          (values (area content-x results-y total-width VERTICAL-LIST-HEIGHT)
+                  (area (+ content-x VERTICAL-PREVIEW-PADDING)
+                        preview-y
+                        (- total-width (* VERTICAL-PREVIEW-PADDING 2))
+                        preview-height)))
+
+        ;; Horizontal layout
+        (let* ([list-width (exact (floor (* total-width LIST-WIDTH-RATIO)))]
+               [preview-x (+ content-x list-width 1)]
+               [preview-width (- total-width list-width 1)])
+          (values (area content-x results-y list-width results-height)
+                  (area preview-x results-y preview-width results-height))))))
 
 (define (draw-search-results frame content-area raw-data state)
 
