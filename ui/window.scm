@@ -316,9 +316,9 @@
 (define (calculate-status-area content-area)
   (area (area-x content-area) (area-y content-area) (area-width content-area) STATUS-HEIGHT))
 
-(define NARROW-WINDOW-THRESHOLD 110)
+(define NARROW-WINDOW-THRESHOLD 90)
 (define VERTICAL-LIST-HEIGHT 5)
-(define VERTICAL-PREVIEW-PADDING 3)
+(define VERTICAL-PREVIEW-PADDING 1)
 (define LIST-WIDTH-RATIO 2/5)
 
 (define (calculate-split-areas content-area)
@@ -347,31 +347,32 @@
           (values (area content-x results-y list-width results-height)
                   (area preview-x results-y preview-width results-height))))))
 
-(define (draw-search-results frame content-area raw-data state)
+(define (draw-search-results frame content-area initial-data state)
+  (call-with-values
+   (lambda () (calculate-split-areas content-area))
+   (lambda (results-list-area preview-area)
 
-  (let* ([styles (ui-styles)]
-         [result-style (UIStyles-text styles)]
-         [highlight-style (UIStyles-selection styles)]
-         [result-count (SearchData-result-count raw-data)]
-         [is-complete (SearchData-is-complete raw-data)]
-         [results (SearchData-results raw-data)]
-         [data-scroll-offset (SearchData-scroll-offset raw-data)]
-         [status-line (string-append "   "
-                                     "Results: "
-                                     (to-string result-count)
-                                     " ["
-                                     (if is-complete "Search complete" "Searching...")
-                                     "]")]
-         [selected-index (get-selected-index state)]
-         [scroll-offset (get-scroll-offset state)]
-         [status-area (calculate-status-area content-area)]
-         [results-count (length results)])
+     (set-content-height! state (area-height results-list-area))
+     (ensure-selection-visible state (area-height results-list-area))
 
-    (call-with-values
-     (lambda () (calculate-split-areas content-area))
-     (lambda (results-list-area preview-area)
-
-       (set-content-height! state (area-height results-list-area))
+     (let* ([raw-data (or (get-lines state) initial-data)]
+            [styles (ui-styles)]
+            [result-style (UIStyles-text styles)]
+            [highlight-style (UIStyles-selection styles)]
+            [result-count (SearchData-result-count raw-data)]
+            [is-complete (SearchData-is-complete raw-data)]
+            [results (SearchData-results raw-data)]
+            [data-scroll-offset (SearchData-scroll-offset raw-data)]
+            [status-line (string-append "   "
+                                        "Results: "
+                                        (to-string result-count)
+                                        " ["
+                                        (if is-complete "Search complete" "Searching...")
+                                        "]")]
+            [selected-index (get-selected-index state)]
+            [scroll-offset (get-scroll-offset state)]
+            [status-area (calculate-status-area content-area)]
+            [results-count (length results)])
 
        (buffer/clear frame content-area)
        (let ([bg-style (UIStyles-popup (ui-styles))])
@@ -664,60 +665,44 @@
 (define (get-search-data state)
   (let ([lines (get-lines state)]) (and (SearchData? lines) lines)))
 
-(define (calculate-fetch-window scroll-offset content-height result-count)
-  (let* ([fetch-start scroll-offset]
-         [fetch-end (min (max 0 (- result-count 1))
-                         (+ scroll-offset content-height RESULT-FETCH-BUFFER))])
-    (values fetch-start fetch-end)))
-
-(define (fetch-and-set-visible-results state engine result-count is-complete)
-  (let* ([scroll-offset (get-scroll-offset state)]
-         [content-height (get-content-height state)])
-    (call-with-values
-     (lambda () (calculate-fetch-window scroll-offset content-height result-count))
-     (lambda (fetch-start fetch-end)
-       (let ([results (if (and (>= result-count 0) (>= fetch-end fetch-start))
-                          (Scooter-search-results-window engine fetch-start fetch-end)
-                          '())])
-         (set-box! (ScooterWindow-lines-box state)
-                   (SearchData result-count is-complete results scroll-offset)))))))
-
-(define (update-visible-results state)
-  (let ([engine (get-engine state)]
-        [data (get-search-data state)])
-    (when data
-      (let ([result-count (SearchData-result-count data)]
-            [is-complete (SearchData-is-complete data)])
-        (fetch-and-set-visible-results state engine result-count is-complete)))))
-
-(define (adjust-scroll-for-selection state)
+(define (ensure-selection-visible state visible-height)
   (let ([data (get-search-data state)])
     (when data
       (let* ([result-count (SearchData-result-count data)]
              [selected-index (get-selected-index state)]
              [current-scroll (get-scroll-offset state)]
-             [results-height (get-content-height state)]
-             [visible-start current-scroll]
-             [visible-end (+ current-scroll results-height -1)]
+             [max-scroll (max 0 (- result-count visible-height))]
              [new-scroll current-scroll])
 
-        ;; Scroll down if selected is near or past the bottom
-        (when (> selected-index (- visible-end SCROLL-MARGIN))
-          (set! new-scroll
-                (max 0
-                     (min (- result-count results-height)
-                          (- selected-index results-height (- SCROLL-MARGIN))))))
+        ;; Adjust scroll to keep selection visible with margins (1 above, 2 below)
+        (when (< selected-index (+ current-scroll 1))
+          (set! new-scroll (max 0 (- selected-index 1))))
 
-        ;; Scroll up if selected is near or above the top
-        (when (< selected-index (+ visible-start SCROLL-MARGIN))
-          (set! new-scroll (max 0 (- selected-index SCROLL-MARGIN))))
+        (when (or (> selected-index (- (+ current-scroll visible-height) 2))
+                  (> (+ current-scroll visible-height) result-count))
+          (set! new-scroll (min max-scroll (max 0 (- (+ selected-index 2) visible-height)))))
 
-        (when (not (= new-scroll current-scroll))
-          (set-scroll-offset! state new-scroll)
-          ;; Re-fetch results for new scroll position
-          (update-visible-results state))))))
+        ;; Update scroll and fetch new results window
+        (set-scroll-offset! state new-scroll)
+        (fetch-results-window state)))))
 
-;; Navigate by a specific amount (positive = down, negative = up)
+;; Fetch and set the current results window based on scroll offset and visible height
+(define (fetch-results-window state)
+  (let* ([engine (get-engine state)]
+         [data (get-search-data state)])
+    (when data
+      (let* ([result-count (SearchData-result-count data)]
+             [is-complete (SearchData-is-complete data)]
+             [scroll-offset (get-scroll-offset state)]
+             [visible-height (get-content-height state)]
+             [fetch-start scroll-offset]
+             [fetch-end (min (- result-count 1) (+ scroll-offset visible-height RESULT-FETCH-BUFFER))]
+             [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
+                          (Scooter-search-results-window engine fetch-start fetch-end)
+                          '())])
+        (set-box! (ScooterWindow-lines-box state)
+                  (SearchData result-count is-complete results scroll-offset))))))
+
 (define (navigate-by-amount state amount)
   (let ([data (get-search-data state)])
     (when data
@@ -726,29 +711,19 @@
              [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
         (when (> result-count 0)
           (set-selected-index! state new-selected)
-          (adjust-scroll-for-selection state))))))
-
-;; Jump to specific position
-(define (jump-to-position state index scroll-offset)
-  (let ([data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)])
-        (when (> result-count 0)
-          (set-selected-index! state (max 0 (min (- result-count 1) index)))
-          (set-scroll-offset! state scroll-offset)
-          (update-visible-results state))))))
+          (ensure-selection-visible state (get-content-height state)))))))
 
 (define (jump-to-top state)
-  (jump-to-position state 0 0))
+  (set-selected-index! state 0)
+  (fetch-results-window state))
 
 (define (jump-to-bottom state)
   (let ([data (get-search-data state)])
     (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [results-height (get-content-height state)]
-             [last-index (- result-count 1)]
-             [optimal-scroll (max 0 (- result-count results-height))])
-        (jump-to-position state last-index optimal-scroll)))))
+      (let ([result-count (SearchData-result-count data)])
+        (when (> result-count 0)
+          (set-selected-index! state (- result-count 1))
+          (ensure-selection-visible state (get-content-height state)))))))
 
 (define (scroll-page state direction)
   (let ([results-height (get-content-height state)])
@@ -771,12 +746,12 @@
   (let ([selected-index (get-selected-index state)]
         [engine (get-engine state)])
     (Scooter-toggle-inclusion engine selected-index)
-    (update-visible-results state)))
+    (fetch-results-window state)))
 
 (define (toggle-all-search-results state)
   (let ([engine (get-engine state)])
     (Scooter-toggle-all engine)
-    (update-visible-results state)))
+    (fetch-results-window state)))
 
 (define (start-replacement state)
   (let ([engine (get-engine state)])
@@ -927,7 +902,9 @@
        (let ([result-count (Scooter-search-result-count engine)]
              [is-complete (Scooter-search-complete? engine)])
 
-         (fetch-and-set-visible-results state engine result-count is-complete)
+         (set-box! (ScooterWindow-lines-box state)
+                   (SearchData result-count is-complete '() (get-scroll-offset state)))
+         (fetch-results-window state)
 
          (cond
            [is-complete (set-box! (ScooterWindow-completed-box state) #t)]

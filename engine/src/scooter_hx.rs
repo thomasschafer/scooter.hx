@@ -155,7 +155,7 @@ impl SteelSearchResult {
 
 fn str_to_vec(line: &str) -> Vec<Vec<String>> {
     vec![vec![
-        strip_control_chars(line),
+        format!("  {}", strip_control_chars(line)), // Add 2 spaces to align with diff prefixes
         "".to_string(),
         "".to_string(),
     ]]
