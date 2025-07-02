@@ -3,6 +3,7 @@
 
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-new
+                          Scooter-reset
                           Scooter-start-search
                           Scooter-cancel-search
                           Scooter-search-complete?
@@ -123,6 +124,24 @@
 (define (clear-all-errors! state)
   (clear-all-field-errors! state)
   (clear-general-error! state))
+
+(define (reset-scooter-state! state)
+  ;; Cancel any ongoing operations
+  (let ([engine (get-engine state)])
+    (Scooter-cancel-search engine)
+    (Scooter-cancel-replacement engine)
+    (Scooter-reset engine))
+
+  ;; Reset all state to initial values
+  (set-current-screen! state 'search-fields)
+  (set-box! (ScooterWindow-field-values-box state) (create-initial-field-values))
+  (set-box! (ScooterWindow-cursor-positions-box state) (create-initial-cursor-positions))
+  (set-current-field! state 'search)
+  (set-box! (ScooterWindow-lines-box state) (SearchData 0 #f '() 0))
+  (set-box! (ScooterWindow-completed-box state) #f)
+  (set-selected-index! state 0)
+  (set-scroll-offset! state 0)
+  (clear-all-errors! state))
 
 (define (clear-all-field-errors! state)
   (set-box! (ScooterWindow-field-errors-box state) (hash)))
@@ -446,7 +465,8 @@
     (let* ([stats-lines (list (list "Successful replacements (lines):" (int->string num-successes))
                               (list "Ignored (lines):" (int->string num-ignored))
                               (list "Errors:" (int->string num-errors)))]
-           [label-col-width (+ 1 (apply max (map (lambda (line) (string-length (car line))) stats-lines)))]
+           [label-col-width
+            (+ 1 (apply max (map (lambda (line) (string-length (car line))) stats-lines)))]
            [table-width (+ label-col-width
                            (apply max (map (lambda (line) (string-length (cadr line))) stats-lines)))]
            [table-start-x (+ (area-x content-area)
@@ -465,14 +485,24 @@
             (frame-set-string! frame table-start-x y (string-append padded-label value) text-style)
             (loop (cdr lines) (+ y 1))))))))
 
+(define (format-keybinding key action)
+  (string-append "<" key "> " action))
+
 (define (get-keybinding-help mode)
-  (cond
-    [(equal? mode 'search-fields) "<tab> next field | <space> toggle | <enter> search | <esc> cancel"]
-    [(equal? mode 'search-results)
-     "<space> toggle | <a> toggle all | <enter> replace | <ctrl+o> back | <esc> cancel"]
-    [(equal? mode 'performing-replacement) "<esc> cancel replacement"]
-    [(equal? mode 'replacement-complete) "<esc> close"]
-    [else ""]))
+  (let* ([common-bindings '(("ctrl+r" "reset") ("esc" "quit"))]
+         [mode-specific-bindings
+          (cond
+            [(equal? mode 'search-fields)
+             '(("enter" "search") ("tab" "next field") ("space" "toggle"))]
+            [(equal? mode 'search-results)
+             '(("enter" "replace") ("space" "toggle") ("a" "toggle all") ("ctrl+o" "back"))]
+            [(equal? mode 'performing-replacement) '()]
+            [(equal? mode 'replacement-complete) '()]
+            [else '()])]
+         [all-bindings (append mode-specific-bindings common-bindings)]
+         [formatted-bindings (map (lambda (binding) (format-keybinding (car binding) (cadr binding)))
+                                  all-bindings)])
+    (string-join formatted-bindings " / ")))
 
 (define (calculate-title-area window-area)
   (area (+ (area-x window-area) 2) (area-y window-area) (- (area-width window-area) 4) 1))
@@ -774,6 +804,9 @@
          (Scooter-cancel-search engine)
          (Scooter-cancel-replacement engine)
          event-result/close)]
+      [(key-with-ctrl? event #\r)
+       (reset-scooter-state! state)
+       event-result/consume]
       [(equal? mode 'search-fields) (handle-search-fields-mode-event state event)]
       [(equal? mode 'search-results) (handle-search-results-mode-event state event)]
       [(equal? mode 'performing-replacement) (handle-performing-replacement-event state event)]
