@@ -135,7 +135,9 @@ impl SteelSearchResult {
 
         let (before, cur, after) = split_indexed_lines(lines, line_idx, screen_height - 1)
             .map_err(|e| format!("line split error: {}", e))?;
-        assert_eq!(&cur.1, &self.line);
+        if cur.1 != self.line {
+            return Err("File content has changed".into());
+        }
 
         let (before_segments, after_segments) = line_diff(&self.line, &self.replacement);
 
