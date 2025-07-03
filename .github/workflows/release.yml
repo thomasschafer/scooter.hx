@@ -61,6 +61,7 @@ jobs:
           fi
 
       - name: Create release
+        if: steps.check-version.outputs.exists == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -125,6 +126,7 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         key: v1-${{ matrix.target }}
+        workspaces: engine
 
     - name: Build library
       uses: clechasseur/rs-cargo@v2
