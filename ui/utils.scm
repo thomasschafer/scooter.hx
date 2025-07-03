@@ -2,16 +2,16 @@
          take-right
          drop
          take-n
-         index-of)
+         index-of
+         truncate-str-with-ellipsis
+         char-width
+         char-width-sum)
 
 (define (truncate-string str max-width)
-  (let ([str-len (string-length str)])
-    (cond
-      [(<= max-width 0) str]
-      [(<= str-len max-width) str]
-      [else
-       (let ([chars (string->list str)])
-         (list->string (take-n chars max-width)))])))
+  (cond
+    [(<= max-width 0) str]
+    [(<= (char-width str) max-width) str]
+    [else (let ([chars (string->list str)]) (list->string (take-n chars max-width)))]))
 
 (define (take-right lst n)
   (define len (length lst))
@@ -36,3 +36,20 @@
       [(null? lst) #f]
       [(equal? (car lst) elem) idx]
       [else (loop (cdr lst) (+ idx 1))])))
+
+(define (truncate-str-with-ellipsis str max-width)
+  (let* ([str-chars (string->list str)]
+         [str-len (length str-chars)])
+    (if (<= str-len max-width)
+        str
+        (let* ([ellipsis "…"]
+               [available-width (- max-width (char-width ellipsis))])
+          (if (<= available-width 0)
+              ellipsis
+              (string-append ellipsis (list->string (take-right str-chars available-width))))))))
+
+(define (char-width str)
+  (length (string->list str)))
+
+(define (char-width-sum string-list)
+  (apply + (map char-width string-list)))

@@ -285,9 +285,12 @@
                      (create-segment-style fg-color bg-color)))))
        line-segments))
 
-(define (format-search-result result is-selected styles)
+(define (format-search-result result is-selected styles available-width)
   (let* ([prefix (if is-selected " > " "   ")]
          [checkbox (if (SteelSearchResult-included result) "[x]" "[ ]")]
+         [line-num-str (int->string (SteelSearchResult-line-num result))]
+         [raw-path (SteelSearchResult-display-path result)]
+
          [prefix-style (if is-selected
                            (UIStyles-selection styles)
                            (UIStyles-text styles))]
@@ -297,16 +300,22 @@
                               (UIStyles-text styles))]
          [text-style (if (SteelSearchResult-included result)
                          (style-with-bold base-text-style)
-                         base-text-style)])
+                         base-text-style)]
+         [line-num-style (if is-selected
+                             (UIStyles-selection styles)
+                             (UIStyles-line-num styles))]
+
+         [fixed-elements (list prefix checkbox " " ":" line-num-str)]
+         [fixed-overhead (char-width-sum fixed-elements)]
+         [max-path-width (max 10 (- available-width fixed-overhead))]
+         [truncated-path (truncate-str-with-ellipsis raw-path max-path-width)])
+
     (list (cons prefix prefix-style)
           (cons checkbox checkbox-style)
           (cons " " text-style)
-          (cons (SteelSearchResult-display-path result) text-style)
+          (cons truncated-path text-style)
           (cons ":" text-style)
-          (cons (int->string (SteelSearchResult-line-num result))
-                (if is-selected
-                    (UIStyles-selection styles)
-                    (UIStyles-line-num styles))))))
+          (cons line-num-str line-num-style))))
 
 (define (draw-file-preview frame preview-area result)
   (let* ([screen-height (area-height preview-area)]
@@ -331,7 +340,7 @@
       (when (and (not (null? lines)) (< row screen-height))
         (let* ([line-segments (car lines)]
                [styled-segments (preview-line-to-styled-segments line-segments)])
-          (render-styled-segments-in-area frame preview-area row styled-segments)
+          (render-styled-segments-in-area frame preview-area row styled-segments bg-style)
           (loop (cdr lines) (+ row 1)))))))
 
 (define (draw-search-results frame content-area initial-data state)
@@ -372,7 +381,6 @@
                                 bg-style)
              (loop (+ row 1)))))
 
-       ;; Draw status line in status area
        (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
          (frame-set-string! frame
                             (area-x status-area)
@@ -388,8 +396,17 @@
              (let* ([result (list-ref results index)]
                     [absolute-index (+ index data-scroll-offset)]
                     [is-selected (= absolute-index selected-index)]
-                    [styled-segments (format-search-result result is-selected styles)])
-               (render-styled-segments-in-area frame results-list-area current-row styled-segments))
+                    [styled-segments
+                     (format-search-result result is-selected styles (area-width results-list-area))]
+                    [render-width
+                     (if is-selected
+                         (area-width results-list-area)
+                         (apply + (map (lambda (seg) (char-width (car seg))) styled-segments)))])
+               (render-styled-segments frame
+                                       (area-x results-list-area)
+                                       (+ (area-y results-list-area) current-row)
+                                       styled-segments
+                                       render-width))
              (loop (+ index 1) (+ current-row 1)))))
 
        ;; Draw preview for selected result
@@ -700,7 +717,7 @@
 
 (define (handle-enter-key state)
   (let ([search-term (get-field-value state 'search)])
-    (if (> (string-length search-term) 0)
+    (if (> (char-width search-term) 0)
         (start-scooter-search state)
         (set-field-errors! state 'search '("Search text is required")))))
 

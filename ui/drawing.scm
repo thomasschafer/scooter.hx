@@ -187,13 +187,15 @@
          (let* ([segment (car segments)]
                 [text (car segment)]
                 [style (cdr segment)]
-                [truncated-text (if (> (string-length text) remaining-width)
+                [text-char-len (char-width text)]
+                [truncated-text (if (> text-char-len remaining-width)
                                     (truncate-string text remaining-width)
-                                    text)])
+                                    text)]
+                [truncated-char-len (char-width truncated-text)])
            (frame-set-string! frame current-x y truncated-text style)
            (loop (cdr segments)
-                 (+ current-x (string-length truncated-text))
-                 (- remaining-width (string-length truncated-text))
+                 (+ current-x truncated-char-len)
+                 (- remaining-width truncated-char-len)
                  style))]
 
         [(> remaining-width 0)
@@ -242,7 +244,7 @@
         ;; Vertical layout
         (let* ([preview-y (+ results-y VERTICAL-LIST-HEIGHT 1)]
                [preview-height (- results-height VERTICAL-LIST-HEIGHT 1)])
-          (values (area content-x results-y total-width VERTICAL-LIST-HEIGHT)
+          (values (area content-x results-y (- total-width 1) VERTICAL-LIST-HEIGHT)
                   (area (+ content-x VERTICAL-PREVIEW-PADDING)
                         preview-y
                         (- total-width (* VERTICAL-PREVIEW-PADDING 2))
