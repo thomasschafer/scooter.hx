@@ -88,6 +88,14 @@ fn create_module() -> FFIModule {
         .register_fn(
             "ReplacementStats-num-errors",
             scooter_hx::ReplacementStats::num_errors,
+        )
+        .register_fn(
+            "Scooter-replacement-errors",
+            scooter_hx::ScooterHx::replacement_errors,
+        )
+        .register_fn(
+            "SteelSearchResult-display-error",
+            scooter_hx::SteelSearchResult::display_error,
         );
 
     module

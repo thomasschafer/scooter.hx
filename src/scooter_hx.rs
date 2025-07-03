@@ -27,7 +27,7 @@ use crate::validation::{
 pub(crate) struct ReplacementStats {
     pub(crate) num_successes: usize,
     pub(crate) num_ignored: usize,
-    pub(crate) errors: Vec<SearchResult>,
+    pub(crate) errors: Vec<SteelSearchResult>,
 }
 
 impl ReplacementStats {
@@ -119,6 +119,20 @@ impl SteelSearchResult {
         self.included
     }
 
+    pub(crate) fn display_error(&self) -> Vec<String> {
+        let error = match &self.replace_result {
+            Some(ReplaceResult::Error(error)) => error,
+            None => panic!("Found error result with no error message"),
+            Some(ReplaceResult::Success) => {
+                panic!("Found successful result in errors: {:?}", self)
+            }
+        };
+
+        let path_display = format!("{}:{}", self.display_path, self.line_num);
+
+        vec![path_display, error.to_string()]
+    }
+
     fn try_build_preview(
         &self,
         screen_height: usize,
@@ -152,6 +166,18 @@ impl SteelSearchResult {
             .collect();
 
         Ok(preview_lines)
+    }
+
+    fn from_search_result(s: &SearchResult, directory: &Path) -> Self {
+        Self {
+            display_path: relative_path_from(directory, &s.path),
+            full_path: s.path.to_string_lossy().to_string(),
+            line_num: s.line_number,
+            line: s.line.clone(),
+            replacement: s.replacement.clone(),
+            replace_result: s.replace_result.clone(),
+            included: s.included,
+        }
     }
 }
 
@@ -395,6 +421,7 @@ impl ScooterHx {
 
         let state_clone = self.state.clone();
 
+        let directory = self.directory.clone();
         thread::spawn(move || {
             let mut replacement_results = vec![];
             while let Ok(res) = rx.recv() {
@@ -410,7 +437,11 @@ impl ScooterHx {
                 *state = State::ReplacementComplete(ReplacementStats {
                     num_successes: stats.num_successes,
                     num_ignored,
-                    errors: stats.errors,
+                    errors: stats
+                        .errors
+                        .iter()
+                        .map(|sr| SteelSearchResult::from_search_result(sr, &directory))
+                        .collect(),
                 });
             }
         });
@@ -455,6 +486,14 @@ impl ScooterHx {
         if let State::PerformingReplacement { cancelled, .. } = &*state {
             cancelled.store(true, Ordering::Relaxed);
             *state = State::NotStarted;
+        }
+    }
+
+    pub(crate) fn replacement_errors(&self) -> Vec<SteelSearchResult> {
+        let state = self.state.lock().unwrap();
+        match &*state {
+            State::ReplacementComplete(stats) => stats.errors.clone(),
+            _ => vec![],
         }
     }
 }

@@ -16,6 +16,7 @@
                           Scooter-replacement-complete?
                           Scooter-replacement-stats
                           Scooter-cancel-replacement
+                          Scooter-replacement-errors
                           ReplacementStats-num-successes
                           ReplacementStats-num-ignored
                           ReplacementStats-num-errors
@@ -24,6 +25,7 @@
                           SteelSearchResult-line
                           SteelSearchResult-replacement
                           SteelSearchResult-included
+                          SteelSearchResult-display-error
                           SteelSearchResult-build-preview))
 
 (require "drawing.scm")
@@ -69,7 +71,8 @@
          scroll-offset-box
          content-height-box
          field-errors-box
-         general-error-box))
+         general-error-box
+         error-scroll-offset-box))
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -133,6 +136,11 @@
 (define (clear-general-error! state)
   (set-box! (ScooterWindow-general-error-box state) #f))
 
+(define (get-error-scroll-offset state)
+  (unbox (ScooterWindow-error-scroll-offset-box state)))
+(define (set-error-scroll-offset! state value)
+  (set-box! (ScooterWindow-error-scroll-offset-box state) value))
+
 (define (get-search-data state)
   (let ([lines (get-lines state)]) (and (SearchData? lines) lines)))
 
@@ -156,6 +164,7 @@
   (set-box! (ScooterWindow-completed-box state) #f)
   (set-selected-index! state 0)
   (set-scroll-offset! state 0)
+  (set-error-scroll-offset! state 0)
   (clear-all-errors! state))
 
 (define (clear-all-field-errors! state)
@@ -241,6 +250,17 @@
 
 (define (navigate-search-results state direction)
   (navigate-by-amount state direction))
+
+(define (scroll-errors state direction)
+  (let ([engine (get-engine state)])
+    (when (Scooter-replacement-complete? engine)
+      (let* ([stats (Scooter-replacement-stats engine)]
+             [num-errors (ReplacementStats-num-errors stats)]
+             [current-offset (get-error-scroll-offset state)]
+             [new-offset (max 0 (+ current-offset direction))]
+             [max-offset (max 0 (- num-errors 1))])
+        (when (> num-errors 0)
+          (set-error-scroll-offset! state (min max-offset new-offset)))))))
 
 (define (toggle-search-result-inclusion state)
   (let ([selected-index (get-selected-index state)]
@@ -397,8 +417,12 @@
          [num-successes (ReplacementStats-num-successes stats)]
          [num-ignored (ReplacementStats-num-ignored stats)]
          [num-errors (ReplacementStats-num-errors stats)]
+         [errors (if (> num-errors 0)
+                     (Scooter-replacement-errors engine)
+                     '())]
          [title-style (UIStyles-active (ui-styles))]
          [text-style (UIStyles-text (ui-styles))]
+         [error-style (UIStyles-error (ui-styles))]
          [start-y (+ (area-y content-area) (quotient (area-height content-area) 3))]
          [center-x (+ (area-x content-area) (quotient (area-width content-area) 2))])
 
@@ -431,7 +455,41 @@
             (block/render frame box-area (make-block text-style text-style "all" "plain"))
             (frame-set-string! frame (+ box-x 1) current-y label text-style)
             (frame-set-string! frame (+ box-x 1) (+ current-y 1) value text-style)
-            (loop (cdr stats-list) (+ current-y 3))))))))
+            (if (null? (cdr stats-list))
+                (when (> num-errors 0)
+                  (let* ([errors-y (+ current-y 5)]
+                         [error-box-x (area-x content-area)]
+                         [error-box-width (area-width content-area)]
+                         [scroll-offset (get-error-scroll-offset state)]
+                         [visible-errors (drop errors scroll-offset)])
+                    (frame-set-string! frame (+ error-box-x 2) errors-y "Errors:" text-style)
+                    (let render-errors ([error-list visible-errors]
+                                        [error-y (+ errors-y 2)])
+                      (when (and (not (null? error-list))
+                                 (< error-y (+ (area-y content-area) (area-height content-area) -2)))
+                        (let* ([error-result (car error-list)]
+                               [error-info (SteelSearchResult-display-error error-result)]
+                               [path-display (car error-info)]
+                               [error-msg (cadr error-info)]
+                               [truncated-path (truncate-string (string-append path-display ":")
+                                                                (- error-box-width 4))]
+                               [truncated-error (truncate-string error-msg (- error-box-width 6))])
+                          ;; Render path on first line
+                          (frame-set-string! frame
+                                             (+ error-box-x 4)
+                                             error-y
+                                             truncated-path
+                                             text-style)
+                          ;; Render error message on second line, indented
+                          (when (< (+ error-y 1)
+                                   (+ (area-y content-area) (area-height content-area) -2))
+                            (frame-set-string! frame
+                                               (+ error-box-x 6)
+                                               (+ error-y 1)
+                                               truncated-error
+                                               error-style))
+                          (render-errors (cdr error-list) (+ error-y 3)))))))
+                (loop (cdr stats-list) (+ current-y 3)))))))))
 
 (define (create-scooter-window directory)
   (ScooterWindow (box 'search-fields) ; current-screen-box
@@ -446,7 +504,8 @@
                  (box 0) ; scroll-offset-box
                  (box 10) ; content-height-box (placeholder, set during rendering)
                  (box (hash)) ; field-errors-box
-                 (box #f))) ; general-error-box
+                 (box #f) ; general-error-box
+                 (box 0))) ; error-scroll-offset-box
 
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
@@ -693,6 +752,8 @@
 (define (handle-replacement-complete-event state event)
   (cond
     [(key-event-enter? event) event-result/close]
+    [(or (key-event-up? event) (key-matches-char? event #\k)) (scroll-errors state -1)]
+    [(or (key-event-down? event) (key-matches-char? event #\j)) (scroll-errors state 1)]
     [else event-result/consume]))
 
 (define (handle-search-results-mode-event state event)
