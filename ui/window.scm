@@ -382,41 +382,41 @@
          [num-successes (ReplacementStats-num-successes stats)]
          [num-ignored (ReplacementStats-num-ignored stats)]
          [num-errors (ReplacementStats-num-errors stats)]
+         [title-style (UIStyles-active (ui-styles))]
          [text-style (UIStyles-text (ui-styles))]
          [start-y (+ (area-y content-area) (quotient (area-height content-area) 3))]
          [center-x (+ (area-x content-area) (quotient (area-width content-area) 2))])
 
-    (let ([title "Replacement complete"]
+    (let ([title "Replacement complete!"]
           [title-y start-y])
       (frame-set-string! frame
                          (+ (area-x content-area)
                             (quotient (- (area-width content-area) (string-length title)) 2))
                          title-y
                          title
-                         text-style))
+                         title-style))
 
-    (let* ([stats-lines (list (list "Successful replacements (lines):" (int->string num-successes))
-                              (list "Ignored (lines):" (int->string num-ignored))
-                              (list "Errors:" (int->string num-errors)))]
-           [label-col-width
-            (+ 1 (apply max (map (lambda (line) (string-length (car line))) stats-lines)))]
-           [table-width (+ label-col-width
-                           (apply max (map (lambda (line) (string-length (cadr line))) stats-lines)))]
-           [table-start-x (+ (area-x content-area)
-                             (quotient (- (area-width content-area) table-width) 2))]
+    (let* ([content-x (area-x content-area)]
+           [content-width (area-width content-area)]
+           [box-width (min (- content-width 20) 76)] ; Leave some margin, max width like example
+           [box-x (+ content-x (quotient (- content-width box-width) 2))]
+           [stats-data (list (list "Successful replacements (lines):" (int->string num-successes))
+                             (list "Ignored (lines):" (int->string num-ignored))
+                             (list "Errors:" (int->string num-errors)))]
            [stats-y (+ start-y 3)])
 
-      (let loop ([lines stats-lines]
-                 [y stats-y])
-        (when (not (null? lines))
-          (let* ([line (car lines)]
-                 [label (car line)]
-                 [value (cadr line)]
-                 [padded-label (string-append label
-                                              (make-string (- label-col-width (string-length label))
-                                                           #\space))])
-            (frame-set-string! frame table-start-x y (string-append padded-label value) text-style)
-            (loop (cdr lines) (+ y 1))))))))
+      (let loop ([stats-list stats-data]
+                 [current-y stats-y])
+        (when (not (null? stats-list))
+          (let* ([stat-data (car stats-list)]
+                 [label (car stat-data)]
+                 [value (cadr stat-data)]
+                 [box-area (area box-x current-y box-width 3)])
+
+            (block/render frame box-area (make-block text-style text-style "all" "plain"))
+            (frame-set-string! frame (+ box-x 1) current-y label text-style)
+            (frame-set-string! frame (+ box-x 1) (+ current-y 1) value text-style)
+            (loop (cdr stats-list) (+ current-y 3))))))))
 
 (define (create-scooter-window directory)
   (ScooterWindow (box 'search-fields) ; current-screen-box
