@@ -261,8 +261,8 @@
                [bg-color (list-ref segment 2)])
            (cons text
                  (if (and (equal? fg-color "") (equal? bg-color ""))
-                     (UIStyles-bg (ui-styles)) ; Use theme background style for context lines
-                     (create-segment-style fg-color bg-color))))) ; Use diff colors for diff segments
+                     (UIStyles-text (ui-styles))
+                     (create-segment-style fg-color bg-color)))))
        line-segments))
 
 (define (format-search-result result is-selected styles)
@@ -273,8 +273,8 @@
                            (UIStyles-text styles))]
          [checkbox-style (UIStyles-info styles)]
          [base-text-style (if is-selected
-                               (UIStyles-selection styles)
-                               (UIStyles-text styles))]
+                              (UIStyles-selection styles)
+                              (UIStyles-text styles))]
          [text-style (if (SteelSearchResult-included result)
                          (style-with-bold base-text-style)
                          base-text-style)])
