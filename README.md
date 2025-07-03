@@ -12,7 +12,7 @@ If the instance you're attempting to replace has changed since the search was pe
 
 Follow the instructions [here](https://github.com/mattwparas/helix/blob/steel-event-system/STEEL.md) to install Helix on the plugin branch.
 
-Then, install the plugins with one of the installation methods below.
+Then, install the plugin with one of the installation methods below.
 
 Once installed, you can add the following to `init.scm` in your Helix config directory:
 
@@ -27,7 +27,7 @@ You will then have the `:scooter` command available (which you can bind a keymap
 Forge is the Steel package manager, and will have been installed in the previous step. Run the following:
 
 ```sh
-forge pkg install --git https://github.com/thomasschafer/scooter.git
+forge pkg install --git https://github.com/thomasschafer/scooter.hx.git
 ```
 
 ### Building from source
