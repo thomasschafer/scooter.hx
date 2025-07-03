@@ -21,7 +21,7 @@
 (define (ui-styles)
   (UIStyles (theme-scope *helix.cx* "ui.text") ; text
             (theme-scope *helix.cx* "ui.popup") ; popup
-            (style-with-bold (theme-scope *helix.cx* "hint")) ; active
+            (style-underline-style (style-with-bold (theme-scope *helix.cx* "hint")) Underline/Reset) ; active
             (theme-scope *helix.cx* "ui.text.inactive") ; dim
             (theme-scope *helix.cx* "ui.statusline") ; status
             (theme-scope *helix.cx* "special") ; line-num
