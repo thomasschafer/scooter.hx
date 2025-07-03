@@ -26,23 +26,35 @@
                           SteelSearchResult-included
                           SteelSearchResult-build-preview))
 
+(require "drawing.scm")
+(require "fields.scm")
 (require "utils.scm")
 (require "styles.scm")
-(require "fields.scm")
-(require "drawing.scm")
 
 (provide ScooterWindow
-         SearchData
          create-scooter-window
          scooter-render
          scooter-event-handler
          scooter-cursor-handler
-         start-scooter-search)
+         start-scooter-search
+         get-lines
+         get-selected-index
+         set-selected-index!
+         get-scroll-offset
+         set-scroll-offset!
+         get-content-height
+         set-content-height!
+         get-engine
+         ScooterWindow-lines-box
+         SearchData
+         get-search-data)
 
 (define WINDOW-SIZE-RATIO 0.9)
 (define CONTENT-PADDING 2)
 (define SCROLL-MARGIN 2)
 (define STATUS-HEIGHT 2)
+
+(struct SearchData (result-count is-complete results scroll-offset))
 
 (struct ScooterWindow
         (current-screen-box ; 'search-fields, 'search-results, 'performing-replacement, 'replacement-complete
@@ -53,11 +65,11 @@
          completed-box
          cursor-position
          engine-box
-         selected-index-box ; Index of currently selected result
-         scroll-offset-box ; Offset for scrolling results
-         content-height-box ; Available height for results
-         field-errors-box ; Hash of field validation errors
-         general-error-box)) ; General error message to display
+         selected-index-box
+         scroll-offset-box
+         content-height-box
+         field-errors-box
+         general-error-box))
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -121,6 +133,9 @@
 (define (clear-general-error! state)
   (set-box! (ScooterWindow-general-error-box state) #f))
 
+(define (get-search-data state)
+  (let ([lines (get-lines state)]) (and (SearchData? lines) lines)))
+
 (define (clear-all-errors! state)
   (clear-all-field-errors! state)
   (clear-general-error! state))
@@ -154,104 +169,101 @@
 (define (get-field-errors-safe state field-id)
   (or (hash-try-get (unbox (ScooterWindow-field-errors-box state)) field-id) '()))
 
-(define (create-scooter-window directory)
-  (ScooterWindow (box 'search-fields) ; current-screen-box
-                 (box (create-initial-field-values)) ; field-values-box
-                 (box (create-initial-cursor-positions)) ; cursor-positions-box
-                 (box 'search) ; current-field-box
-                 (box (SearchData 0 #f '() 0)) ; lines-box - initialize with empty SearchData
-                 (box #f) ; completed-box
-                 (position 0 0) ; cursor-position
-                 (box (Scooter-new directory #f)) ; engine-box
-                 (box 0) ; selected-index-box
-                 (box 0) ; scroll-offset-box
-                 (box 10) ; content-height-box (placeholder, set during rendering)
-                 (box (hash)) ; field-errors-box
-                 (box #f))) ; general-error-box
+;; Navigation and search result functions
+(define RESULT-FETCH-BUFFER 10)
 
-(define (move-cursor-left state field-id)
-  (when (field-is-text? field-id)
-    (let ([current-pos (get-field-cursor-pos state field-id)])
-      (set-field-cursor-pos! state field-id (max 0 (- current-pos 1))))))
+(define (ensure-selection-visible state visible-height)
+  (let ([data (get-search-data state)])
+    (when data
+      (let* ([result-count (SearchData-result-count data)]
+             [selected-index (get-selected-index state)]
+             [current-scroll (get-scroll-offset state)]
+             [max-scroll (max 0 (- result-count visible-height))]
+             [new-scroll current-scroll])
 
-(define (move-cursor-right state field-id)
-  (when (field-is-text? field-id)
-    (let ([current-pos (get-field-cursor-pos state field-id)]
-          [field-value (get-field-value state field-id)])
-      (set-field-cursor-pos! state field-id (min (string-length field-value) (+ current-pos 1))))))
+        ;; Adjust scroll to keep selection visible with margins (1 above, 2 below)
+        (when (< selected-index (+ current-scroll 1))
+          (set! new-scroll (max 0 (- selected-index 1))))
 
-(define (clear-errors-on-input! state field-id)
-  (clear-field-error! state field-id)
-  (clear-general-error! state))
+        (when (or (> selected-index (- (+ current-scroll visible-height) 2))
+                  (> (+ current-scroll visible-height) result-count))
+          (set! new-scroll (min max-scroll (max 0 (- (+ selected-index 2) visible-height)))))
 
-(define (insert-char-at-cursor state field-id char)
-  (when (field-is-text? field-id)
-    (clear-errors-on-input! state field-id)
-    (let* ([field-value (get-field-value state field-id)]
-           [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (substring field-value 0 cursor-pos)]
-           [after (substring field-value cursor-pos (string-length field-value))])
-      (set-field-value! state field-id (string-append before (string char) after))
-      (set-field-cursor-pos! state field-id (+ cursor-pos 1)))))
+        ;; Update scroll and fetch new results window
+        (set-scroll-offset! state new-scroll)
+        (fetch-results-window state)))))
 
-(define (delete-char-at-cursor state field-id)
-  (when (and (field-is-text? field-id) (> (get-field-cursor-pos state field-id) 0))
-    (clear-errors-on-input! state field-id)
-    (let* ([field-value (get-field-value state field-id)]
-           [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (substring field-value 0 (- cursor-pos 1))]
-           [after (substring field-value cursor-pos (string-length field-value))])
-      (set-field-value! state field-id (string-append before after))
-      (set-field-cursor-pos! state field-id (- cursor-pos 1)))))
+(define (fetch-results-window state)
+  (let* ([engine (get-engine state)]
+         [data (get-search-data state)])
+    (when data
+      (let* ([result-count (SearchData-result-count data)]
+             [is-complete (SearchData-is-complete data)]
+             [scroll-offset (get-scroll-offset state)]
+             [visible-height (get-content-height state)]
+             [fetch-start scroll-offset]
+             [fetch-end (min (- result-count 1) (+ scroll-offset visible-height RESULT-FETCH-BUFFER))]
+             [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
+                          (Scooter-search-results-window engine fetch-start fetch-end)
+                          '())])
+        (set-box! (ScooterWindow-lines-box state)
+                  (SearchData result-count is-complete results scroll-offset))))))
 
-(define (insert-text-at-cursor state field-id text)
-  (when (field-is-text? field-id)
-    (clear-errors-on-input! state field-id)
-    (let* ([field-value (get-field-value state field-id)]
-           [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (substring field-value 0 cursor-pos)]
-           [after (substring field-value cursor-pos (string-length field-value))]
-           [new-value (string-append before text after)])
-      (set-field-value! state field-id new-value)
-      (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
+(define (navigate-by-amount state amount)
+  (let ([data (get-search-data state)])
+    (when data
+      (let* ([result-count (SearchData-result-count data)]
+             [current-selected (get-selected-index state)]
+             [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
+        (when (> result-count 0)
+          (set-selected-index! state new-selected)
+          (ensure-selection-visible state (get-content-height state)))))))
 
-(define (render-styled-segments frame x y segments max-width . fill-style)
-  (let ([fill-style (if (null? fill-style)
-                        #f
-                        (car fill-style))])
-    (let loop ([segments segments]
-               [current-x x]
-               [remaining-width max-width]
-               [last-style #f])
-      (cond
-        [(and (not (null? segments)) (> remaining-width 0))
-         (let* ([segment (car segments)]
-                [text (car segment)]
-                [style (cdr segment)]
-                [truncated-text (if (> (string-length text) remaining-width)
-                                    (truncate-string text remaining-width)
-                                    text)])
-           (frame-set-string! frame current-x y truncated-text style)
-           (loop (cdr segments)
-                 (+ current-x (string-length truncated-text))
-                 (- remaining-width (string-length truncated-text))
-                 style))]
+(define (jump-to-top state)
+  (set-selected-index! state 0)
+  (fetch-results-window state))
 
-        ;; Fill remaining width with spaces using fill-style or last-style
-        [(> remaining-width 0)
-         (let ([style-to-use (or fill-style last-style)])
-           (when style-to-use
-             (frame-set-string! frame
-                                current-x
-                                y
-                                (make-space-string remaining-width)
-                                style-to-use)))]))))
+(define (jump-to-bottom state)
+  (let ([data (get-search-data state)])
+    (when data
+      (let ([result-count (SearchData-result-count data)])
+        (when (> result-count 0)
+          (set-selected-index! state (- result-count 1))
+          (ensure-selection-visible state (get-content-height state)))))))
 
-;; Render styled segments within a given area at a specific row
-(define (render-styled-segments-in-area frame area row segments . fill-style)
-  (let ([args (append (list frame (area-x area) (+ (area-y area) row) segments (area-width area))
-                      fill-style)])
-    (apply render-styled-segments args)))
+(define (scroll-page state direction)
+  (let ([results-height (get-content-height state)])
+    (navigate-by-amount state (* direction results-height))))
+
+(define (scroll-half-page state direction)
+  (let ([results-height (get-content-height state)])
+    (navigate-by-amount state (* direction (max 1 (quotient results-height 2))))))
+
+(define (navigate-search-results state direction)
+  (navigate-by-amount state direction))
+
+(define (toggle-search-result-inclusion state)
+  (let ([selected-index (get-selected-index state)]
+        [engine (get-engine state)])
+    (Scooter-toggle-inclusion engine selected-index)
+    (fetch-results-window state)))
+
+(define (toggle-all-search-results state)
+  (let ([engine (get-engine state)])
+    (Scooter-toggle-all engine)
+    (fetch-results-window state)))
+
+;; Drawing functions
+(define (preview-line-to-styled-segments line-segments)
+  (map (lambda (segment)
+         (let ([text (list-ref segment 0)]
+               [fg-color (list-ref segment 1)]
+               [bg-color (list-ref segment 2)])
+           (cons text
+                 (if (and (equal? fg-color "") (equal? bg-color ""))
+                     (UIStyles-text (ui-styles)) ; Use proper theme text color for context lines
+                     (create-segment-style fg-color bg-color))))) ; Use diff colors for diff segments
+       line-segments))
 
 (define (format-search-result result is-selected styles)
   (let* ([prefix (if is-selected " > " "   ")]
@@ -273,36 +285,11 @@
                     (UIStyles-selection styles)
                     (UIStyles-line-num styles))))))
 
-(define (color-string-to-color color-str)
-  (cond
-    [(equal? color-str "red") Color/Red]
-    [(equal? color-str "green") Color/Green]
-    [(equal? color-str "black") Color/Black]
-    [else Color/Reset]))
-
-(define (create-segment-style fg-color bg-color)
-  (let ([base-style (style-fg (style) (color-string-to-color fg-color))])
-    (if (> (string-length bg-color) 0)
-        (style-bg base-style (color-string-to-color bg-color))
-        base-style)))
-
-(define (preview-line-to-styled-segments line-segments)
-  (map (lambda (segment)
-         (let ([text (list-ref segment 0)]
-               [fg-color (list-ref segment 1)]
-               [bg-color (list-ref segment 2)])
-           (cons text
-                 (if (and (equal? fg-color "") (equal? bg-color ""))
-                     (UIStyles-text (ui-styles)) ; Use proper theme text color for context lines
-                     (create-segment-style fg-color bg-color))))) ; Use diff colors for diff segments
-       line-segments))
-
 (define (draw-file-preview frame preview-area result)
   (let* ([screen-height (area-height preview-area)]
          [screen-width (area-width preview-area)]
          [preview-lines (SteelSearchResult-build-preview result screen-height screen-width)])
 
-    ;; Render each line in the preview
     (let loop ([lines preview-lines]
                [row 0])
       (when (and (not (null? lines)) (< row screen-height))
@@ -311,41 +298,6 @@
                [bg-style (UIStyles-popup (ui-styles))])
           (render-styled-segments-in-area frame preview-area row styled-segments bg-style)
           (loop (cdr lines) (+ row 1)))))))
-
-;; Calculate sub-areas for search results rendering
-(define (calculate-status-area content-area)
-  (area (area-x content-area) (area-y content-area) (area-width content-area) STATUS-HEIGHT))
-
-(define NARROW-WINDOW-THRESHOLD 90)
-(define VERTICAL-LIST-HEIGHT 5)
-(define VERTICAL-PREVIEW-PADDING 1)
-(define LIST-WIDTH-RATIO 2/5)
-
-(define (calculate-split-areas content-area)
-  (let* ([content-x (area-x content-area)]
-         [content-y (area-y content-area)]
-         [total-width (area-width content-area)]
-         [total-height (area-height content-area)]
-         [results-y (+ content-y STATUS-HEIGHT)]
-         [results-height (- total-height STATUS-HEIGHT)]
-         [is-narrow? (< total-width NARROW-WINDOW-THRESHOLD)])
-
-    (if is-narrow?
-        ;; Vertical layout
-        (let* ([preview-y (+ results-y VERTICAL-LIST-HEIGHT 1)]
-               [preview-height (- results-height VERTICAL-LIST-HEIGHT 1)])
-          (values (area content-x results-y total-width VERTICAL-LIST-HEIGHT)
-                  (area (+ content-x VERTICAL-PREVIEW-PADDING)
-                        preview-y
-                        (- total-width (* VERTICAL-PREVIEW-PADDING 2))
-                        preview-height)))
-
-        ;; Horizontal layout
-        (let* ([list-width (exact (floor (* total-width LIST-WIDTH-RATIO)))]
-               [preview-x (+ content-x list-width 1)]
-               [preview-width (- total-width list-width 1)])
-          (values (area content-x results-y list-width results-height)
-                  (area preview-x results-y preview-width results-height))))))
 
 (define (draw-search-results frame content-area initial-data state)
   (call-with-values
@@ -413,47 +365,6 @@
                 [selected-result (list-ref results local-index)])
            (draw-file-preview frame preview-area selected-result)))))))
 
-(define (calculate-window-area rect)
-  (let* ([screen-width (area-width rect)]
-         [screen-height (area-height rect)]
-         [window-width (exact (round (* screen-width WINDOW-SIZE-RATIO)))]
-         [window-height (exact (round (* screen-height WINDOW-SIZE-RATIO)))]
-         [x (exact (max 1 (- (round (/ screen-width 2)) (round (/ window-width 2)))))]
-         [y (exact (max 0 (- (round (/ screen-height 2)) (round (/ window-height 2)))))])
-    (area x y window-width window-height)))
-
-(define (calculate-content-area window-area)
-  (let ([help-height 1])
-    (area (+ (area-x window-area) CONTENT-PADDING)
-          (+ (area-y window-area) CONTENT-PADDING)
-          (- (area-width window-area) (* CONTENT-PADDING 2))
-          (- (area-height window-area) (* CONTENT-PADDING 2) help-height))))
-
-(define (position-cursor-in-text-field state current-field field-positions content-x content-width)
-  (let ([active-field-def (get-field-by-id current-field)])
-    (when (and active-field-def (equal? (field-type active-field-def) FIELD-TYPE-TEXT))
-      (let* ([positions (hash-ref field-positions current-field)]
-             [box-top-y (car positions)]
-             [cursor-pos (get-field-cursor-pos state current-field)]
-             [cursor-row (+ box-top-y 1)]
-             [cursor-col (get-field-cursor-column content-x content-width cursor-pos)])
-        (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
-        (set-position-col! (ScooterWindow-cursor-position state) cursor-col)))))
-
-(define (strip-newlines text)
-  (string-replace (string-replace text "\n" " ") "\r" " "))
-
-(define (calculate-error-message-area content-area)
-  (area (area-x content-area) (area-y content-area) (area-width content-area) 1))
-
-(define (draw-error-message frame error-area error-message)
-  (when error-message
-    (let* ([error-style (UIStyles-error (ui-styles))]
-           [clean-message (strip-newlines error-message)]
-           [error-text (string-append "Error: " clean-message)]
-           [truncated-error (truncate-string error-text (area-width error-area))])
-      (frame-set-string! frame (area-x error-area) (area-y error-area) truncated-error error-style))))
-
 (define (draw-performing-replacement frame content-area state)
   (let* ([engine (get-engine state)]
          [num-completed (Scooter-num-replacements-complete engine)]
@@ -506,6 +417,92 @@
                                                            #\space))])
             (frame-set-string! frame table-start-x y (string-append padded-label value) text-style)
             (loop (cdr lines) (+ y 1))))))))
+
+(define (create-scooter-window directory)
+  (ScooterWindow (box 'search-fields) ; current-screen-box
+                 (box (create-initial-field-values)) ; field-values-box
+                 (box (create-initial-cursor-positions)) ; cursor-positions-box
+                 (box 'search) ; current-field-box
+                 (box (SearchData 0 #f '() 0)) ; lines-box - initialize with empty SearchData
+                 (box #f) ; completed-box
+                 (position 0 0) ; cursor-position
+                 (box (Scooter-new directory #f)) ; engine-box
+                 (box 0) ; selected-index-box
+                 (box 0) ; scroll-offset-box
+                 (box 10) ; content-height-box (placeholder, set during rendering)
+                 (box (hash)) ; field-errors-box
+                 (box #f))) ; general-error-box
+
+(define (move-cursor-left state field-id)
+  (when (field-is-text? field-id)
+    (let ([current-pos (get-field-cursor-pos state field-id)])
+      (set-field-cursor-pos! state field-id (max 0 (- current-pos 1))))))
+
+(define (move-cursor-right state field-id)
+  (when (field-is-text? field-id)
+    (let ([current-pos (get-field-cursor-pos state field-id)]
+          [field-value (get-field-value state field-id)])
+      (set-field-cursor-pos! state field-id (min (string-length field-value) (+ current-pos 1))))))
+
+(define (clear-errors-on-input! state field-id)
+  (clear-field-error! state field-id)
+  (clear-general-error! state))
+
+(define (insert-char-at-cursor state field-id char)
+  (when (field-is-text? field-id)
+    (clear-errors-on-input! state field-id)
+    (let* ([field-value (get-field-value state field-id)]
+           [cursor-pos (get-field-cursor-pos state field-id)]
+           [before (substring field-value 0 cursor-pos)]
+           [after (substring field-value cursor-pos (string-length field-value))])
+      (set-field-value! state field-id (string-append before (string char) after))
+      (set-field-cursor-pos! state field-id (+ cursor-pos 1)))))
+
+(define (delete-char-at-cursor state field-id)
+  (when (and (field-is-text? field-id) (> (get-field-cursor-pos state field-id) 0))
+    (clear-errors-on-input! state field-id)
+    (let* ([field-value (get-field-value state field-id)]
+           [cursor-pos (get-field-cursor-pos state field-id)]
+           [before (substring field-value 0 (- cursor-pos 1))]
+           [after (substring field-value cursor-pos (string-length field-value))])
+      (set-field-value! state field-id (string-append before after))
+      (set-field-cursor-pos! state field-id (- cursor-pos 1)))))
+
+(define (insert-text-at-cursor state field-id text)
+  (when (field-is-text? field-id)
+    (clear-errors-on-input! state field-id)
+    (let* ([field-value (get-field-value state field-id)]
+           [cursor-pos (get-field-cursor-pos state field-id)]
+           [before (substring field-value 0 cursor-pos)]
+           [after (substring field-value cursor-pos (string-length field-value))]
+           [new-value (string-append before text after)])
+      (set-field-value! state field-id new-value)
+      (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
+
+(define (position-cursor-in-text-field state current-field field-positions content-x content-width)
+  (let ([active-field-def (get-field-by-id current-field)])
+    (when (and active-field-def (equal? (field-type active-field-def) FIELD-TYPE-TEXT))
+      (let* ([positions (hash-ref field-positions current-field)]
+             [box-top-y (car positions)]
+             [cursor-pos (get-field-cursor-pos state current-field)]
+             [cursor-row (+ box-top-y 1)]
+             [cursor-col (get-field-cursor-column content-x content-width cursor-pos)])
+        (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
+        (set-position-col! (ScooterWindow-cursor-position state) cursor-col)))))
+
+(define (strip-newlines text)
+  (string-replace (string-replace text "\n" " ") "\r" " "))
+
+(define (calculate-error-message-area content-area)
+  (area (area-x content-area) (area-y content-area) (area-width content-area) 1))
+
+(define (draw-error-message frame error-area error-message)
+  (when error-message
+    (let* ([error-style (UIStyles-error (ui-styles))]
+           [clean-message (strip-newlines error-message)]
+           [error-text (string-append "Error: " clean-message)]
+           [truncated-error (truncate-string error-text (area-width error-area))])
+      (frame-set-string! frame (area-x error-area) (area-y error-area) truncated-error error-style))))
 
 (define (format-keybinding key action)
   (string-append "<" key "> " action))
@@ -658,100 +655,11 @@
     [(key-event-char event) (handle-char-input state (key-event-char event))])
   event-result/consume)
 
-(define RESULT-FETCH-BUFFER 10)
-
-(struct SearchData (result-count is-complete results scroll-offset))
-
-(define (get-search-data state)
-  (let ([lines (get-lines state)]) (and (SearchData? lines) lines)))
-
-(define (ensure-selection-visible state visible-height)
-  (let ([data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [selected-index (get-selected-index state)]
-             [current-scroll (get-scroll-offset state)]
-             [max-scroll (max 0 (- result-count visible-height))]
-             [new-scroll current-scroll])
-
-        ;; Adjust scroll to keep selection visible with margins (1 above, 2 below)
-        (when (< selected-index (+ current-scroll 1))
-          (set! new-scroll (max 0 (- selected-index 1))))
-
-        (when (or (> selected-index (- (+ current-scroll visible-height) 2))
-                  (> (+ current-scroll visible-height) result-count))
-          (set! new-scroll (min max-scroll (max 0 (- (+ selected-index 2) visible-height)))))
-
-        ;; Update scroll and fetch new results window
-        (set-scroll-offset! state new-scroll)
-        (fetch-results-window state)))))
-
-;; Fetch and set the current results window based on scroll offset and visible height
-(define (fetch-results-window state)
-  (let* ([engine (get-engine state)]
-         [data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [is-complete (SearchData-is-complete data)]
-             [scroll-offset (get-scroll-offset state)]
-             [visible-height (get-content-height state)]
-             [fetch-start scroll-offset]
-             [fetch-end (min (- result-count 1) (+ scroll-offset visible-height RESULT-FETCH-BUFFER))]
-             [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
-                          (Scooter-search-results-window engine fetch-start fetch-end)
-                          '())])
-        (set-box! (ScooterWindow-lines-box state)
-                  (SearchData result-count is-complete results scroll-offset))))))
-
-(define (navigate-by-amount state amount)
-  (let ([data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [current-selected (get-selected-index state)]
-             [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
-        (when (> result-count 0)
-          (set-selected-index! state new-selected)
-          (ensure-selection-visible state (get-content-height state)))))))
-
-(define (jump-to-top state)
-  (set-selected-index! state 0)
-  (fetch-results-window state))
-
-(define (jump-to-bottom state)
-  (let ([data (get-search-data state)])
-    (when data
-      (let ([result-count (SearchData-result-count data)])
-        (when (> result-count 0)
-          (set-selected-index! state (- result-count 1))
-          (ensure-selection-visible state (get-content-height state)))))))
-
-(define (scroll-page state direction)
-  (let ([results-height (get-content-height state)])
-    (navigate-by-amount state (* direction results-height))))
-
-(define (scroll-half-page state direction)
-  (let ([results-height (get-content-height state)])
-    (navigate-by-amount state (* direction (max 1 (quotient results-height 2))))))
-
-(define (navigate-search-results state direction)
-  (navigate-by-amount state direction))
-
 (define (key-matches-char? event char)
   (and (key-event-char event) (equal? (key-event-char event) char)))
 
 (define (key-with-ctrl? event char)
   (and (key-matches-char? event char) (equal? (key-event-modifier event) key-modifier-ctrl)))
-
-(define (toggle-search-result-inclusion state)
-  (let ([selected-index (get-selected-index state)]
-        [engine (get-engine state)])
-    (Scooter-toggle-inclusion engine selected-index)
-    (fetch-results-window state)))
-
-(define (toggle-all-search-results state)
-  (let ([engine (get-engine state)])
-    (Scooter-toggle-all engine)
-    (fetch-results-window state)))
 
 (define (start-replacement state)
   (let ([engine (get-engine state)])

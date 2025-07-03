@@ -1,4 +1,8 @@
 (require "helix/components.scm")
+(require "helix/misc.scm")
+
+(require "utils.scm")
+(require "styles.scm")
 
 (provide draw-box!
          draw-text-line!
@@ -19,7 +23,15 @@
          BORDER-BOTTOM-LEFT
          BORDER-BOTTOM-RIGHT
          BORDER-HORIZONTAL
-         BORDER-VERTICAL)
+         BORDER-VERTICAL
+         calculate-window-area
+         calculate-content-area
+         calculate-split-areas
+         calculate-status-area
+         color-string-to-color
+         create-segment-style
+         render-styled-segments
+         render-styled-segments-in-area)
 
 (define BORDER-TOP-LEFT "┌")
 (define BORDER-TOP-RIGHT "┐")
@@ -140,3 +152,105 @@
          [final-x (+ container-x h-offset)]
          [final-y (+ container-y v-offset)])
     (CenteredLayout final-x final-y actual-width actual-height)))
+
+(define WINDOW-SIZE-RATIO 0.9)
+(define CONTENT-PADDING 2)
+(define STATUS-HEIGHT 2)
+(define NARROW-WINDOW-THRESHOLD 90)
+(define VERTICAL-LIST-HEIGHT 5)
+(define VERTICAL-PREVIEW-PADDING 1)
+(define LIST-WIDTH-RATIO 2/5)
+
+(define (color-string-to-color color-str)
+  (cond
+    [(equal? color-str "red") Color/Red]
+    [(equal? color-str "green") Color/Green]
+    [(equal? color-str "black") Color/Black]
+    [else Color/Reset]))
+
+(define (create-segment-style fg-color bg-color)
+  (let ([base-style (style-fg (style) (color-string-to-color fg-color))])
+    (if (equal? bg-color "")
+        base-style
+        (style-bg base-style (color-string-to-color bg-color)))))
+
+(define (render-styled-segments frame x y segments max-width . fill-style)
+  (let ([fill-style (if (null? fill-style)
+                        #f
+                        (car fill-style))])
+    (let loop ([segments segments]
+               [current-x x]
+               [remaining-width max-width]
+               [last-style #f])
+      (cond
+        [(and (not (null? segments)) (> remaining-width 0))
+         (let* ([segment (car segments)]
+                [text (car segment)]
+                [style (cdr segment)]
+                [truncated-text (if (> (string-length text) remaining-width)
+                                    (truncate-string text remaining-width)
+                                    text)])
+           (frame-set-string! frame current-x y truncated-text style)
+           (loop (cdr segments)
+                 (+ current-x (string-length truncated-text))
+                 (- remaining-width (string-length truncated-text))
+                 style))]
+
+        [(> remaining-width 0)
+         (let ([style-to-use (or fill-style last-style)])
+           (when style-to-use
+             (frame-set-string! frame
+                                current-x
+                                y
+                                (make-space-string remaining-width)
+                                style-to-use)))]))))
+
+(define (render-styled-segments-in-area frame area row segments . fill-style)
+  (let ([args (append (list frame (area-x area) (+ (area-y area) row) segments (area-width area))
+                      fill-style)])
+    (apply render-styled-segments args)))
+
+(define (calculate-window-area rect)
+  (let* ([screen-width (area-width rect)]
+         [screen-height (area-height rect)]
+         [window-width (exact (round (* screen-width WINDOW-SIZE-RATIO)))]
+         [window-height (exact (round (* screen-height WINDOW-SIZE-RATIO)))]
+         [x (exact (max 1 (- (round (/ screen-width 2)) (round (/ window-width 2)))))]
+         [y (exact (max 0 (- (round (/ screen-height 2)) (round (/ window-height 2)))))])
+    (area x y window-width window-height)))
+
+(define (calculate-content-area window-area)
+  (let ([help-height 1])
+    (area (+ (area-x window-area) CONTENT-PADDING)
+          (+ (area-y window-area) CONTENT-PADDING)
+          (- (area-width window-area) (* CONTENT-PADDING 2))
+          (- (area-height window-area) (* CONTENT-PADDING 2) help-height))))
+
+(define (calculate-status-area content-area)
+  (area (area-x content-area) (area-y content-area) (area-width content-area) STATUS-HEIGHT))
+
+(define (calculate-split-areas content-area)
+  (let* ([content-x (area-x content-area)]
+         [content-y (area-y content-area)]
+         [total-width (area-width content-area)]
+         [total-height (area-height content-area)]
+         [results-y (+ content-y STATUS-HEIGHT)]
+         [results-height (- total-height STATUS-HEIGHT)]
+         [is-narrow? (< total-width NARROW-WINDOW-THRESHOLD)])
+
+    (if is-narrow?
+        ;; Vertical layout
+        (let* ([preview-y (+ results-y VERTICAL-LIST-HEIGHT 1)]
+               [preview-height (- results-height VERTICAL-LIST-HEIGHT 1)])
+          (values (area content-x results-y total-width VERTICAL-LIST-HEIGHT)
+                  (area (+ content-x VERTICAL-PREVIEW-PADDING)
+                        preview-y
+                        (- total-width (* VERTICAL-PREVIEW-PADDING 2))
+                        preview-height)))
+
+        ;; Horizontal layout
+        (let* ([list-width (exact (floor (* total-width LIST-WIDTH-RATIO)))]
+               [preview-x (+ content-x list-width 1)]
+               [preview-width (- total-width list-width 1)])
+          (values (area content-x results-y list-width results-height)
+                  (area preview-x results-y preview-width results-height))))))

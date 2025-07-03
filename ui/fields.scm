@@ -1,4 +1,5 @@
 (require "helix/components.scm")
+
 (require "drawing.scm")
 (require "styles.scm")
 (require "utils.scm")
@@ -135,7 +136,14 @@
          [field-x (+ content-x FIELD-PADDING-HORIZONTAL offset)])
     (list field-x field-width)))
 
-(define (draw-boolean-field frame content-x content-width label-y field-def field-value active? field-errors)
+(define (draw-boolean-field frame
+                            content-x
+                            content-width
+                            label-y
+                            field-def
+                            field-value
+                            active?
+                            field-errors)
   (let* ([title (field-label field-def)]
          [checkbox-mark (if field-value "X" " ")]
          [has-error? (and field-errors (> (length field-errors) 0))]
@@ -157,7 +165,14 @@
                      title
                      field-style)))
 
-(define (draw-text-field-box frame content-x label-y content-width field-def field-value active? field-errors)
+(define (draw-text-field-box frame
+                             content-x
+                             label-y
+                             content-width
+                             field-def
+                             field-value
+                             active?
+                             field-errors)
   (let* ([title (field-label field-def)]
          [has-error? (and field-errors (> (length field-errors) 0))]
          [field-style (get-field-style active? has-error?)]
@@ -186,12 +201,26 @@
          [trailing-spaces (make-space-string (- inner-width text-start-pos text-length))])
     (string-append leading-spaces truncated-text trailing-spaces)))
 
-(define (draw-field frame content-x content-width field-def field-value active? field-y-pos field-errors)
+(define (draw-field frame
+                    content-x
+                    content-width
+                    field-def
+                    field-value
+                    active?
+                    field-y-pos
+                    field-errors)
   (let* ([field-id (field-id field-def)]
          [field-type (field-type field-def)])
 
     (if (equal? field-type FIELD-TYPE-BOOLEAN)
-        (draw-boolean-field frame content-x content-width field-y-pos field-def field-value active? field-errors)
+        (draw-boolean-field frame
+                            content-x
+                            content-width
+                            field-y-pos
+                            field-def
+                            field-value
+                            active?
+                            field-errors)
         (draw-text-field-box frame
                              content-x
                              field-y-pos
