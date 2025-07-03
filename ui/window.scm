@@ -261,7 +261,7 @@
                [bg-color (list-ref segment 2)])
            (cons text
                  (if (and (equal? fg-color "") (equal? bg-color ""))
-                     (UIStyles-text (ui-styles)) ; Use proper theme text color for context lines
+                     (UIStyles-bg (ui-styles)) ; Use theme background style for context lines
                      (create-segment-style fg-color bg-color))))) ; Use diff colors for diff segments
        line-segments))
 
@@ -288,15 +288,27 @@
 (define (draw-file-preview frame preview-area result)
   (let* ([screen-height (area-height preview-area)]
          [screen-width (area-width preview-area)]
-         [preview-lines (SteelSearchResult-build-preview result screen-height screen-width)])
+         [preview-lines (SteelSearchResult-build-preview result screen-height screen-width)]
+         [bg-style (UIStyles-bg (ui-styles))])
 
+    ;; Fill the preview area with the background color
+    (buffer/clear frame preview-area)
+    (let fill-background ([row 0])
+      (when (< row screen-height)
+        (frame-set-string! frame
+                           (area-x preview-area)
+                           (+ (area-y preview-area) row)
+                           (make-space-string screen-width)
+                           bg-style)
+        (fill-background (+ row 1))))
+
+    ;; Then render the text content on top
     (let loop ([lines preview-lines]
                [row 0])
       (when (and (not (null? lines)) (< row screen-height))
         (let* ([line-segments (car lines)]
-               [styled-segments (preview-line-to-styled-segments line-segments)]
-               [bg-style (UIStyles-popup (ui-styles))])
-          (render-styled-segments-in-area frame preview-area row styled-segments bg-style)
+               [styled-segments (preview-line-to-styled-segments line-segments)])
+          (render-styled-segments-in-area frame preview-area row styled-segments)
           (loop (cdr lines) (+ row 1)))))))
 
 (define (draw-search-results frame content-area initial-data state)

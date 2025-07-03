@@ -251,6 +251,6 @@
         ;; Horizontal layout
         (let* ([list-width (exact (floor (* total-width LIST-WIDTH-RATIO)))]
                [preview-x (+ content-x list-width 1)]
-               [preview-width (- total-width list-width 1)])
+               [preview-width (- total-width list-width 2)])
           (values (area content-x results-y list-width results-height)
                   (area preview-x results-y preview-width results-height))))))
