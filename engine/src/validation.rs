@@ -13,12 +13,6 @@ impl ErrorHandler {
     pub fn new() -> Self {
         Self::default()
     }
-
-    pub fn has_errors(&self) -> bool {
-        !self.search_text_errors.is_empty()
-            || !self.include_files_errors.is_empty()
-            || !self.exclude_files_errors.is_empty()
-    }
 }
 
 impl ValidationErrorHandler for ErrorHandler {
