@@ -272,9 +272,12 @@
                            (UIStyles-selection styles)
                            (UIStyles-text styles))]
          [checkbox-style (UIStyles-info styles)]
-         [text-style (if is-selected
-                         (UIStyles-selection styles)
-                         (UIStyles-text styles))])
+         [base-text-style (if is-selected
+                               (UIStyles-selection styles)
+                               (UIStyles-text styles))]
+         [text-style (if (SteelSearchResult-included result)
+                         (style-with-bold base-text-style)
+                         base-text-style)])
     (list (cons prefix prefix-style)
           (cons checkbox checkbox-style)
           (cons " " text-style)
