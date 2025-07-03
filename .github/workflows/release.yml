@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'engine/Cargo.toml'
+      - 'Cargo.toml'
   workflow_dispatch:
 
 permissions:
@@ -25,8 +25,8 @@ jobs:
       - name: Get package info from Cargo.toml
         id: get-package-info
         run: |
-          version=$(grep -m1 '^version = ' engine/Cargo.toml | cut -d '"' -f2)
-          package_name=$(grep -m1 '^name = ' engine/Cargo.toml | cut -d '"' -f2)
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          package_name=$(grep -m1 '^name = ' Cargo.toml | cut -d '"' -f2)
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "package_name=${package_name}" >> $GITHUB_OUTPUT
 
@@ -39,7 +39,7 @@ jobs:
             echo "ERROR: Version mismatch!" >&2
             echo "Cargo.toml version: $cargo_version" >&2
             echo "cog.scm version: $cog_version" >&2
-            echo "Please update cog.scm to match the version in engine/Cargo.toml" >&2
+            echo "Please update cog.scm to match the version in Cargo.toml" >&2
             exit 1
           fi
 
@@ -126,19 +126,18 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         key: v1-${{ matrix.target }}
-        workspaces: engine
 
     - name: Build library
       uses: clechasseur/rs-cargo@v2
       with:
         command: build
-        args: --release --target ${{ matrix.target }} --manifest-path engine/Cargo.toml
+        args: --release --target ${{ matrix.target }} --manifest-path Cargo.toml
         use-cross: ${{ matrix.use-cross }}
 
     - name: Rename library
       shell: bash
       run: |
-        mv "engine/target/${{ matrix.target }}/release/${{ matrix.cargo_output_name }}" "./${{ matrix.asset_name }}"
+        mv "target/${{ matrix.target }}/release/${{ matrix.cargo_output_name }}" "./${{ matrix.asset_name }}"
 
     - name: Upload to release
       shell: bash

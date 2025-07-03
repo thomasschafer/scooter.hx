@@ -32,5 +32,5 @@ forge pkg install --git https://github.com/thomasschafer/scooter.hx.git
 
 ### Building from source
 
-1. Clone this repo, `cd` into `engine/` and run `cargo steel-lib`
+1. Clone and `cd` into this repo and run `cargo steel-lib`
 1. Add `(require "<path>/scooter.hx/scooter.scm")` to `init.scm` in your Helix config (where `<path>` is the absolute path of the folder containing the scooter.hx repo)

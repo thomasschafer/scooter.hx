@@ -1,3 +1,5 @@
 .DS_Store
 
+target/
+
 libscooter_hx.dylib
