@@ -17,7 +17,7 @@ Then, install the plugin with one of the installation methods below.
 Once installed, you can add the following to `init.scm` in your Helix config directory:
 
 ```scheme
-(require "scooter.hx/scooter.scm")
+(require "scooter/scooter.scm")
 ```
 
 You will then have the `:scooter` command available (which you can bind a keymap to in the usual way).
