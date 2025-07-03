@@ -3,21 +3,16 @@
 
 (define dependencies '())
 
-; TODO: add github action to check if version is up to date
+(define (asset-url asset-name)
+  (string-append "https://github.com/thomasschafer/scooter.hx/releases/download/v"
+                 version
+                 "/"
+                 asset-name))
+
 (define dylibs
-  '((#:name "scooter_hx"
-     #:urls
-     ((#:platform "x86_64-windows"
-       #:url
-       "https://github.com/thomasschafer/scooter.git/releases/download/v0.1.0/libscooter_hx.dll")
-      (#:platform "x86_64-macos"
-       #:url
-       "https://github.com/thomasschafer/scooter.git/releases/download/v0.1.0/libscooter_hx.dylib")
-      (#:platform "aarch64-macos"
-       #:url
-       "https://github.com/thomasschafer/scooter.git/releases/download/v0.1.0/libscooter_hx.dylib")
-      (#:platform "x86_64-macos"
-       #:url "https://github.com/thomasschafer/scooter.git/releases/download/v0.1.0/libscooter_hx.so")
-      (#:platform "aarch64-linux"
-       #:url
-       "https://github.com/thomasschafer/scooter.git/releases/download/v0.1.0/libscooter_hx.so")))))
+  `((#:name "scooter_hx"
+     #:urls ((#:platform "x86_64-linux" #:url (asset-url "libscooter_hx.x86_64-linux.so"))
+             (#:platform "aarch64-linux" #:url (asset-url "libscooter_hx.aarch64-linux.so"))
+             (#:platform "x86_64-macos" #:url (asset-url "libscooter_hx.x86_64-macos.dylib"))
+             (#:platform "aarch64-macos" #:url (asset-url "libscooter_hx.aarch64-macos.dylib"))
+             (#:platform "x86_64-windows" #:url (asset-url "libscooter_hx.x86_64-windows.dll"))))))

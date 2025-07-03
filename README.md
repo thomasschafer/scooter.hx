@@ -24,7 +24,11 @@ You will then have the `:scooter` command available (which you can bind a keymap
 
 ### Using Forge
 
-TODO
+Forge is the Steel package manager, and will have been installed in the previous step. Run the following:
+
+```sh
+forge pkg install --git https://github.com/thomasschafer/scooter.git
+```
 
 ### Building from source
 

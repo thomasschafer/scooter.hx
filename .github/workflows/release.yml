@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'engine/Cargo.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-package-info.outputs.version }}
+      should_release: ${{ steps.check-version.outputs.exists == 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get package info from Cargo.toml
+        id: get-package-info
+        run: |
+          version=$(grep -m1 '^version = ' engine/Cargo.toml | cut -d '"' -f2)
+          package_name=$(grep -m1 '^name = ' engine/Cargo.toml | cut -d '"' -f2)
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "package_name=${package_name}" >> $GITHUB_OUTPUT
+
+      - name: Verify cog.scm version matches Cargo.toml
+        run: |
+          cargo_version="${{ steps.get-package-info.outputs.version }}"
+          cog_version=$(grep -m1 '^(define version' cog.scm | grep -o '"[^"]*"' | tr -d '"')
+
+          if [ "$cargo_version" != "$cog_version" ]; then
+            echo "ERROR: Version mismatch!" >&2
+            echo "Cargo.toml version: $cargo_version" >&2
+            echo "cog.scm version: $cog_version" >&2
+            echo "Please update cog.scm to match the version in engine/Cargo.toml" >&2
+            exit 1
+          fi
+
+          echo "Versions match: $cargo_version"
+
+      - name: Check if release already exists
+        id: check-version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ steps.get-package-info.outputs.version }}"
+
+          if gh release view "v${version}" &>/dev/null; then
+            echo "Release v${version} already exists" >&2
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release v${version} does not exist" >&2
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ steps.get-package-info.outputs.version }}"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git tag -a "v${version}" -m "Release v${version}"
+          git push origin "v${version}"
+
+          gh release create "v${version}" \
+            --title "v${version}" \
+            --generate-notes \
+            --draft  # Make it draft until binaries are uploaded
+
+  build-and-upload:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: true
+            cargo_output_name: libscooter_hx.so
+            asset_name: libscooter_hx.x86_64-linux.so
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
+            cargo_output_name: libscooter_hx.so
+            asset_name: libscooter_hx.aarch64-linux.so
+          - os: macos-13
+            target: x86_64-apple-darwin
+            use-cross: false
+            cargo_output_name: libscooter_hx.dylib
+            asset_name: libscooter_hx.x86_64-macos.dylib
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
+            cargo_output_name: libscooter_hx.dylib
+            asset_name: libscooter_hx.aarch64-macos.dylib
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
+            cargo_output_name: scooter_hx.dll
+            asset_name: libscooter_hx.x86_64-windows.dll
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Handle Rust dependencies caching
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: v1-${{ matrix.target }}
+
+    - name: Build library
+      uses: clechasseur/rs-cargo@v2
+      with:
+        command: build
+        args: --release --target ${{ matrix.target }} --manifest-path engine/Cargo.toml
+        use-cross: ${{ matrix.use-cross }}
+
+    - name: Rename library
+      shell: bash
+      run: |
+        mv "engine/target/${{ matrix.target }}/release/${{ matrix.cargo_output_name }}" "./${{ matrix.asset_name }}"
+
+    - name: Upload to release
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        gh release upload "v${{ needs.prepare-release.outputs.version }}" "${{ matrix.asset_name }}" --clobber
+
+  publish-release:
+    needs: [prepare-release, build-and-upload]
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "v${{ needs.prepare-release.outputs.version }}" --draft=false --repo=${{ github.repository }}
