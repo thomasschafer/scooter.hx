@@ -1,3 +1,5 @@
+(#%require-dylib "libscooter_hx" (only-in unicode-display-width unicode-truncate-to-width))
+
 (provide truncate-string
          take-right
          drop
@@ -9,10 +11,7 @@
          char-substring)
 
 (define (truncate-string str max-width)
-  (cond
-    [(<= max-width 0) str]
-    [(<= (char-width str) max-width) str]
-    [else (list->string (take-n (string->list str) max-width))]))
+  (unicode-truncate-to-width str max-width))
 
 (define (take-right lst n)
   (define len (length lst))
@@ -39,18 +38,31 @@
       [else (loop (cdr lst) (+ idx 1))])))
 
 (define (truncate-str-with-ellipsis str max-width)
-  (let* ([str-chars (string->list str)]
-         [str-len (length str-chars)])
-    (if (<= str-len max-width)
+  (let ([str-width (char-width str)])
+    (if (<= str-width max-width)
         str
         (let* ([ellipsis "…"]
-               [available-width (- max-width (char-width ellipsis))])
+               [ellipsis-width (char-width ellipsis)]
+               [available-width (- max-width ellipsis-width)])
           (if (<= available-width 0)
               ellipsis
-              (string-append ellipsis (list->string (take-right str-chars available-width))))))))
+              ;; We need to keep the END of the string, not the beginning
+              ;; So we need a more complex approach
+              (let loop ([chars (reverse (string->list str))]
+                         [width 0]
+                         [result '()])
+                (cond
+                  [(null? chars) (string-append ellipsis (list->string result))]
+                  [(>= width available-width) (string-append ellipsis (list->string result))]
+                  [else
+                   (let* ([ch (car chars)]
+                          [ch-width (char-width (string ch))])
+                     (if (> (+ width ch-width) available-width)
+                         (string-append ellipsis (list->string result))
+                         (loop (cdr chars) (+ width ch-width) (cons ch result))))])))))))
 
 (define (char-width str)
-  (length (string->list str)))
+  (unicode-display-width str))
 
 (define (char-width-sum string-list)
   (apply + (map char-width string-list)))

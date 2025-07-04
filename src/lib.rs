@@ -9,6 +9,7 @@ mod test_utils;
 
 mod logging;
 pub mod scooter_hx;
+mod unicode;
 mod validation;
 
 declare_module!(create_module);
@@ -96,7 +97,9 @@ fn create_module() -> FFIModule {
         .register_fn(
             "SteelSearchResult-display-error",
             scooter_hx::SteelSearchResult::display_error,
-        );
+        )
+        .register_fn("unicode-display-width", unicode::display_width)
+        .register_fn("unicode-truncate-to-width", unicode::truncate_to_width);
 
     module
 }

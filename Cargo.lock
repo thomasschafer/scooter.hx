@@ -1450,6 +1450,7 @@ dependencies = [
  "steel-derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempfile",
  "tokio",
+ "unicode-width",
 ]
 
 [[package]]

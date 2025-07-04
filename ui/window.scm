@@ -26,7 +26,9 @@
                           SteelSearchResult-replacement
                           SteelSearchResult-included
                           SteelSearchResult-display-error
-                          SteelSearchResult-build-preview))
+                          SteelSearchResult-build-preview
+                          unicode-display-width
+                          unicode-truncate-to-width))
 
 (require "drawing.scm")
 (require "fields.scm")

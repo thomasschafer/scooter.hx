@@ -21,6 +21,7 @@ steel-core = { git = "https://github.com/mattwparas/steel.git", version = "0.7.0
   "sync",
 ] }
 steel-derive = { version = "0.6.0" }
+unicode-width = "0.1.11"
 
 [dev-dependencies]
 tempfile = "3.5"
