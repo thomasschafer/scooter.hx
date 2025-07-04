@@ -100,9 +100,9 @@ impl SteelSearchResult {
     pub(crate) fn build_preview(
         &self,
         screen_height: usize,
-        _screen_width: usize,
-    ) -> Vec<Vec<Vec<String>>> {
-        match self.try_build_preview(screen_height, _screen_width) {
+        screen_width: usize,
+    ) -> Vec<LineWithStyle> {
+        match self.try_build_preview(screen_height, screen_width) {
             Ok(preview) => preview,
             Err(error) => {
                 // Return error message as red text
@@ -136,8 +136,8 @@ impl SteelSearchResult {
     fn try_build_preview(
         &self,
         screen_height: usize,
-        _screen_width: usize,
-    ) -> Result<Vec<Vec<Vec<String>>>, String> {
+        _screen_width: usize, // TODO: use or remove
+    ) -> Result<Vec<LineWithStyle>, String> {
         let line_idx = self.line_num.saturating_sub(1); // Convert to 0-based index
         let start = line_idx.saturating_sub(screen_height);
         let end = line_idx + screen_height;
@@ -181,7 +181,11 @@ impl SteelSearchResult {
     }
 }
 
-fn str_to_vec(line: &str) -> Vec<Vec<String>> {
+/// Vector of triples [text, fg colour, bg colour]. We use this representation so that we
+/// can easily pass to Steel.
+type LineWithStyle = Vec<Vec<String>>;
+
+fn str_to_vec(line: &str) -> LineWithStyle {
     vec![vec![
         format!("  {}", strip_control_chars(line)), // Add 2 spaces to align with diff prefixes
         "".to_string(),
@@ -189,7 +193,7 @@ fn str_to_vec(line: &str) -> Vec<Vec<String>> {
     ]]
 }
 
-fn diffs_to_vec(diffs: &[Diff]) -> Vec<Vec<String>> {
+fn diffs_to_vec(diffs: &[Diff]) -> LineWithStyle {
     diffs
         .iter()
         .map(|d| {
