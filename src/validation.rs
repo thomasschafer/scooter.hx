@@ -3,6 +3,7 @@ use frep_core::validation::ValidationErrorHandler;
 use steel::steel_vm::ffi::FFIValue;
 
 #[derive(Clone, Default, Eq, PartialEq)]
+#[allow(clippy::struct_field_names)]
 pub struct ErrorHandler {
     pub search_text_errors: Vec<String>,
     pub include_files_errors: Vec<String>,

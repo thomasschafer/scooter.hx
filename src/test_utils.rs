@@ -208,5 +208,5 @@ where
         std::thread::sleep(poll_interval);
     }
 
-    panic!("Condition not met within {:?}", timeout)
+    panic!("Condition not met within {timeout:?}")
 }

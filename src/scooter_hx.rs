@@ -124,7 +124,7 @@ impl SteelSearchResult {
             Some(ReplaceResult::Error(error)) => error,
             None => panic!("Found error result with no error message"),
             Some(ReplaceResult::Success) => {
-                panic!("Found successful result in errors: {:?}", self)
+                panic!("Found successful result in errors: {self:?}")
             }
         };
 
@@ -144,11 +144,11 @@ impl SteelSearchResult {
 
         let file_path = Path::new(&self.full_path);
         let lines = read_lines_range(file_path, start, end)
-            .map_err(|e| format!("file read error: {}", e))?
+            .map_err(|e| format!("file read error: {e}"))?
             .collect::<Vec<_>>();
 
         let (before, cur, after) = split_indexed_lines(lines, line_idx, screen_height - 1)
-            .map_err(|e| format!("line split error: {}", e))?;
+            .map_err(|e| format!("line split error: {e}"))?;
         if cur.1 != self.line {
             return Err("File content has changed".into());
         }
@@ -238,25 +238,25 @@ impl ScooterHx {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn start_search(
         &mut self,
-        search_text: String,
-        replacement_text: String,
+        search_text: &str,
+        replacement_text: &str,
         fixed_strings: bool,
         match_whole_word: bool,
         match_case: bool,
-        include_globs: String,
-        exclude_globs: String,
+        include_globs: &str,
+        exclude_globs: &str,
     ) -> FFIValue {
         self.cancel_search();
 
         *self.state.lock().unwrap() = State::NotStarted;
 
         let search_config = SearchConfiguration {
-            search_text: &search_text,
-            replacement_text: &replacement_text,
+            search_text,
+            replacement_text,
             fixed_strings,
             advanced_regex: false,
-            include_globs: Some(&include_globs),
-            exclude_globs: Some(&exclude_globs),
+            include_globs: Some(include_globs),
+            exclude_globs: Some(exclude_globs),
             match_whole_word,
             match_case,
             include_hidden: false,
@@ -269,7 +269,7 @@ impl ScooterHx {
             Err(e) => {
                 return error_response(
                     "configuration-error",
-                    &format!("Failed to validate search configuration: {}", e),
+                    &format!("Failed to validate search configuration: {e}"),
                 );
             }
             Ok(ValidationResult::Success(searcher)) => searcher,
@@ -344,13 +344,13 @@ impl ScooterHx {
     // Note that this is an inclusive window, i.e. `search_results_window(a, b)` maps to `[a..=b]`
     pub(crate) fn search_results_window(&self, start: usize, end: usize) -> Vec<SteelSearchResult> {
         let state = self.state.lock().unwrap();
-        let results = match &*state {
-            State::SearchInProgress { results, .. } | State::SearchComplete(results) => results,
-            _ => return vec![],
+        let (State::SearchInProgress { results, .. } | State::SearchComplete(results)) = &*state
+        else {
+            return vec![];
         };
 
         results
-            .get(start..(end + 1))
+            .get(start..=end)
             .unwrap_or(&[])
             .iter()
             .map(|s| SteelSearchResult {
@@ -387,12 +387,13 @@ impl ScooterHx {
 
     pub(crate) fn toggle_all(&mut self) {
         let mut state = self.state.lock().unwrap();
-        let search_results = match &mut *state {
-            State::SearchInProgress { results, .. } | State::SearchComplete(results) => results,
-            _ => return,
+        let (State::SearchInProgress { results, .. } | State::SearchComplete(results)) =
+            &mut *state
+        else {
+            return;
         };
-        let all_included = search_results.iter().all(|res| res.included);
-        search_results
+        let all_included = results.iter().all(|res| res.included);
+        results
             .iter_mut()
             .for_each(|res| res.included = !all_included);
     }
@@ -511,6 +512,7 @@ mod tests {
     use super::*;
     use crate::test_utils::wait_until;
 
+    #[allow(clippy::too_many_lines)]
     #[test]
     fn test_basic_search_and_replace() {
         let temp_dir = create_test_files!(
@@ -531,15 +533,7 @@ mod tests {
         );
         let mut scooter = ScooterHx::new(temp_dir.path().to_string_lossy().into(), true);
 
-        scooter.start_search(
-            "TEST_PATTERN".into(),
-            "REPLACEMENT".into(),
-            false,
-            false,
-            true,
-            "".into(),
-            "".into(),
-        );
+        scooter.start_search("TEST_PATTERN", "REPLACEMENT", false, false, true, "", "");
 
         wait_until(|| scooter.search_complete(), Duration::from_millis(100));
 
