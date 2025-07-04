@@ -196,7 +196,7 @@
          [text-start-pos (- CURSOR-PADDING 1)]
          [text-available-width (- inner-width CURSOR-PADDING 1)]
          [truncated-text (truncate-string text text-available-width)]
-         [text-length (string-length truncated-text)]
+         [text-length (char-width truncated-text)]
          [leading-spaces (make-space-string text-start-pos)]
          [trailing-spaces (make-space-string (- inner-width text-start-pos text-length))])
     (string-append leading-spaces truncated-text trailing-spaces)))

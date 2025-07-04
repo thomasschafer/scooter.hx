@@ -425,7 +425,7 @@
          [text-style (UIStyles-text (ui-styles))]
          [y-pos (+ (area-y content-area) (quotient (area-height content-area) 2))]
          [x-pos (+ (area-x content-area)
-                   (quotient (- (area-width content-area) (string-length status-text)) 2))])
+                   (quotient (- (area-width content-area) (char-width status-text)) 2))])
     (frame-set-string! frame x-pos y-pos status-text text-style)))
 
 (define (draw-replacement-complete frame content-area state)
@@ -447,7 +447,7 @@
           [title-y start-y])
       (frame-set-string! frame
                          (+ (area-x content-area)
-                            (quotient (- (area-width content-area) (string-length title)) 2))
+                            (quotient (- (area-width content-area) (char-width title)) 2))
                          title-y
                          title
                          title-style))
@@ -533,7 +533,7 @@
   (when (field-is-text? field-id)
     (let ([current-pos (get-field-cursor-pos state field-id)]
           [field-value (get-field-value state field-id)])
-      (set-field-cursor-pos! state field-id (min (string-length field-value) (+ current-pos 1))))))
+      (set-field-cursor-pos! state field-id (min (char-width field-value) (+ current-pos 1))))))
 
 (define (clear-errors-on-input! state field-id)
   (clear-field-error! state field-id)
@@ -544,8 +544,8 @@
     (clear-errors-on-input! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (substring field-value 0 cursor-pos)]
-           [after (substring field-value cursor-pos (string-length field-value))])
+           [before (char-substring field-value 0 cursor-pos)]
+           [after (char-substring field-value cursor-pos (char-width field-value))])
       (set-field-value! state field-id (string-append before (string char) after))
       (set-field-cursor-pos! state field-id (+ cursor-pos 1)))))
 
@@ -554,8 +554,8 @@
     (clear-errors-on-input! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (substring field-value 0 (- cursor-pos 1))]
-           [after (substring field-value cursor-pos (string-length field-value))])
+           [before (char-substring field-value 0 (- cursor-pos 1))]
+           [after (char-substring field-value cursor-pos (char-width field-value))])
       (set-field-value! state field-id (string-append before after))
       (set-field-cursor-pos! state field-id (- cursor-pos 1)))))
 
@@ -564,11 +564,11 @@
     (clear-errors-on-input! state field-id)
     (let* ([field-value (get-field-value state field-id)]
            [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (substring field-value 0 cursor-pos)]
-           [after (substring field-value cursor-pos (string-length field-value))]
+           [before (char-substring field-value 0 cursor-pos)]
+           [after (char-substring field-value cursor-pos (char-width field-value))]
            [new-value (string-append before text after)])
       (set-field-value! state field-id new-value)
-      (set-field-cursor-pos! state field-id (+ cursor-pos (string-length text))))))
+      (set-field-cursor-pos! state field-id (+ cursor-pos (char-width text))))))
 
 (define (position-cursor-in-text-field state current-field field-positions content-x content-width)
   (let ([active-field-def (get-field-by-id current-field)])
@@ -631,11 +631,11 @@
   (let* ([hint-style (UIStyles-dim (ui-styles))]
          [hint-text (get-keybinding-help mode)]
          [truncated-hint (truncate-string hint-text (area-width help-area))]
-         [text-length (string-length truncated-hint)]
+         [text-length (char-width truncated-hint)]
          [available-width (area-width help-area)]
          [padding (max 0 (quotient (- available-width text-length) 2))]
          [centered-x (+ (area-x help-area) padding)])
-    (when (> (string-length hint-text) 0)
+    (when (> (char-width hint-text) 0)
       (frame-set-string! frame centered-x (area-y help-area) truncated-hint hint-style))))
 
 (define (scooter-render state rect frame)

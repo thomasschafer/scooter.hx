@@ -75,7 +75,7 @@
                                style
                                #:left-cap [left-cap ""]
                                #:right-cap [right-cap ""])
-  (let* ([line-width (- width (string-length left-cap) (string-length right-cap))]
+  (let* ([line-width (- width (char-width left-cap) (char-width right-cap))]
          [line (make-border-string line-width)]
          [full-line (string-append left-cap line right-cap)])
     (draw-text-line! frame x y full-line style)))
@@ -93,9 +93,9 @@
                    #:content [content #f]
                    #:padding [padding 0])
   (let* ([inner-width (- width 2)]
-         [has-title? (and title (> (string-length title) 0))]
+         [has-title? (and title (> (char-width title) 0))]
          [clean-title (if has-title? title "")]
-         [title-len (string-length clean-title)]
+         [title-len (char-width clean-title)]
          [top-line-width (- inner-width title-len)]
 
          [top-line
@@ -120,8 +120,8 @@
             (let* ([content-line (list-ref content (- row 1))]
                    [padded-x (+ x 1 padding)]
                    [max-content-width (- inner-width (* 2 padding))]
-                   [truncated-content (if (> (string-length content-line) max-content-width)
-                                          (substring content-line 0 max-content-width)
+                   [truncated-content (if (> (char-width content-line) max-content-width)
+                                          (char-substring content-line 0 max-content-width)
                                           content-line)])
               (draw-text-line! frame padded-x current-y truncated-content style)))
 

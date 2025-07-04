@@ -5,7 +5,8 @@
          index-of
          truncate-str-with-ellipsis
          char-width
-         char-width-sum)
+         char-width-sum
+         char-substring)
 
 (define (truncate-string str max-width)
   (cond
@@ -53,3 +54,14 @@
 
 (define (char-width-sum string-list)
   (apply + (map char-width string-list)))
+
+(define (char-substring str start end)
+  (let* ([chars (string->list str)]
+         [len (length chars)])
+    (cond
+      [(>= start len) ""]
+      [(>= start end) ""]
+      [else
+       (let ([actual-start (max 0 start)]
+             [actual-end (min len end)])
+         (list->string (take-n (drop chars actual-start) (- actual-end actual-start))))])))
