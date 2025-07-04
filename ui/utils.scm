@@ -12,7 +12,7 @@
   (cond
     [(<= max-width 0) str]
     [(<= (char-width str) max-width) str]
-    [else (let ([chars (string->list str)]) (list->string (take-n chars max-width)))]))
+    [else (list->string (take-n (string->list str) max-width))]))
 
 (define (take-right lst n)
   (define len (length lst))

@@ -308,19 +308,20 @@
          [fixed-elements (list prefix checkbox " " ":" line-num-str)]
          [fixed-overhead (char-width-sum fixed-elements)]
          [max-path-width (max 10 (- available-width fixed-overhead))]
-         [truncated-path (truncate-str-with-ellipsis raw-path max-path-width)])
-
-    (list (cons prefix prefix-style)
-          (cons checkbox checkbox-style)
-          (cons " " text-style)
-          (cons truncated-path text-style)
-          (cons ":" text-style)
-          (cons line-num-str line-num-style))))
+         [truncated-path (truncate-str-with-ellipsis raw-path max-path-width)]
+         [parts (list (cons prefix prefix-style)
+                      (cons checkbox checkbox-style)
+                      (cons " " text-style)
+                      (cons truncated-path text-style)
+                      (cons ":" text-style)
+                      (cons line-num-str line-num-style))]
+         [remaining-width (- available-width (char-width-sum (map car parts)))])
+    (append parts (list (cons (make-string remaining-width #\space) text-style)))))
 
 (define (draw-file-preview frame preview-area result)
   (let* ([screen-height (area-height preview-area)]
          [screen-width (area-width preview-area)]
-         [preview-lines (SteelSearchResult-build-preview result screen-height screen-width)]
+         [preview-lines (SteelSearchResult-build-preview result screen-height)]
          [bg-style (UIStyles-bg (ui-styles))])
 
     ;; Fill the preview area with the background color
@@ -397,16 +398,12 @@
                     [absolute-index (+ index data-scroll-offset)]
                     [is-selected (= absolute-index selected-index)]
                     [styled-segments
-                     (format-search-result result is-selected styles (area-width results-list-area))]
-                    [render-width
-                     (if is-selected
-                         (area-width results-list-area)
-                         (apply + (map (lambda (seg) (char-width (car seg))) styled-segments)))])
+                     (format-search-result result is-selected styles (area-width results-list-area))])
                (render-styled-segments frame
                                        (area-x results-list-area)
                                        (+ (area-y results-list-area) current-row)
                                        styled-segments
-                                       render-width))
+                                       (area-width results-list-area)))
              (loop (+ index 1) (+ current-row 1)))))
 
        ;; Draw preview for selected result

@@ -97,12 +97,8 @@ impl SteelSearchResult {
         self.line_num
     }
 
-    pub(crate) fn build_preview(
-        &self,
-        screen_height: usize,
-        screen_width: usize,
-    ) -> Vec<LineWithStyle> {
-        match self.try_build_preview(screen_height, screen_width) {
+    pub(crate) fn build_preview(&self, screen_height: usize) -> Vec<LineWithStyle> {
+        match self.try_build_preview(screen_height) {
             Ok(preview) => preview,
             Err(error) => {
                 // Return error message as red text
@@ -133,11 +129,7 @@ impl SteelSearchResult {
         vec![path_display, error.to_string()]
     }
 
-    fn try_build_preview(
-        &self,
-        screen_height: usize,
-        _screen_width: usize, // TODO: use or remove
-    ) -> Result<Vec<LineWithStyle>, String> {
+    fn try_build_preview(&self, screen_height: usize) -> Result<Vec<LineWithStyle>, String> {
         let line_idx = self.line_num.saturating_sub(1); // Convert to 0-based index
         let start = line_idx.saturating_sub(screen_height);
         let end = line_idx + screen_height;

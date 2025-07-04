@@ -180,8 +180,7 @@
                         (car fill-style))])
     (let loop ([segments segments]
                [current-x x]
-               [remaining-width max-width]
-               [last-style #f])
+               [remaining-width max-width])
       (cond
         [(and (not (null? segments)) (> remaining-width 0))
          (let* ([segment (car segments)]
@@ -195,17 +194,10 @@
            (frame-set-string! frame current-x y truncated-text style)
            (loop (cdr segments)
                  (+ current-x truncated-char-len)
-                 (- remaining-width truncated-char-len)
-                 style))]
+                 (- remaining-width truncated-char-len)))]
 
-        [(> remaining-width 0)
-         (let ([style-to-use (or fill-style last-style)])
-           (when style-to-use
-             (frame-set-string! frame
-                                current-x
-                                y
-                                (make-space-string remaining-width)
-                                style-to-use)))]))))
+        [(and (> remaining-width 0) fill-style)
+         (frame-set-string! frame current-x y (make-space-string remaining-width) fill-style)]))))
 
 (define (render-styled-segments-in-area frame area row segments . fill-style)
   (let ([args (append (list frame (area-x area) (+ (area-y area) row) segments (area-width area))
