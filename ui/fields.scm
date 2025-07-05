@@ -1,5 +1,7 @@
 (require "helix/components.scm")
 
+(#%require-dylib "libscooter_hx" (only-in TextField? TextField-new))
+
 (require "drawing.scm")
 (require "styles.scm")
 (require "utils.scm")
@@ -255,14 +257,14 @@
 
 (define (create-initial-field-values)
   (fold (lambda (field-def values)
-          (hash-insert values (field-id field-def) (field-default-value field-def)))
+          (let ([field-id (field-id field-def)]
+                [field-type (field-type field-def)]
+                [default-value (field-default-value field-def)])
+            (if (equal? field-type FIELD-TYPE-TEXT)
+                (hash-insert values field-id (TextField-new default-value))
+                (hash-insert values field-id default-value))))
         (hash)
         (get-all-fields)))
 
 (define (create-initial-cursor-positions)
-  (fold (lambda (field-def positions)
-          (if (equal? (field-type field-def) FIELD-TYPE-TEXT)
-              (hash-insert positions (field-id field-def) 0)
-              positions))
-        (hash)
-        (get-all-fields)))
+  (hash))
