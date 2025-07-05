@@ -290,10 +290,12 @@
           (set-error-scroll-offset! state (min max-offset new-offset)))))))
 
 (define (toggle-search-result-inclusion state)
-  (let ([selected-index (get-selected-index state)]
-        [engine (get-engine state)])
-    (Scooter-toggle-inclusion engine selected-index)
-    (fetch-results-window state)))
+  (let* ([selected-index (get-selected-index state)]
+         [engine (get-engine state)]
+         [data (get-search-data state)])
+    (when (> (SearchData-result-count data) 0)
+      (Scooter-toggle-inclusion engine selected-index)
+      (fetch-results-window state))))
 
 (define (toggle-all-search-results state)
   (let ([engine (get-engine state)])
