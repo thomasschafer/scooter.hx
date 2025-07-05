@@ -310,20 +310,15 @@
   (let* ([selected-index (get-selected-index state)]
          [engine (get-engine state)]
          [data (get-search-data state)])
-    (when (and data
-               (> (SearchData-result-count data) 0)
-               (>= selected-index 0)
-               (< selected-index (SearchData-result-count data)))
+    (when (> (SearchData-result-count data) 0)
       (let* ([results (SearchData-results data)]
-             [scroll-offset (SearchData-scroll-offset data)]
-             [local-index (- selected-index scroll-offset)])
-        (when (and (>= local-index 0) (< local-index (length results)))
-          (let* ([selected-result (list-ref results local-index)]
-                 [file-path (SteelSearchResult-full-path selected-result)]
-                 [line-num (SteelSearchResult-line-num selected-result)])
-            (helix.open file-path)
-            (helix.goto (int->string line-num))
-            (align_view_center)))))))
+             [local-index (- selected-index (SearchData-scroll-offset data))]
+             [selected-result (list-ref results local-index)]
+             [file-path (SteelSearchResult-full-path selected-result)]
+             [line-num (SteelSearchResult-line-num selected-result)])
+        (helix.open file-path)
+        (helix.goto (int->string line-num))
+        (align_view_center)))))
 
 ;; Drawing functions
 (define (preview-line-to-styled-segments line-segments)
