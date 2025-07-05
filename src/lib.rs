@@ -9,11 +9,13 @@ mod test_utils;
 
 mod logging;
 pub mod scooter_hx;
+mod textfield;
 mod unicode;
 mod validation;
 
 declare_module!(create_module);
 
+#[allow(clippy::too_many_lines)]
 fn create_module() -> FFIModule {
     let mut module = FFIModule::new("steel/scooter");
 
@@ -103,7 +105,67 @@ fn create_module() -> FFIModule {
             scooter_hx::SteelSearchResult::display_error,
         )
         .register_fn("unicode-display-width", unicode::display_width)
-        .register_fn("unicode-truncate-to-width", unicode::truncate_to_width);
+        .register_fn("unicode-truncate-to-width", unicode::truncate_to_width)
+        // TextField type and methods
+        .register_type::<scooter_core::fields::TextField>("TextField?")
+        .register_fn("TextField-new", scooter_core::fields::TextField::new)
+        .register_fn("TextField-text", textfield::textfield_text)
+        .register_fn(
+            "TextField-cursor-pos",
+            scooter_core::fields::TextField::cursor_pos,
+        )
+        .register_fn(
+            "TextField-move-cursor-left",
+            scooter_core::fields::TextField::move_cursor_left,
+        )
+        .register_fn(
+            "TextField-move-cursor-start",
+            scooter_core::fields::TextField::move_cursor_start,
+        )
+        .register_fn(
+            "TextField-move-cursor-right",
+            scooter_core::fields::TextField::move_cursor_right,
+        )
+        .register_fn(
+            "TextField-move-cursor-end",
+            scooter_core::fields::TextField::move_cursor_end,
+        )
+        .register_fn(
+            "TextField-enter-char",
+            scooter_core::fields::TextField::enter_char,
+        )
+        .register_fn(
+            "TextField-delete-char",
+            scooter_core::fields::TextField::delete_char,
+        )
+        .register_fn(
+            "TextField-delete-char-forward",
+            scooter_core::fields::TextField::delete_char_forward,
+        )
+        .register_fn(
+            "TextField-move-cursor-back-word",
+            scooter_core::fields::TextField::move_cursor_back_word,
+        )
+        .register_fn(
+            "TextField-delete-word-backward",
+            scooter_core::fields::TextField::delete_word_backward,
+        )
+        .register_fn(
+            "TextField-move-cursor-forward-word",
+            scooter_core::fields::TextField::move_cursor_forward_word,
+        )
+        .register_fn(
+            "TextField-delete-word-forward",
+            scooter_core::fields::TextField::delete_word_forward,
+        )
+        .register_fn("TextField-clear", scooter_core::fields::TextField::clear)
+        .register_fn("TextField-set-text", textfield::textfield_set_text)
+        .register_fn("TextField-insert-text", textfield::textfield_insert_text)
+        .register_fn("TextField-cursor-idx", textfield::textfield_cursor_idx)
+        .register_fn(
+            "TextField-set-cursor-idx",
+            textfield::textfield_set_cursor_idx,
+        );
 
     module
 }
