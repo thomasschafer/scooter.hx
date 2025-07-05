@@ -20,7 +20,9 @@ Once installed, you can add the following to `init.scm` in your Helix config dir
 (require "scooter/scooter.scm")
 ```
 
-You will then have the `:scooter` command available (which you can bind a keymap to in the usual way).
+You will then have the following commands available (which you can bind a keymap to in the usual way):
+- `:scooter`, which either resumes an existing session if one exists, or otherwise starts a new session
+- `:scooter-new`, which always starts a new session, cancelling any in-progress operations
 
 ### Using Forge
 

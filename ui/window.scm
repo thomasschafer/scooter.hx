@@ -1,5 +1,6 @@
 (require "helix/components.scm")
 (require "helix/misc.scm")
+(require "helix/static.scm")
 
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-new
@@ -51,7 +52,9 @@
          get-engine
          ScooterWindow-lines-box
          SearchData
-         get-search-data)
+         get-search-data
+         reset-scooter-state!
+         cancel-all-operations!)
 
 (define WINDOW-SIZE-RATIO 0.9)
 (define CONTENT-PADDING 2)
@@ -150,24 +153,46 @@
   (clear-all-field-errors! state)
   (clear-general-error! state))
 
+(define (create-scooter-window)
+  (let ([directory (get-helix-cwd)])
+    (ScooterWindow (box 'search-fields) ; current-screen-box
+                   (box (create-initial-field-values)) ; field-values-box
+                   (box (create-initial-cursor-positions)) ; cursor-positions-box
+                   (box 'search) ; current-field-box
+                   (box (SearchData 0 #f '() 0)) ; lines-box
+                   (box #f) ; completed-box
+                   (position 0 0) ; cursor-position
+                   (box (Scooter-new directory #f)) ; engine-box
+                   (box 0) ; selected-index-box
+                   (box 0) ; scroll-offset-box
+                   (box 10) ; content-height-box
+                   (box (hash)) ; field-errors-box
+                   (box #f) ; general-error-box
+                   (box 0)))) ; error-scroll-offset-box
+
 (define (reset-scooter-state! state)
-  ;; Cancel any ongoing operations
+  (cancel-all-operations! state)
+  (let* ([engine (get-engine state)]
+         [default-state (create-scooter-window)]
+         [box-accessors (list ScooterWindow-current-screen-box
+                              ScooterWindow-field-values-box
+                              ScooterWindow-cursor-positions-box
+                              ScooterWindow-current-field-box
+                              ScooterWindow-lines-box
+                              ScooterWindow-completed-box
+                              ScooterWindow-selected-index-box
+                              ScooterWindow-scroll-offset-box
+                              ScooterWindow-field-errors-box
+                              ScooterWindow-general-error-box
+                              ScooterWindow-error-scroll-offset-box)])
+    (Scooter-reset engine)
+    (for-each (lambda (accessor) (set-box! (accessor state) (unbox (accessor default-state))))
+              box-accessors)))
+
+(define (cancel-all-operations! state)
   (let ([engine (get-engine state)])
     (Scooter-cancel-search engine)
-    (Scooter-cancel-replacement engine)
-    (Scooter-reset engine))
-
-  ;; Reset all state to initial values
-  (set-current-screen! state 'search-fields)
-  (set-box! (ScooterWindow-field-values-box state) (create-initial-field-values))
-  (set-box! (ScooterWindow-cursor-positions-box state) (create-initial-cursor-positions))
-  (set-current-field! state 'search)
-  (set-box! (ScooterWindow-lines-box state) (SearchData 0 #f '() 0))
-  (set-box! (ScooterWindow-completed-box state) #f)
-  (set-selected-index! state 0)
-  (set-scroll-offset! state 0)
-  (set-error-scroll-offset! state 0)
-  (clear-all-errors! state))
+    (Scooter-cancel-replacement engine)))
 
 (define (clear-all-field-errors! state)
   (set-box! (ScooterWindow-field-errors-box state) (hash)))
@@ -507,22 +532,6 @@
                           (render-errors (cdr error-list) (+ error-y 3)))))))
                 (loop (cdr stats-list) (+ current-y 3)))))))))
 
-(define (create-scooter-window directory)
-  (ScooterWindow (box 'search-fields) ; current-screen-box
-                 (box (create-initial-field-values)) ; field-values-box
-                 (box (create-initial-cursor-positions)) ; cursor-positions-box
-                 (box 'search) ; current-field-box
-                 (box (SearchData 0 #f '() 0)) ; lines-box - initialize with empty SearchData
-                 (box #f) ; completed-box
-                 (position 0 0) ; cursor-position
-                 (box (Scooter-new directory #f)) ; engine-box
-                 (box 0) ; selected-index-box
-                 (box 0) ; scroll-offset-box
-                 (box 10) ; content-height-box (placeholder, set during rendering)
-                 (box (hash)) ; field-errors-box
-                 (box #f) ; general-error-box
-                 (box 0))) ; error-scroll-offset-box
-
 (define (move-cursor-left state field-id)
   (when (field-is-text? field-id)
     (let ([current-pos (get-field-cursor-pos state field-id)])
@@ -598,7 +607,7 @@
   (string-append "<" key "> " action))
 
 (define (get-keybinding-help mode)
-  (let* ([common-bindings '(("ctrl+r" "reset") ("esc" "quit"))]
+  (let* ([common-bindings '(("ctrl+r" "reset") ("esc" "hide") ("ctrl+c" "quit"))]
          [mode-specific-bindings
           (cond
             [(equal? mode 'search-fields)
@@ -606,7 +615,7 @@
             [(equal? mode 'search-results)
              '(("enter" "replace") ("space" "toggle") ("a" "toggle all") ("ctrl+o" "back"))]
             [(equal? mode 'performing-replacement) '()]
-            [(equal? mode 'replacement-complete) '()]
+            [(equal? mode 'replacement-complete) '(("enter" "quit"))]
             [else '()])]
          [all-bindings (append mode-specific-bindings common-bindings)]
          [formatted-bindings (map (lambda (binding) (format-keybinding (car binding) (cadr binding)))
@@ -758,16 +767,11 @@
     (poll-replacement-progress state)))
 
 (define (handle-performing-replacement-event state event)
-  (cond
-    [(key-event-escape? event)
-     (let ([engine (get-engine state)])
-       (Scooter-cancel-replacement engine)
-       event-result/close)])
   event-result/consume)
 
 (define (handle-replacement-complete-event state event)
   (cond
-    [(key-event-enter? event) event-result/close]
+    [(key-event-enter? event) 'destroy-and-close]
     [(or (key-event-up? event) (key-matches-char? event #\k)) (scroll-errors state -1)]
     [(or (key-event-down? event) (key-matches-char? event #\j)) (scroll-errors state 1)]
     [else event-result/consume]))
@@ -795,11 +799,6 @@
 (define (scooter-event-handler state event)
   (let ([mode (get-current-screen state)])
     (cond
-      [(key-event-escape? event)
-       (let ([engine (get-engine state)])
-         (Scooter-cancel-search engine)
-         (Scooter-cancel-replacement engine)
-         event-result/close)]
       [(key-with-ctrl? event #\r)
        (reset-scooter-state! state)
        event-result/consume]
