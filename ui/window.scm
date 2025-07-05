@@ -31,7 +31,27 @@
                           SteelSearchResult-display-error
                           SteelSearchResult-build-preview
                           unicode-display-width
-                          unicode-truncate-to-width))
+                          unicode-truncate-to-width
+                          TextField?
+                          TextField-new
+                          TextField-text
+                          TextField-cursor-pos
+                          TextField-move-cursor-left
+                          TextField-move-cursor-start
+                          TextField-move-cursor-right
+                          TextField-move-cursor-end
+                          TextField-enter-char
+                          TextField-delete-char
+                          TextField-delete-char-forward
+                          TextField-move-cursor-back-word
+                          TextField-delete-word-backward
+                          TextField-move-cursor-forward-word
+                          TextField-delete-word-forward
+                          TextField-clear
+                          TextField-set-text
+                          TextField-insert-text
+                          TextField-cursor-idx
+                          TextField-set-cursor-idx))
 
 (require "drawing.scm")
 (require "fields.scm")
@@ -94,6 +114,21 @@
 (define-hash-accessors get-field-value set-field-value! ScooterWindow-field-values-box)
 (define-hash-accessors get-field-cursor-pos set-field-cursor-pos! ScooterWindow-cursor-positions-box)
 (define-hash-accessors get-field-errors set-field-errors! ScooterWindow-field-errors-box)
+
+(define (get-field-textfield state field-id)
+  (hash-ref (unbox (ScooterWindow-field-values-box state)) field-id))
+
+(define (get-field-text state field-id)
+  (let ([field-value (get-field-value state field-id)])
+    (if (TextField? field-value)
+        (TextField-text field-value)
+        field-value)))
+
+(define (set-field-text! state field-id text)
+  (let ([field-value (get-field-value state field-id)])
+    (if (TextField? field-value)
+        (TextField-set-text field-value text)
+        (set-field-value! state field-id text))))
 
 (define (get-current-screen state)
   (unbox (ScooterWindow-current-screen-box state)))
@@ -557,58 +592,97 @@
                           (render-errors (cdr error-list) (+ error-y 3)))))))
                 (loop (cdr stats-list) (+ current-y 3)))))))))
 
-(define (move-cursor-left state field-id)
-  (when (field-is-text? field-id)
-    (let ([current-pos (get-field-cursor-pos state field-id)])
-      (set-field-cursor-pos! state field-id (max 0 (- current-pos 1))))))
-
-(define (move-cursor-right state field-id)
-  (when (field-is-text? field-id)
-    (let ([current-pos (get-field-cursor-pos state field-id)]
-          [field-value (get-field-value state field-id)])
-      (set-field-cursor-pos! state field-id (min (char-width field-value) (+ current-pos 1))))))
-
 (define (clear-errors-on-input! state field-id)
   (clear-field-error! state field-id)
   (clear-general-error! state))
 
-(define (insert-char-at-cursor state field-id char)
-  (when (field-is-text? field-id)
-    (clear-errors-on-input! state field-id)
-    (let* ([field-value (get-field-value state field-id)]
-           [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (char-substring field-value 0 cursor-pos)]
-           [after (char-substring field-value cursor-pos (char-width field-value))])
-      (set-field-value! state field-id (string-append before (string char) after))
-      (set-field-cursor-pos! state field-id (+ cursor-pos 1)))))
+(define (handle-textfield-key textfield event)
+  (cond
+    ;; Ctrl+W or Alt+Backspace: delete word backward
+    [(or (and (key-event-char event)
+              (equal? (key-event-char event) #\w)
+              (equal? (key-event-modifier event) key-modifier-ctrl))
+         (and (key-event-backspace? event) (equal? (key-event-modifier event) key-modifier-alt)))
+     (TextField-delete-word-backward textfield)]
 
-(define (delete-char-at-cursor state field-id)
-  (when (and (field-is-text? field-id) (> (get-field-cursor-pos state field-id) 0))
-    (clear-errors-on-input! state field-id)
-    (let* ([field-value (get-field-value state field-id)]
-           [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (char-substring field-value 0 (- cursor-pos 1))]
-           [after (char-substring field-value cursor-pos (char-width field-value))])
-      (set-field-value! state field-id (string-append before after))
-      (set-field-cursor-pos! state field-id (- cursor-pos 1)))))
+    ;; Ctrl+U: clear field (TODO: Add Meta+Backspace when available)
+    [(and (key-event-char event)
+          (equal? (key-event-char event) #\u)
+          (equal? (key-event-modifier event) key-modifier-ctrl))
+     (TextField-clear textfield)]
+
+    ;; Backspace: delete char
+    [(key-event-backspace? event) (TextField-delete-char textfield)]
+
+    ;; Alt+B/Alt+Left: move cursor back word
+    [(or (and (key-event-char event)
+              (or (equal? (key-event-char event) #\b) (equal? (key-event-char event) #\B))
+              (equal? (key-event-modifier event) key-modifier-alt))
+         (and (key-event-left? event) (equal? (key-event-modifier event) key-modifier-alt)))
+     (TextField-move-cursor-back-word textfield)]
+
+    ;; TODO: Home key - move to start (when key-event-home? is available)
+    ;; For now use Ctrl+A as alternative
+    [(and (key-event-char event)
+          (equal? (key-event-char event) #\a)
+          (equal? (key-event-modifier event) key-modifier-ctrl))
+     (TextField-move-cursor-start textfield)]
+
+    ;; Left arrow: move cursor left
+    [(key-event-left? event) (TextField-move-cursor-left textfield)]
+
+    ;; Alt+F/Alt+Right: move cursor forward word
+    [(or (and (key-event-char event)
+              (or (equal? (key-event-char event) #\f) (equal? (key-event-char event) #\F))
+              (equal? (key-event-modifier event) key-modifier-alt))
+         (and (key-event-right? event) (equal? (key-event-modifier event) key-modifier-alt)))
+     (TextField-move-cursor-forward-word textfield)]
+
+    ;; TODO: Meta+Right or End key - move to end (when available)
+    ;; For now use Ctrl+E as alternative
+    [(and (key-event-char event)
+          (equal? (key-event-char event) #\e)
+          (equal? (key-event-modifier event) key-modifier-ctrl))
+     (TextField-move-cursor-end textfield)]
+
+    ;; Right arrow: move cursor right
+    [(key-event-right? event) (TextField-move-cursor-right textfield)]
+
+    ;; Alt+D: delete word forward (TODO: Add Alt+Delete when available)
+    [(and (key-event-char event)
+          (equal? (key-event-char event) #\d)
+          (equal? (key-event-modifier event) key-modifier-alt))
+     (TextField-delete-word-forward textfield)]
+
+    ;; TODO: Delete key - delete char forward (when key-event-delete? is available)
+    ;; For now use Ctrl+D as alternative
+    [(and (key-event-char event)
+          (equal? (key-event-char event) #\d)
+          (equal? (key-event-modifier event) key-modifier-ctrl))
+     (TextField-delete-char-forward textfield)]
+
+    ;; Regular character input
+    [(key-event-char event) (TextField-enter-char textfield (key-event-char event))]
+
+    ;; Default: do nothing
+    [else #f]))
 
 (define (insert-text-at-cursor state field-id text)
   (when (field-is-text? field-id)
     (clear-errors-on-input! state field-id)
-    (let* ([field-value (get-field-value state field-id)]
-           [cursor-pos (get-field-cursor-pos state field-id)]
-           [before (char-substring field-value 0 cursor-pos)]
-           [after (char-substring field-value cursor-pos (char-width field-value))]
-           [new-value (string-append before text after)])
-      (set-field-value! state field-id new-value)
-      (set-field-cursor-pos! state field-id (+ cursor-pos (char-width text))))))
+    (let ([textfield (get-field-value state field-id)])
+      (when (TextField? textfield)
+        (TextField-insert-text textfield text)))))
 
 (define (position-cursor-in-text-field state current-field field-positions content-x content-width)
   (let ([active-field-def (get-field-by-id current-field)])
     (when (and active-field-def (equal? (field-type active-field-def) FIELD-TYPE-TEXT))
       (let* ([positions (hash-ref field-positions current-field)]
              [box-top-y (car positions)]
-             [cursor-pos (get-field-cursor-pos state current-field)]
+             [textfield (get-field-value state current-field)]
+             [cursor-pos (if (TextField? textfield)
+                             (TextField-cursor-pos textfield)
+                             0)]
              [cursor-row (+ box-top-y 1)]
              [cursor-col (get-field-cursor-column content-x content-width cursor-pos)])
         (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
@@ -678,7 +752,7 @@
   (let* ([window-area (calculate-window-area rect)]
          [content-area (calculate-content-area window-area)]
          [mode (get-current-screen state)]
-         [search-term (get-field-value state 'search)]
+         [search-term (get-field-text state 'search)]
          [current-field (get-current-field state)]
          [title " Scooter "]
          [popup-style (UIStyles-popup (ui-styles))])
@@ -718,7 +792,7 @@
                             fields-area
                             current-field
                             state
-                            get-field-value
+                            get-field-text
                             get-field-errors-safe))
 
          (position-cursor-in-text-field state
@@ -752,34 +826,33 @@
     (set-current-field! state new-field-id)))
 
 (define (handle-enter-key state)
-  (let ([search-term (get-field-value state 'search)])
+  (let ([search-term (get-field-text state 'search)])
     (if (> (char-width search-term) 0)
         (start-scooter-search state)
         (set-field-errors! state 'search '("Search text is required")))))
-
-(define (handle-char-input state char)
-  (let* ([current-field-id (get-current-field state)]
-         [field-def (get-field-by-id current-field-id)])
-    (when (and (char? char) field-def)
-      (cond
-        [(equal? (field-type field-def) FIELD-TYPE-TEXT)
-         (insert-char-at-cursor state current-field-id char)]
-
-        [(and (equal? (field-type field-def) FIELD-TYPE-BOOLEAN) (equal? char #\space))
-         (let ([current-value (get-field-value state current-field-id)])
-           (set-field-value! state current-field-id (not current-value))
-           (when (equal? current-field-id 'fixed-strings)
-             (clear-field-error! state 'search)))]))))
 
 (define (handle-search-fields-mode-event state event)
   (cond
     [(paste-event? event) (handle-paste-event state (paste-event-string event))]
     [(key-event-tab? event) (handle-tab-key state (key-event-modifier event))]
     [(key-event-enter? event) (handle-enter-key state)]
-    [(key-event-left? event) (move-cursor-left state (get-current-field state))]
-    [(key-event-right? event) (move-cursor-right state (get-current-field state))]
-    [(key-event-backspace? event) (delete-char-at-cursor state (get-current-field state))]
-    [(key-event-char event) (handle-char-input state (key-event-char event))])
+    [else
+     (let* ([current-field-id (get-current-field state)]
+            [field-def (get-field-by-id current-field-id)])
+       (when (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
+         (clear-errors-on-input! state current-field-id)
+         (let ([textfield (get-field-value state current-field-id)])
+           (when (TextField? textfield)
+             (handle-textfield-key textfield event))))
+
+       (when (and field-def
+                  (equal? (field-type field-def) FIELD-TYPE-BOOLEAN)
+                  (key-event-char event)
+                  (equal? (key-event-char event) #\space))
+         (let ([current-value (get-field-value state current-field-id)])
+           (set-field-value! state current-field-id (not current-value))
+           (when (equal? current-field-id 'fixed-strings)
+             (clear-field-error! state 'search)))))])
   event-result/consume)
 
 (define (key-matches-char? event char)
@@ -879,15 +952,14 @@
     (clear-all-errors! state)))
 
 (define (execute-search-process! state)
-  (let* ([field-values (unbox (ScooterWindow-field-values-box state))]
-         [engine (get-engine state)]
-         [search-term (hash-ref field-values 'search)]
-         [replace-term (hash-ref field-values 'replace)]
-         [fixed-strings (hash-ref field-values 'fixed-strings)]
-         [match-whole-word (hash-ref field-values 'match-whole-word)]
-         [match-case (hash-ref field-values 'match-case)]
-         [include-pattern (hash-ref field-values 'files-include)]
-         [exclude-pattern (hash-ref field-values 'files-exclude)]
+  (let* ([engine (get-engine state)]
+         [search-term (get-field-text state 'search)]
+         [replace-term (get-field-text state 'replace)]
+         [fixed-strings (get-field-value state 'fixed-strings)]
+         [match-whole-word (get-field-value state 'match-whole-word)]
+         [match-case (get-field-value state 'match-case)]
+         [include-pattern (get-field-text state 'files-include)]
+         [exclude-pattern (get-field-text state 'files-exclude)]
          [response (Scooter-start-search engine
                                          search-term
                                          replace-term

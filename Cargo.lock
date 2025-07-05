@@ -1424,14 +1424,15 @@ dependencies = [
 [[package]]
 name = "scooter-core"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b5c2039084ba34c069ca2b06aa10dd7975e025704fc96da69fc1f5aaca2682"
 dependencies = [
  "anyhow",
  "frep-core",
  "log",
  "rayon",
  "similar",
+ "steel-core",
+ "steel-derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unicode-width",
 ]
 
 [[package]]
