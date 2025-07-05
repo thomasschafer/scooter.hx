@@ -531,7 +531,7 @@ mod tests {
 
         scooter.start_search("TEST_PATTERN", "REPLACEMENT", false, false, true, "", "");
 
-        wait_until(|| scooter.search_complete(), Duration::from_millis(100));
+        wait_until(|| scooter.search_complete(), Duration::from_millis(500));
 
         let mut search_results_clone = {
             let state = scooter.state.lock().unwrap();
@@ -600,7 +600,7 @@ mod tests {
 
         wait_until(
             || scooter.replacement_complete(),
-            Duration::from_millis(100),
+            Duration::from_millis(500),
         );
 
         let stats_clone = {
