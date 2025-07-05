@@ -67,6 +67,10 @@ fn create_module() -> FFIModule {
             scooter_hx::SteelSearchResult::display_path,
         )
         .register_fn(
+            "SteelSearchResult-full-path",
+            scooter_hx::SteelSearchResult::full_path,
+        )
+        .register_fn(
             "SteelSearchResult-line-num",
             scooter_hx::SteelSearchResult::line_num,
         )

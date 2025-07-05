@@ -1,6 +1,7 @@
 (require "helix/components.scm")
 (require "helix/misc.scm")
 (require "helix/static.scm")
+(require (prefix-in helix. "helix/commands.scm"))
 
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-new
@@ -22,6 +23,7 @@
                           ReplacementStats-num-ignored
                           ReplacementStats-num-errors
                           SteelSearchResult-display-path
+                          SteelSearchResult-full-path
                           SteelSearchResult-line-num
                           SteelSearchResult-line
                           SteelSearchResult-replacement
@@ -298,9 +300,30 @@
       (fetch-results-window state))))
 
 (define (toggle-all-search-results state)
-  (let ([engine (get-engine state)])
-    (Scooter-toggle-all engine)
-    (fetch-results-window state)))
+  (let* ([engine (get-engine state)]
+         [data (get-search-data state)])
+    (when (and data (> (SearchData-result-count data) 0))
+      (Scooter-toggle-all engine)
+      (fetch-results-window state))))
+
+(define (open-selected-search-result state)
+  (let* ([selected-index (get-selected-index state)]
+         [engine (get-engine state)]
+         [data (get-search-data state)])
+    (when (and data
+               (> (SearchData-result-count data) 0)
+               (>= selected-index 0)
+               (< selected-index (SearchData-result-count data)))
+      (let* ([results (SearchData-results data)]
+             [scroll-offset (SearchData-scroll-offset data)]
+             [local-index (- selected-index scroll-offset)])
+        (when (and (>= local-index 0) (< local-index (length results)))
+          (let* ([selected-result (list-ref results local-index)]
+                 [file-path (SteelSearchResult-full-path selected-result)]
+                 [line-num (SteelSearchResult-line-num selected-result)])
+            (helix.open file-path)
+            ;; TODO: Navigate to specific line number
+            ))))))
 
 ;; Drawing functions
 (define (preview-line-to-styled-segments line-segments)
@@ -610,15 +633,18 @@
 
 (define (get-keybinding-help mode)
   (let* ([common-bindings '(("ctrl+r" "reset") ("esc" "hide") ("ctrl+c" "quit"))]
-         [mode-specific-bindings
-          (cond
-            [(equal? mode 'search-fields)
-             '(("enter" "search") ("tab" "next field") ("space" "toggle"))]
-            [(equal? mode 'search-results)
-             '(("enter" "replace") ("space" "toggle") ("a" "toggle all") ("ctrl+o" "back"))]
-            [(equal? mode 'performing-replacement) '()]
-            [(equal? mode 'replacement-complete) '(("enter" "quit"))]
-            [else '()])]
+         [mode-specific-bindings (cond
+                                   [(equal? mode 'search-fields)
+                                    '(("enter" "search") ("tab" "next field") ("space" "toggle"))]
+                                   [(equal? mode 'search-results)
+                                    '(("enter" "replace") ("space" "toggle")
+                                                          ("a" "toggle all")
+                                                          ("e" "open")
+                                                          ; ("alt+e" "open bg") ; TODO: show in popup
+                                                          ("ctrl+o" "back"))]
+                                   [(equal? mode 'performing-replacement) '()]
+                                   [(equal? mode 'replacement-complete) '(("enter" "quit"))]
+                                   [else '()])]
          [all-bindings (append mode-specific-bindings common-bindings)]
          [formatted-bindings (map (lambda (binding) (format-keybinding (car binding) (cadr binding)))
                                   all-bindings)])
@@ -780,23 +806,50 @@
 
 (define (handle-search-results-mode-event state event)
   (cond
-    [(key-with-ctrl? event #\o) (cancel-search-and-return-to-fields state)]
-    [(or (key-event-up? event) (key-matches-char? event #\k)) (navigate-search-results state -1)]
-    [(or (key-event-down? event) (key-matches-char? event #\j)) (navigate-search-results state 1)]
-    [(key-with-ctrl? event #\u) (scroll-half-page state -1)]
-    [(key-with-ctrl? event #\d) (scroll-half-page state 1)]
-    [(key-event-page-up? event) (scroll-page state -1)]
-    [(key-event-page-down? event) (scroll-page state 1)]
-    [(key-matches-char? event #\g) (jump-to-top state)]
-    [(key-matches-char? event #\G) (jump-to-bottom state)]
-    [(key-matches-char? event #\space) (toggle-search-result-inclusion state)]
-    [(key-matches-char? event #\a) (toggle-all-search-results state)]
+    [(key-with-ctrl? event #\o)
+     (cancel-search-and-return-to-fields state)
+     event-result/consume]
+    [(or (key-event-up? event) (key-matches-char? event #\k))
+     (navigate-search-results state -1)
+     event-result/consume]
+    [(or (key-event-down? event) (key-matches-char? event #\j))
+     (navigate-search-results state 1)
+     event-result/consume]
+    [(key-with-ctrl? event #\u)
+     (scroll-half-page state -1)
+     event-result/consume]
+    [(key-with-ctrl? event #\d)
+     (scroll-half-page state 1)
+     event-result/consume]
+    [(key-event-page-up? event)
+     (scroll-page state -1)
+     event-result/consume]
+    [(key-event-page-down? event)
+     (scroll-page state 1)
+     event-result/consume]
+    [(key-matches-char? event #\g)
+     (jump-to-top state)
+     event-result/consume]
+    [(key-matches-char? event #\G)
+     (jump-to-bottom state)
+     event-result/consume]
+    [(key-matches-char? event #\space)
+     (toggle-search-result-inclusion state)
+     event-result/consume]
+    [(key-matches-char? event #\a)
+     (toggle-all-search-results state)
+     event-result/consume]
+    [(key-matches-char? event #\e)
+     (open-selected-search-result state)
+     (if (equal? (key-event-modifier event) key-modifier-alt)
+         event-result/consume
+         event-result/close)]
     [(key-event-enter? event)
      (let ([engine (get-engine state)])
        (if (Scooter-search-complete? engine)
            (start-replacement state)
-           event-result/consume))])
-  event-result/consume)
+           event-result/consume))]
+    [else event-result/consume]))
 
 (define (scooter-event-handler state event)
   (let ([mode (get-current-screen state)])

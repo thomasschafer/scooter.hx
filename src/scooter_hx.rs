@@ -93,6 +93,10 @@ impl SteelSearchResult {
         self.display_path.clone()
     }
 
+    pub(crate) fn full_path(&self) -> String {
+        self.full_path.clone()
+    }
+
     pub(crate) fn line_num(&self) -> usize {
         self.line_num
     }
