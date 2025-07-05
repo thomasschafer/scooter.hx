@@ -322,8 +322,8 @@
                  [file-path (SteelSearchResult-full-path selected-result)]
                  [line-num (SteelSearchResult-line-num selected-result)])
             (helix.open file-path)
-            ;; TODO: Navigate to specific line number
-            ))))))
+            (helix.goto (int->string line-num))
+            (align_view_center)))))))
 
 ;; Drawing functions
 (define (preview-line-to-styled-segments line-segments)
