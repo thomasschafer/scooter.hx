@@ -21,8 +21,8 @@ Once installed, you can add the following to `init.scm` in your Helix config dir
 ```
 
 You will then have the following commands available (which you can bind a keymap to in the usual way):
-- `:scooter`, which either resumes an existing session if one exists, or otherwise starts a new session
-- `:scooter-new`, which always starts a new session, cancelling any in-progress operations
+- `:scooter` - this either resumes an existing session if one exists, or otherwise starts a new session. For instance, you can run that command and perform a search, hit `e` on one of the results to open it up in a buffer, then call `:scooter` again to return to the search results. You can also hit `escape` to hide the window, or `ctrl-c` to quit and cancel any in-progress searches/replacements
+- `:scooter-new` - this always starts a new session, cancelling any in-progress operations
 
 ### Using Forge
 
