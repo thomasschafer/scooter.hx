@@ -8,6 +8,16 @@ If the instance you're attempting to replace has changed since the search was pe
 
 ![scooter.hx preview](media/preview.gif)
 
+## Usage
+
+This plugin provides the following commands (which you can bind a keymap to in the usual way):
+- `:scooter` - resume an existing session if one exists, or otherwise start a new session
+- `:scooter-new` - start a new session, cancelling any in-progress operations
+
+Once open, you can hit `escape` to hide the window (and open it again with `:scooter`), or `ctrl-c` to quit and cancel any in-progress searches/replacements.
+
+When viewing the search results, you can hit `e` to open up one of the results (keeping the existing session running). You can also use `<alt>-e` to open a search result in the background, without hiding the window. 
+
 ## Installation
 
 Follow the instructions [here](https://github.com/mattwparas/helix/blob/steel-event-system/STEEL.md) to install Helix on the plugin branch.
@@ -19,10 +29,6 @@ Once installed, you can add the following to `init.scm` in your Helix config dir
 ```scheme
 (require "scooter/scooter.scm")
 ```
-
-You will then have the following commands available (which you can bind a keymap to in the usual way):
-- `:scooter` - this either resumes an existing session if one exists, or otherwise starts a new session. For instance, you can run that command and perform a search, hit `e` on one of the results to open it up in a buffer, then call `:scooter` again to return to the search results. You can also hit `escape` to hide the window, or `ctrl-c` to quit and cancel any in-progress searches/replacements
-- `:scooter-new` - this always starts a new session, cancelling any in-progress operations
 
 ### Using Forge
 
