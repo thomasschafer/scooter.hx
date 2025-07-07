@@ -1,3 +1,4 @@
+use scooter_core::fields::TextField;
 use steel::{
     declare_module,
     steel_vm::ffi::{FFIModule, RegisterFFIFn},
@@ -9,7 +10,6 @@ mod test_utils;
 
 mod logging;
 pub mod scooter_hx;
-mod textfield;
 mod unicode;
 mod validation;
 
@@ -109,10 +109,12 @@ fn create_module() -> FFIModule {
         // TextField type and methods
         .register_type::<scooter_core::fields::TextField>("TextField?")
         .register_fn("TextField-new", scooter_core::fields::TextField::new)
-        .register_fn("TextField-text", textfield::textfield_text)
+        .register_fn("TextField-text", |tf: &TextField| {
+            scooter_core::fields::TextField::text(tf).to_owned()
+        })
         .register_fn(
             "TextField-cursor-pos",
-            scooter_core::fields::TextField::cursor_pos,
+            scooter_core::fields::TextField::visual_cursor_pos,
         )
         .register_fn(
             "TextField-move-cursor-left",
@@ -159,12 +161,13 @@ fn create_module() -> FFIModule {
             scooter_core::fields::TextField::delete_word_forward,
         )
         .register_fn("TextField-clear", scooter_core::fields::TextField::clear)
-        .register_fn("TextField-set-text", textfield::textfield_set_text)
-        .register_fn("TextField-insert-text", textfield::textfield_insert_text)
-        .register_fn("TextField-cursor-idx", textfield::textfield_cursor_idx)
         .register_fn(
-            "TextField-set-cursor-idx",
-            textfield::textfield_set_cursor_idx,
+            "TextField-delete-to-start",
+            scooter_core::fields::TextField::delete_to_start,
+        )
+        .register_fn(
+            "TextField-insert-text",
+            scooter_core::fields::TextField::insert_text,
         );
 
     module

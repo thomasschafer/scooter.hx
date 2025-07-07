@@ -47,11 +47,8 @@
                           TextField-delete-word-backward
                           TextField-move-cursor-forward-word
                           TextField-delete-word-forward
-                          TextField-clear
-                          TextField-set-text
-                          TextField-insert-text
-                          TextField-cursor-idx
-                          TextField-set-cursor-idx))
+                          TextField-delete-to-start
+                          TextField-insert-text))
 
 (require "drawing.scm")
 (require "fields.scm")
@@ -123,12 +120,6 @@
     (if (TextField? field-value)
         (TextField-text field-value)
         field-value)))
-
-(define (set-field-text! state field-id text)
-  (let ([field-value (get-field-value state field-id)])
-    (if (TextField? field-value)
-        (TextField-set-text field-value text)
-        (set-field-value! state field-id text))))
 
 (define (get-current-screen state)
   (unbox (ScooterWindow-current-screen-box state)))
@@ -598,76 +589,71 @@
 
 (define (handle-textfield-key textfield event)
   (cond
-    ;; Ctrl+W or Alt+Backspace: delete word backward
     [(or (and (key-event-char event)
               (equal? (key-event-char event) #\w)
               (equal? (key-event-modifier event) key-modifier-ctrl))
          (and (key-event-backspace? event) (equal? (key-event-modifier event) key-modifier-alt)))
      (TextField-delete-word-backward textfield)]
 
-    ;; Ctrl+U: clear field (TODO: Add Meta+Backspace when available)
-    [(and (key-event-char event)
-          (equal? (key-event-char event) #\u)
-          (equal? (key-event-modifier event) key-modifier-ctrl))
-     (TextField-clear textfield)]
+    [(or (and (key-event-char event)
+              (equal? (key-event-char event) #\u)
+              (equal? (key-event-modifier event) key-modifier-ctrl))
+         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/46 is merged
+         ; (and (key-event-backspace? event) (= (key-event-modifier event) key-modifier-super))
+         )
+     (TextField-delete-to-start textfield)]
 
-    ;; Backspace: delete char
     [(key-event-backspace? event) (TextField-delete-char textfield)]
 
-    ;; Alt+B/Alt+Left: move cursor back word
     [(or (and (key-event-char event)
               (or (equal? (key-event-char event) #\b) (equal? (key-event-char event) #\B))
               (equal? (key-event-modifier event) key-modifier-alt))
          (and (key-event-left? event) (equal? (key-event-modifier event) key-modifier-alt)))
      (TextField-move-cursor-back-word textfield)]
 
-    ;; TODO: Home key - move to start (when key-event-home? is available)
-    ;; For now use Ctrl+A as alternative
-    [(and (key-event-char event)
-          (equal? (key-event-char event) #\a)
-          (equal? (key-event-modifier event) key-modifier-ctrl))
+    [(or (and (key-event-char event)
+              (equal? (key-event-char event) #\a)
+              (equal? (key-event-modifier event) key-modifier-ctrl))
+         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/46 is merged
+         ; (and (key-event-left? event) (= (key-event-modifier event) key-modifier-super))
+         )
      (TextField-move-cursor-start textfield)]
 
-    ;; Left arrow: move cursor left
     [(key-event-left? event) (TextField-move-cursor-left textfield)]
 
-    ;; Alt+F/Alt+Right: move cursor forward word
     [(or (and (key-event-char event)
               (or (equal? (key-event-char event) #\f) (equal? (key-event-char event) #\F))
               (equal? (key-event-modifier event) key-modifier-alt))
          (and (key-event-right? event) (equal? (key-event-modifier event) key-modifier-alt)))
      (TextField-move-cursor-forward-word textfield)]
 
-    ;; TODO: Meta+Right or End key - move to end (when available)
-    ;; For now use Ctrl+E as alternative
-    [(and (key-event-char event)
-          (equal? (key-event-char event) #\e)
-          (equal? (key-event-modifier event) key-modifier-ctrl))
+    [(or (and (key-event-char event)
+              (equal? (key-event-char event) #\e)
+              (equal? (key-event-modifier event) key-modifier-ctrl))
+         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/46 is merged
+         ; (and (key-event-right? event) (= (key-event-modifier event) key-modifier-super))
+         )
      (TextField-move-cursor-end textfield)]
 
-    ;; Right arrow: move cursor right
     [(key-event-right? event) (TextField-move-cursor-right textfield)]
 
-    ;; Alt+D: delete word forward (TODO: Add Alt+Delete when available)
-    [(and (key-event-char event)
-          (equal? (key-event-char event) #\d)
-          (equal? (key-event-modifier event) key-modifier-alt))
+    [(or (and (key-event-char event)
+              (equal? (key-event-char event) #\d)
+              (equal? (key-event-modifier event) key-modifier-alt))
+         (and (key-event-delete? event) (equal? (key-event-modifier event) key-modifier-alt)))
      (TextField-delete-word-forward textfield)]
 
-    ;; TODO: Delete key - delete char forward (when key-event-delete? is available)
-    ;; For now use Ctrl+D as alternative
-    [(and (key-event-char event)
-          (equal? (key-event-char event) #\d)
-          (equal? (key-event-modifier event) key-modifier-ctrl))
+    [(or (and (key-event-char event)
+              (equal? (key-event-char event) #\d)
+              (equal? (key-event-modifier event) key-modifier-ctrl))
+         (key-event-delete? event))
      (TextField-delete-char-forward textfield)]
 
-    ;; Regular character input
     [(key-event-char event) (TextField-enter-char textfield (key-event-char event))]
 
-    ;; Default: do nothing
     [else #f]))
 
-(define (insert-text-at-cursor state field-id text)
+(define (insert-text state field-id text)
   (when (field-is-text? field-id)
     (clear-errors-on-input! state field-id)
     (let ([textfield (get-field-value state field-id)])
@@ -816,7 +802,7 @@
     (let* ([current-field-id (get-current-field state)]
            [clean-text (strip-newlines paste-text)])
       (when (field-is-text? current-field-id)
-        (insert-text-at-cursor state current-field-id clean-text)))))
+        (insert-text state current-field-id clean-text)))))
 
 (define (handle-tab-key state modifier)
   (let* ([current-field-id (get-current-field state)]
