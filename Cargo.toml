@@ -14,9 +14,7 @@ etcetera = "0.10.0"
 frep-core = "0.1.2"
 ignore = "0.4.23"
 log = "0.4.27"
-scooter-core = { version = "0.1.3", features = [
-  "steel",
-], path = "../../scooter/scooter-core" } # TODO: remove path
+scooter-core = { version = "0.1.3", features = ["steel"] }
 simple-log = "2.3.0"
 steel-core = { git = "https://github.com/mattwparas/steel.git", version = "0.7.0", features = [
   "dylibs",

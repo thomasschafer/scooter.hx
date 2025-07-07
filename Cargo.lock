@@ -1424,13 +1424,15 @@ dependencies = [
 [[package]]
 name = "scooter-core"
 version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de27e47a824adeb4f64cc9180aac1644bdceecb0fe6636072f7cd3493a305058"
 dependencies = [
  "anyhow",
  "frep-core",
  "log",
  "rayon",
  "similar",
- "steel-core",
+ "steel-core 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "steel-derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "unicode-width",
 ]
@@ -1447,7 +1449,7 @@ dependencies = [
  "log",
  "scooter-core",
  "simple-log",
- "steel-core",
+ "steel-core 0.7.0 (git+https://github.com/mattwparas/steel.git)",
  "steel-derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempfile",
  "tokio",
@@ -1617,6 +1619,57 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "steel-core"
 version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79fcd4a04c6b2fc5f695ad37b379ad0e4245a9a12dcd742fe4fe1ad15ddd6546"
+dependencies = [
+ "abi_stable",
+ "arc-swap",
+ "async-ffi",
+ "bigdecimal",
+ "bincode",
+ "chrono",
+ "codespan-reporting",
+ "compact_str",
+ "crossbeam-channel",
+ "crossbeam-utils",
+ "env_home",
+ "futures-executor",
+ "futures-task",
+ "futures-util",
+ "fxhash",
+ "getrandom 0.3.3",
+ "glob",
+ "httparse",
+ "im",
+ "im-lists",
+ "im-rc",
+ "lasso",
+ "log",
+ "md-5",
+ "num-bigint",
+ "num-integer",
+ "num-rational",
+ "num-traits",
+ "once_cell",
+ "parking_lot",
+ "polling",
+ "quickscope",
+ "rand 0.9.1",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "steel-derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "steel-gen 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "steel-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "strsim",
+ "weak-table",
+ "which",
+ "xdg",
+]
+
+[[package]]
+name = "steel-core"
+version = "0.7.0"
 source = "git+https://github.com/mattwparas/steel.git#a8f96f11dc74abc50c45da9628f4c08c92dece97"
 dependencies = [
  "abi_stable",
@@ -1656,8 +1709,8 @@ dependencies = [
  "serde_json",
  "smallvec",
  "steel-derive 0.6.0 (git+https://github.com/mattwparas/steel.git)",
- "steel-gen",
- "steel-parser",
+ "steel-gen 0.3.0 (git+https://github.com/mattwparas/steel.git)",
+ "steel-parser 0.7.0 (git+https://github.com/mattwparas/steel.git)",
  "strsim",
  "weak-table",
  "which",
@@ -1688,10 +1741,38 @@ dependencies = [
 [[package]]
 name = "steel-gen"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "deabc06d4f4735677503f593ae185d3f47c0fa8089b7e9a7177e0e0544483d86"
+dependencies = [
+ "codegen",
+ "serde",
+]
+
+[[package]]
+name = "steel-gen"
+version = "0.3.0"
 source = "git+https://github.com/mattwparas/steel.git#a8f96f11dc74abc50c45da9628f4c08c92dece97"
 dependencies = [
  "codegen",
  "serde",
+]
+
+[[package]]
+name = "steel-parser"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cf95d03e34e5d34a318a1f3ad7c933628c476776d3dc4fe9accb5b7b6b5a295"
+dependencies = [
+ "compact_str",
+ "fxhash",
+ "lasso",
+ "num-bigint",
+ "num-rational",
+ "num-traits",
+ "once_cell",
+ "pretty",
+ "serde",
+ "smallvec",
 ]
 
 [[package]]
