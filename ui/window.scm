@@ -155,6 +155,7 @@
   (clear-all-field-errors! state)
   (clear-general-error! state))
 
+; TODO: tidy this up
 (define (create-scooter-window)
   (let ([directory (get-helix-cwd)])
     (ScooterWindow (box 'search-fields) ; current-screen-box
@@ -488,14 +489,18 @@
          [center-x (+ (area-x content-area) (quotient (area-width content-area) 2))])
 
     (let ([title "Replacement complete!"]
+          [subtitle "Press <enter> to exit"]
           [title-y start-y])
-      (frame-set-string! frame
-                         (+ (area-x content-area)
-                            (quotient (- (area-width content-area) (char-width title)) 2))
-                         title-y
-                         title
-                         title-style))
-
+      (for-each (lambda (pair)
+                  (let ([offset (car pair)]
+                        [str (cadr pair)])
+                    (frame-set-string! frame
+                                       (+ (area-x content-area)
+                                          (quotient (- (area-width content-area) (char-width str)) 2))
+                                       (+ title-y offset)
+                                       str
+                                       title-style)))
+                (list (list 0 title) (list 1 subtitle))))
     (let* ([content-x (area-x content-area)]
            [content-width (area-width content-area)]
            [box-width (min (- content-width 20) 76)] ; Leave some margin, max width like example
