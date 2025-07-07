@@ -20,6 +20,7 @@ fn create_module() -> FFIModule {
     let mut module = FFIModule::new("steel/scooter");
 
     module
+        // Scooter
         .register_fn("Scooter-new", scooter_hx::ScooterHx::new)
         .register_fn("Scooter-reset", scooter_hx::ScooterHx::reset)
         .register_fn("Scooter-start-search", scooter_hx::ScooterHx::start_search)
@@ -65,6 +66,11 @@ fn create_module() -> FFIModule {
             scooter_hx::ScooterHx::replacement_stats,
         )
         .register_fn(
+            "Scooter-replacement-errors",
+            scooter_hx::ScooterHx::replacement_errors,
+        )
+        // SteelSearchResult
+        .register_fn(
             "SteelSearchResult-display-path",
             scooter_hx::SteelSearchResult::display_path,
         )
@@ -85,6 +91,11 @@ fn create_module() -> FFIModule {
             scooter_hx::SteelSearchResult::build_preview,
         )
         .register_fn(
+            "SteelSearchResult-display-error",
+            scooter_hx::SteelSearchResult::display_error,
+        )
+        // ReplacementStats
+        .register_fn(
             "ReplacementStats-num-successes",
             scooter_hx::ReplacementStats::num_successes,
         )
@@ -96,17 +107,10 @@ fn create_module() -> FFIModule {
             "ReplacementStats-num-errors",
             scooter_hx::ReplacementStats::num_errors,
         )
-        .register_fn(
-            "Scooter-replacement-errors",
-            scooter_hx::ScooterHx::replacement_errors,
-        )
-        .register_fn(
-            "SteelSearchResult-display-error",
-            scooter_hx::SteelSearchResult::display_error,
-        )
+        // unicode
         .register_fn("unicode-display-width", unicode::display_width)
         .register_fn("unicode-truncate-to-width", unicode::truncate_to_width)
-        // TextField type and methods
+        // TextField
         .register_type::<scooter_core::fields::TextField>("TextField?")
         .register_fn("TextField-new", scooter_core::fields::TextField::new)
         .register_fn("TextField-text", |tf: &TextField| {
