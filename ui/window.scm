@@ -155,6 +155,7 @@
   (clear-all-field-errors! state)
   (clear-general-error! state))
 
+; TODO: tidy this up
 (define (create-scooter-window)
   (let ([directory (get-helix-cwd)])
     (ScooterWindow (box 'search-fields) ; current-screen-box
