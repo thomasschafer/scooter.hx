@@ -1423,20 +1423,23 @@ dependencies = [
 
 [[package]]
 name = "scooter-core"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b5c2039084ba34c069ca2b06aa10dd7975e025704fc96da69fc1f5aaca2682"
+checksum = "979413e77c90639a78d8780b7becc17ac03bb9c268f8442e3dbcece6c62226af"
 dependencies = [
  "anyhow",
  "frep-core",
  "log",
  "rayon",
  "similar",
+ "steel-core",
+ "steel-derive",
+ "unicode-width",
 ]
 
 [[package]]
 name = "scooter-hx-engine"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "abi_stable",
  "crossbeam",
@@ -1447,7 +1450,7 @@ dependencies = [
  "scooter-core",
  "simple-log",
  "steel-core",
- "steel-derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "steel-derive",
  "tempfile",
  "tokio",
  "unicode-width",
@@ -1616,7 +1619,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "steel-core"
 version = "0.7.0"
-source = "git+https://github.com/mattwparas/steel.git#a8f96f11dc74abc50c45da9628f4c08c92dece97"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79fcd4a04c6b2fc5f695ad37b379ad0e4245a9a12dcd742fe4fe1ad15ddd6546"
 dependencies = [
  "abi_stable",
  "arc-swap",
@@ -1654,7 +1658,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "steel-derive 0.6.0 (git+https://github.com/mattwparas/steel.git)",
+ "steel-derive",
  "steel-gen",
  "steel-parser",
  "strsim",
@@ -1675,19 +1679,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "steel-derive"
-version = "0.6.0"
-source = "git+https://github.com/mattwparas/steel.git#a8f96f11dc74abc50c45da9628f4c08c92dece97"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.104",
-]
-
-[[package]]
 name = "steel-gen"
 version = "0.3.0"
-source = "git+https://github.com/mattwparas/steel.git#a8f96f11dc74abc50c45da9628f4c08c92dece97"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "deabc06d4f4735677503f593ae185d3f47c0fa8089b7e9a7177e0e0544483d86"
 dependencies = [
  "codegen",
  "serde",
@@ -1696,7 +1691,8 @@ dependencies = [
 [[package]]
 name = "steel-parser"
 version = "0.7.0"
-source = "git+https://github.com/mattwparas/steel.git#a8f96f11dc74abc50c45da9628f4c08c92dece97"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cf95d03e34e5d34a318a1f3ad7c933628c476776d3dc4fe9accb5b7b6b5a295"
 dependencies = [
  "compact_str",
  "fxhash",
