@@ -18,7 +18,7 @@ scooter-core = { version = "0.1.4", features = ["steel"] }
 simple-log = "2.3.0"
 steel-core = { version = "0.7.0", features = ["dylibs", "sync"] }
 steel-derive = { version = "0.6.0" }
-unicode-width = "0.1.11"
+unicode-width = "0.2.1"
 
 [dev-dependencies]
 tempfile = "3.5"
