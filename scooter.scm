@@ -45,11 +45,15 @@
                event-result/close)
              result))])))
 
+;;@doc
+;; Resumes existing `find-and-replace` session if existing, otherwise create one.
 (define (scooter)
   (if *scooter-session*
       (resume-session)
       (create-new-session)))
 
+;;@doc
+;; Start a new `find-and-replace` session cancelling any in-progress operations.
 (define (scooter-new)
   (destroy-session)
   (create-new-session))
