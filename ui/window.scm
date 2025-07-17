@@ -418,7 +418,42 @@
           (render-styled-segments-in-area frame preview-area row styled-segments bg-style)
           (loop (cdr lines) (+ row 1)))))))
 
-(define (draw-search-results frame content-area initial-data state)
+(define (draw-search-fields frame content-area state)
+  (let* ([general-error (get-general-error state)]
+         [error-height 2]
+         [all-fields (get-all-fields)]
+         [field-count (length all-fields)]
+         [total-fields-height (* field-count 3)] ; Each field is 3 rows high
+         [available-height (- (area-height content-area) error-height)]
+         [current-field (get-current-field state)]
+         [centered-layout (calculate-centered-layout (area-x content-area)
+                                                     (+ (area-y content-area) error-height)
+                                                     (area-width content-area)
+                                                     available-height
+                                                     (area-width content-area)
+                                                     total-fields-height
+                                                     #f
+                                                     #f
+                                                     #f
+                                                     #t)]
+         [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
+
+    (let ([error-area (calculate-error-message-area content-area)])
+      (draw-error-message frame error-area general-error))
+
+    (let ([fields-area (area (area-x content-area)
+                             (CenteredLayout-y centered-layout)
+                             (area-width content-area)
+                             total-fields-height)])
+      (draw-all-fields frame fields-area current-field state get-field-text get-field-errors-safe))
+
+    (position-cursor-in-text-field state
+                                   current-field
+                                   field-positions
+                                   (area-x content-area)
+                                   (area-width content-area))))
+
+(define (draw-search-results frame content-area state)
   (call-with-values
    (lambda () (calculate-split-areas content-area))
    (lambda (results-list-area preview-area)
@@ -426,14 +461,14 @@
      (set-content-height! state (area-height results-list-area))
      (ensure-selection-visible state (area-height results-list-area))
 
-     (let* ([raw-data (or (get-lines state) initial-data)]
+     (let* ([lines (get-lines state)]
             [styles (ui-styles)]
             [result-style (UIStyles-text styles)]
             [highlight-style (UIStyles-selection styles)]
-            [result-count (SearchData-result-count raw-data)]
-            [is-complete (SearchData-is-complete raw-data)]
-            [results (SearchData-results raw-data)]
-            [data-scroll-offset (SearchData-scroll-offset raw-data)]
+            [result-count (SearchData-result-count lines)]
+            [is-complete (SearchData-is-complete lines)]
+            [results (SearchData-results lines)]
+            [data-scroll-offset (SearchData-scroll-offset lines)]
             [status-line (string-append "   "
                                         "Results: "
                                         (to-string result-count)
@@ -738,8 +773,6 @@
   (let* ([window-area (calculate-window-area rect)]
          [content-area (calculate-content-area window-area)]
          [mode (get-current-screen state)]
-         [search-term (get-field-text state 'search)]
-         [current-field (get-current-field state)]
          [title " Scooter "]
          [popup-style (UIStyles-popup (ui-styles))])
 
@@ -748,47 +781,9 @@
     (let ([title-area (calculate-title-area window-area)]) (draw-title frame title-area title))
 
     (cond
-      [(equal? mode 'search-fields)
-       (let* ([general-error (get-general-error state)]
-              [error-height 2]
-              [all-fields (get-all-fields)]
-              [field-count (length all-fields)]
-              [total-fields-height (* field-count 3)] ; Each field is 3 rows high
-              [available-height (- (area-height content-area) error-height)]
-              [centered-layout (calculate-centered-layout (area-x content-area)
-                                                          (+ (area-y content-area) error-height)
-                                                          (area-width content-area)
-                                                          available-height
-                                                          (area-width content-area)
-                                                          total-fields-height
-                                                          #f
-                                                          #f
-                                                          #f
-                                                          #t)]
-              [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
+      [(equal? mode 'search-fields) (draw-search-fields frame content-area state)]
 
-         (let ([error-area (calculate-error-message-area content-area)])
-           (draw-error-message frame error-area general-error))
-
-         (let ([fields-area (area (area-x content-area)
-                                  (CenteredLayout-y centered-layout)
-                                  (area-width content-area)
-                                  total-fields-height)])
-           (draw-all-fields frame
-                            fields-area
-                            current-field
-                            state
-                            get-field-text
-                            get-field-errors-safe))
-
-         (position-cursor-in-text-field state
-                                        current-field
-                                        field-positions
-                                        (area-x content-area)
-                                        (area-width content-area)))]
-
-      [(equal? mode 'search-results)
-       (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))]
+      [(equal? mode 'search-results) (draw-search-results frame content-area state)]
 
       [(equal? mode 'performing-replacement) (draw-performing-replacement frame content-area state)]
 
