@@ -905,9 +905,9 @@
          event-result/close)]
     [(key-event-enter? event)
      (let ([engine (get-engine state)])
-       (if (Scooter-search-complete? engine)
-           (start-replacement state)
-           event-result/consume))]
+       (when (Scooter-search-complete? engine)
+         (start-replacement state))
+       event-result/consume)]
     [else event-result/consume]))
 
 (define (scooter-event-handler state event)
