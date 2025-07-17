@@ -308,7 +308,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
 dependencies = [
  "termcolor",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1211,7 +1211,7 @@ checksum = "ac98773b7109bc75f475ab5a134c9b64b87e59d776d31098d8f346922396a477"
 dependencies = [
  "arrayvec",
  "typed-arena",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1445,7 +1445,7 @@ dependencies = [
  "similar",
  "steel-core",
  "steel-derive",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1464,7 +1464,7 @@ dependencies = [
  "steel-derive",
  "tempfile",
  "tokio",
- "unicode-width",
+ "unicode-width 0.2.1",
 ]
 
 [[package]]
@@ -1888,6 +1888,12 @@ name = "unicode-width"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
 
 [[package]]
 name = "unsafe-libyaml"
