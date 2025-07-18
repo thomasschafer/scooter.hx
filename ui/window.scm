@@ -1,4 +1,5 @@
 (require "helix/components.scm")
+(require "helix/editor.scm")
 (require "helix/misc.scm")
 (require "helix/static.scm")
 (require (prefix-in helix. "helix/commands.scm"))
@@ -996,13 +997,21 @@
       (Scooter-search-results-window engine 0 (max 0 (- result-count 1)))
       '()))
 
+; NOTE: requires https://github.com/mattwparas/helix/pull/50 to be merged
+(define (reload-non-dirty-documents)
+  (for-each editor-document-reload
+            (filter (lambda (doc) (not (editor-document-dirty? doc))) (editor-all-documents))))
+
 (define (poll-replacement-progress state)
   (let ([engine (get-engine state)])
     (enqueue-thread-local-callback
      (lambda ()
        (let ([is-complete (Scooter-replacement-complete? engine)])
          (cond
-           [is-complete (set-current-screen! state 'replacement-complete)]
+           [is-complete
+            (begin
+              (reload-non-dirty-documents)
+              (set-current-screen! state 'replacement-complete))]
            ;; Only continue polling if still on replacement screen
            [(equal? (get-current-screen state) 'performing-replacement)
             (enqueue-thread-local-callback (lambda () (poll-replacement-progress state)))]))))))
