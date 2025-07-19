@@ -70,7 +70,8 @@
                           results-box
                           selected-index-box
                           scroll-offset-box
-                          content-height-box))
+                          content-height-box
+                          preserved-fields-state))
 
 (struct SearchPerformingReplacementState ())
 
@@ -233,6 +234,11 @@
     (when (SearchResultsState? screen-state)
       (set-box! (SearchResultsState-content-height-box screen-state) value))))
 
+(define (get-preserved-fields-state state)
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (SearchResultsState-preserved-fields-state screen-state))))
+
 ;; SearchReplacementCompleteState accessors
 (define (get-error-scroll-offset state)
   (let ([screen-state (get-current-screen state)])
@@ -255,13 +261,14 @@
                      (box (hash))
                      (box #f)))
 
-(define (create-default-search-results-state)
+(define (create-default-search-results-state preserved-fields)
   (SearchResultsState (box 0) ; result-count-box
                       (box #f) ; is-complete-box
                       (box '()) ; results-box
                       (box 0) ; selected-index-box
                       (box 0) ; scroll-offset-box
-                      (box 10))) ; content-height-box
+                      (box 10) ; content-height-box
+                      preserved-fields)) ; preserved-fields-state
 
 (define (create-default-replacement-complete-state)
   (SearchReplacementCompleteState (box 0)))
@@ -990,9 +997,12 @@
   (execute-search-process! state))
 
 (define (cancel-search-and-return-to-fields state)
-  (let ([engine (get-engine state)])
+  (let ([engine (get-engine state)]
+        [preserved-fields (get-preserved-fields-state state)])
     (Scooter-cancel-search engine)
-    (set-current-screen! state (create-default-search-fields-state))
+    (if preserved-fields
+        (set-current-screen! state preserved-fields)
+        (set-current-screen! state (create-default-search-fields-state)))
     (clear-all-errors! state)))
 
 (define (execute-search-process! state)
@@ -1015,7 +1025,8 @@
 
     (if (hash-ref response "success")
         (begin
-          (set-current-screen! state (create-default-search-results-state))
+          (let ([current-fields-state (get-current-screen state)])
+            (set-current-screen! state (create-default-search-results-state current-fields-state)))
           (poll-search-results state))
         (handle-search-errors! state response))))
 
