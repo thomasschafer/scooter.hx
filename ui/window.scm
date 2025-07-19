@@ -598,9 +598,7 @@
     [(or (and (key-event-char event)
               (equal? (key-event-char event) #\u)
               (equal? (key-event-modifier event) key-modifier-ctrl))
-         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/46 is merged
-         ; (and (key-event-backspace? event) (= (key-event-modifier event) key-modifier-super))
-         )
+         (and (key-event-backspace? event) (= (key-event-modifier event) key-modifier-super)))
      (TextField-delete-to-start textfield)]
 
     [(key-event-backspace? event) (TextField-delete-char textfield)]
@@ -614,9 +612,8 @@
     [(or (and (key-event-char event)
               (equal? (key-event-char event) #\a)
               (equal? (key-event-modifier event) key-modifier-ctrl))
-         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/46 is merged
-         ; (and (key-event-left? event) (= (key-event-modifier event) key-modifier-super))
-         )
+         (and (key-event-left? event) (= (key-event-modifier event) key-modifier-super))
+         (key-event-home? event))
      (TextField-move-cursor-start textfield)]
 
     [(key-event-left? event) (TextField-move-cursor-left textfield)]
@@ -630,8 +627,9 @@
     [(or (and (key-event-char event)
               (equal? (key-event-char event) #\e)
               (equal? (key-event-modifier event) key-modifier-ctrl))
-         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/46 is merged
-         ; (and (key-event-right? event) (= (key-event-modifier event) key-modifier-super))
+         (and (key-event-right? event) (= (key-event-modifier event) key-modifier-super))
+         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/51 is merged
+         ; (key-event-end? event)
          )
      (TextField-move-cursor-end textfield)]
 
