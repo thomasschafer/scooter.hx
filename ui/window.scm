@@ -81,8 +81,7 @@
 (struct SearchFieldsState
         (field-values-box cursor-positions-box current-field-box field-errors-box general-error-box))
 
-(struct SearchResultsState
-        (lines-box completed-box selected-index-box scroll-offset-box content-height-box))
+(struct SearchResultsState (lines-box selected-index-box scroll-offset-box content-height-box))
 
 (struct SearchPerformingReplacementState ())
 
@@ -205,16 +204,6 @@
     (when (SearchResultsState? screen-state)
       (set-box! (SearchResultsState-lines-box screen-state) value))))
 
-(define (get-completed state)
-  (let ([screen-state (get-current-screen state)])
-    (when (SearchResultsState? screen-state)
-      (unbox (SearchResultsState-completed-box screen-state)))))
-
-(define (set-completed! state value)
-  (let ([screen-state (get-current-screen state)])
-    (when (SearchResultsState? screen-state)
-      (set-box! (SearchResultsState-completed-box screen-state) value))))
-
 (define (get-selected-index state)
   (let ([screen-state (get-current-screen state)])
     (when (SearchResultsState? screen-state)
@@ -271,7 +260,7 @@
                      (box #f)))
 
 (define (create-default-search-results-state)
-  (SearchResultsState (box (SearchData 0 #f '() 0)) (box #f) (box 0) (box 0) (box 10)))
+  (SearchResultsState (box (SearchData 0 #f '() 0)) (box 0) (box 0) (box 10)))
 
 (define (create-default-replacement-complete-state)
   (SearchReplacementCompleteState (box 0)))
@@ -1058,16 +1047,6 @@
   (when (hash-contains? response "exclude-files-errors")
     (set-field-errors! state 'files-exclude (hash-ref response "exclude-files-errors"))))
 
-(define (get-search-status engine)
-  (let ([result-count (Scooter-search-result-count engine)]
-        [is-complete (Scooter-search-complete? engine)])
-    (list is-complete result-count)))
-
-(define (get-search-results engine result-count)
-  (if (> result-count 0)
-      (Scooter-search-results-window engine 0 (max 0 (- result-count 1)))
-      '()))
-
 (define (poll-replacement-progress state)
   (let ([engine (get-engine state)])
     (enqueue-thread-local-callback
@@ -1089,6 +1068,5 @@
          (set-lines! state (SearchData result-count is-complete '() (get-scroll-offset state)))
          (fetch-results-window state)
 
-         (cond
-           [is-complete (set-completed! state #t)]
-           [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))
+         (when (not is-complete)
+           (enqueue-thread-local-callback (lambda () (poll-search-results state)))))))))
