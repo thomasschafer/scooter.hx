@@ -60,28 +60,17 @@
          scooter-render
          scooter-event-handler
          scooter-cursor-handler
-         start-scooter-search
-         get-lines
-         get-selected-index
-         set-selected-index!
-         get-scroll-offset
-         set-scroll-offset!
-         get-content-height
-         set-content-height!
-         get-engine
-         SearchData
-         get-search-data
-         reset-scooter-state!
          cancel-all-operations!)
-
-(define STATUS-HEIGHT 2)
-
-(struct SearchData (result-count is-complete results scroll-offset))
 
 (struct SearchFieldsState
         (field-values-box cursor-positions-box current-field-box field-errors-box general-error-box))
 
-(struct SearchResultsState (lines-box selected-index-box scroll-offset-box content-height-box))
+(struct SearchResultsState
+        (result-count-box is-complete-box
+                          results-box
+                          selected-index-box
+                          scroll-offset-box
+                          content-height-box))
 
 (struct SearchPerformingReplacementState ())
 
@@ -152,21 +141,11 @@
     (when (SearchFieldsState? screen-state)
       (set-field-errors-internal! screen-state field-id value))))
 
-(define (get-field-textfield state field-id)
-  (let ([screen-state (get-current-screen state)])
-    (when (SearchFieldsState? screen-state)
-      (hash-ref (unbox (SearchFieldsState-field-values-box screen-state)) field-id))))
-
 (define (get-field-text state field-id)
   (let ([field-value (get-field-value state field-id)])
     (if (TextField? field-value)
         (TextField-text field-value)
         field-value)))
-
-(define (get-field-values state)
-  (let ([screen-state (get-current-screen state)])
-    (when (SearchFieldsState? screen-state)
-      (unbox (SearchFieldsState-field-values-box screen-state)))))
 
 (define (get-current-field state)
   (let ([screen-state (get-current-screen state)])
@@ -194,15 +173,35 @@
       (set-box! (SearchFieldsState-general-error-box screen-state) #f))))
 
 ;; SearchResultsState accessors
-(define (get-lines state)
+(define (get-result-count state)
   (let ([screen-state (get-current-screen state)])
     (when (SearchResultsState? screen-state)
-      (unbox (SearchResultsState-lines-box screen-state)))))
+      (unbox (SearchResultsState-result-count-box screen-state)))))
 
-(define (set-lines! state value)
+(define (set-result-count! state value)
   (let ([screen-state (get-current-screen state)])
     (when (SearchResultsState? screen-state)
-      (set-box! (SearchResultsState-lines-box screen-state) value))))
+      (set-box! (SearchResultsState-result-count-box screen-state) value))))
+
+(define (get-is-complete state)
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (unbox (SearchResultsState-is-complete-box screen-state)))))
+
+(define (set-is-complete! state value)
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (set-box! (SearchResultsState-is-complete-box screen-state) value))))
+
+(define (get-results state)
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (unbox (SearchResultsState-results-box screen-state)))))
+
+(define (set-results! state value)
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (set-box! (SearchResultsState-results-box screen-state) value))))
 
 (define (get-selected-index state)
   (let ([screen-state (get-current-screen state)])
@@ -234,9 +233,6 @@
     (when (SearchResultsState? screen-state)
       (set-box! (SearchResultsState-content-height-box screen-state) value))))
 
-(define (get-search-data state)
-  (let ([lines (get-lines state)]) (and (SearchData? lines) lines)))
-
 ;; SearchReplacementCompleteState accessors
 (define (get-error-scroll-offset state)
   (let ([screen-state (get-current-screen state)])
@@ -260,7 +256,12 @@
                      (box #f)))
 
 (define (create-default-search-results-state)
-  (SearchResultsState (box (SearchData 0 #f '() 0)) (box 0) (box 0) (box 10)))
+  (SearchResultsState (box 0) ; result-count-box
+                      (box #f) ; is-complete-box
+                      (box '()) ; results-box
+                      (box 0) ; selected-index-box
+                      (box 0) ; scroll-offset-box
+                      (box 10))) ; content-height-box
 
 (define (create-default-replacement-complete-state)
   (SearchReplacementCompleteState (box 0)))
@@ -305,10 +306,9 @@
 (define RESULT-FETCH-BUFFER 10)
 
 (define (ensure-selection-visible state visible-height)
-  (let ([data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [selected-index (get-selected-index state)]
+  (let ([result-count (get-result-count state)])
+    (when result-count
+      (let* ([selected-index (get-selected-index state)]
              [current-scroll (get-scroll-offset state)]
              [max-scroll (max 0 (- result-count visible-height))]
              [new-scroll current-scroll])
@@ -327,40 +327,34 @@
 
 (define (fetch-results-window state)
   (let* ([engine (get-engine state)]
-         [data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [is-complete (SearchData-is-complete data)]
-             [scroll-offset (get-scroll-offset state)]
+         [result-count (get-result-count state)])
+    (when result-count
+      (let* ([scroll-offset (get-scroll-offset state)]
              [visible-height (get-content-height state)]
              [fetch-start scroll-offset]
              [fetch-end (min (- result-count 1) (+ scroll-offset visible-height RESULT-FETCH-BUFFER))]
              [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
                           (Scooter-search-results-window engine fetch-start fetch-end)
                           '())])
-        (set-lines! state (SearchData result-count is-complete results scroll-offset))))))
+        (set-results! state results)))))
 
 (define (navigate-by-amount state amount)
-  (let ([data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [current-selected (get-selected-index state)]
+  (let ([result-count (get-result-count state)])
+    (when (and result-count (> result-count 0))
+      (let* ([current-selected (get-selected-index state)]
              [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
-        (when (> result-count 0)
-          (set-selected-index! state new-selected)
-          (ensure-selection-visible state (get-content-height state)))))))
+        (set-selected-index! state new-selected)
+        (ensure-selection-visible state (get-content-height state))))))
 
 (define (jump-to-top state)
   (set-selected-index! state 0)
   (fetch-results-window state))
 
 (define (jump-to-bottom state)
-  (let ([data (get-search-data state)])
-    (when data
-      (let ([result-count (SearchData-result-count data)])
-        (when (> result-count 0)
-          (set-selected-index! state (- result-count 1))
-          (ensure-selection-visible state (get-content-height state)))))))
+  (let ([result-count (get-result-count state)])
+    (when (and result-count (> result-count 0))
+      (set-selected-index! state (- result-count 1))
+      (ensure-selection-visible state (get-content-height state)))))
 
 (define (scroll-page state direction)
   (let ([results-height (get-content-height state)])
@@ -387,25 +381,26 @@
 (define (toggle-search-result-inclusion state)
   (let* ([selected-index (get-selected-index state)]
          [engine (get-engine state)]
-         [data (get-search-data state)])
-    (when (> (SearchData-result-count data) 0)
+         [result-count (get-result-count state)])
+    (when (and result-count (> result-count 0))
       (Scooter-toggle-inclusion engine selected-index)
       (fetch-results-window state))))
 
 (define (toggle-all-search-results state)
   (let* ([engine (get-engine state)]
-         [data (get-search-data state)])
-    (when (and data (> (SearchData-result-count data) 0))
+         [result-count (get-result-count state)])
+    (when (and result-count (> result-count 0))
       (Scooter-toggle-all engine)
       (fetch-results-window state))))
 
 (define (open-selected-search-result state)
   (let* ([selected-index (get-selected-index state)]
          [engine (get-engine state)]
-         [data (get-search-data state)])
-    (when (> (SearchData-result-count data) 0)
-      (let* ([results (SearchData-results data)]
-             [local-index (- selected-index (SearchData-scroll-offset data))]
+         [result-count (get-result-count state)]
+         [results (get-results state)]
+         [scroll-offset (get-scroll-offset state)])
+    (when (and result-count (> result-count 0) results)
+      (let* ([local-index (- selected-index scroll-offset)]
              [selected-result (list-ref results local-index)]
              [file-path (SteelSearchResult-full-path selected-result)]
              [line-num (SteelSearchResult-line-num selected-result)])
@@ -527,14 +522,12 @@
      (set-content-height! state (area-height results-list-area))
      (ensure-selection-visible state (area-height results-list-area))
 
-     (let* ([lines (get-lines state)]
-            [styles (ui-styles)]
+     (let* ([styles (ui-styles)]
             [result-style (UIStyles-text styles)]
             [highlight-style (UIStyles-selection styles)]
-            [result-count (SearchData-result-count lines)]
-            [is-complete (SearchData-is-complete lines)]
-            [results (SearchData-results lines)]
-            [data-scroll-offset (SearchData-scroll-offset lines)]
+            [result-count (or (get-result-count state) 0)]
+            [is-complete (get-is-complete state)]
+            [results (or (get-results state) '())]
             [status-line (string-append "   "
                                         "Results: "
                                         (to-string result-count)
@@ -570,7 +563,7 @@
                     [current-row 0])
            (when (and (< index results-count) (< current-row (area-height results-list-area)))
              (let* ([result (list-ref results index)]
-                    [absolute-index (+ index data-scroll-offset)]
+                    [absolute-index (+ index scroll-offset)]
                     [is-selected (= absolute-index selected-index)]
                     [styled-segments
                      (format-search-result result is-selected styles (area-width results-list-area))])
@@ -583,9 +576,9 @@
 
        ;; Draw preview for selected result
        (when (and (> results-count 0)
-                  (>= selected-index data-scroll-offset)
-                  (< selected-index (+ data-scroll-offset results-count)))
-         (let* ([local-index (- selected-index data-scroll-offset)]
+                  (>= selected-index scroll-offset)
+                  (< selected-index (+ scroll-offset results-count)))
+         (let* ([local-index (- selected-index scroll-offset)]
                 [selected-result (list-ref results local-index)])
            (draw-file-preview frame preview-area selected-result)))))))
 
@@ -1065,7 +1058,8 @@
        (let ([result-count (Scooter-search-result-count engine)]
              [is-complete (Scooter-search-complete? engine)])
 
-         (set-lines! state (SearchData result-count is-complete '() (get-scroll-offset state)))
+         (set-result-count! state result-count)
+         (set-is-complete! state is-complete)
          (fetch-results-window state)
 
          (when (not is-complete)
