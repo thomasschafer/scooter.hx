@@ -153,7 +153,6 @@
          [final-y (+ container-y v-offset)])
     (CenteredLayout final-x final-y actual-width actual-height)))
 
-(define WINDOW-SIZE-RATIO 0.9)
 (define CONTENT-PADDING 2)
 (define STATUS-HEIGHT 2)
 (define NARROW-WINDOW-THRESHOLD 90)
@@ -205,11 +204,12 @@
     (apply render-styled-segments args)))
 
 (define (calculate-window-area rect)
-  (let* ([screen-width (area-width rect)]
+  (let* ([window-size-ratio 0.9]
+         [screen-width (area-width rect)]
          [screen-height (area-height rect)]
-         [window-width (exact (round (* screen-width WINDOW-SIZE-RATIO)))]
-         [window-height (exact (round (* screen-height WINDOW-SIZE-RATIO)))]
-         [x (exact (max 1 (- (round (/ screen-width 2)) (round (/ window-width 2)))))]
+         [window-width (exact (round (* screen-width window-size-ratio)))]
+         [window-height (exact (round (* screen-height window-size-ratio)))]
+         [x (exact (max 0 (- (round (/ screen-width 2)) (round (/ window-width 2)))))]
          [y (exact (max 0 (- (round (/ screen-height 2)) (round (/ window-height 2)))))])
     (area x y window-width window-height)))
 

@@ -75,7 +75,6 @@
          reset-scooter-state!
          cancel-all-operations!)
 
-(define WINDOW-SIZE-RATIO 0.9)
 (define CONTENT-PADDING 2)
 (define SCROLL-MARGIN 2)
 (define STATUS-HEIGHT 2)
