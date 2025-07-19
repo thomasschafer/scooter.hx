@@ -75,8 +75,6 @@
          reset-scooter-state!
          cancel-all-operations!)
 
-(define CONTENT-PADDING 2)
-(define SCROLL-MARGIN 2)
 (define STATUS-HEIGHT 2)
 
 (struct SearchData (result-count is-complete results scroll-offset))

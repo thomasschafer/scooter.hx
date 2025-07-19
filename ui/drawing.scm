@@ -153,7 +153,6 @@
          [final-y (+ container-y v-offset)])
     (CenteredLayout final-x final-y actual-width actual-height)))
 
-(define CONTENT-PADDING 2)
 (define STATUS-HEIGHT 2)
 (define NARROW-WINDOW-THRESHOLD 90)
 (define VERTICAL-LIST-HEIGHT 5)
@@ -214,11 +213,12 @@
     (area x y window-width window-height)))
 
 (define (calculate-content-area window-area)
-  (let ([help-height 1])
-    (area (+ (area-x window-area) CONTENT-PADDING)
-          (+ (area-y window-area) CONTENT-PADDING)
-          (- (area-width window-area) (* CONTENT-PADDING 2))
-          (- (area-height window-area) (* CONTENT-PADDING 2) help-height))))
+  (let ([content-padding 2]
+        [help-height 1])
+    (area (+ (area-x window-area) content-padding)
+          (+ (area-y window-area) content-padding)
+          (- (area-width window-area) (* content-padding 2))
+          (- (area-height window-area) (* content-padding 2) help-height))))
 
 (define (calculate-status-area content-area)
   (area (area-x content-area) (area-y content-area) (area-width content-area) STATUS-HEIGHT))
