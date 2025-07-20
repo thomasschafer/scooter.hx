@@ -628,9 +628,7 @@
               (equal? (key-event-char event) #\e)
               (equal? (key-event-modifier event) key-modifier-ctrl))
          (and (key-event-right? event) (= (key-event-modifier event) key-modifier-super))
-         ; TODO: uncomment when https://github.com/mattwparas/helix/pull/51 is merged
-         ; (key-event-end? event)
-         )
+         (key-event-end? event))
      (TextField-move-cursor-end textfield)]
 
     [(key-event-right? event) (TextField-move-cursor-right textfield)]
