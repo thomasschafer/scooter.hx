@@ -60,43 +60,27 @@
          scooter-render
          scooter-event-handler
          scooter-cursor-handler
-         start-scooter-search
-         get-lines
-         get-selected-index
-         set-selected-index!
-         get-scroll-offset
-         set-scroll-offset!
-         get-content-height
-         set-content-height!
-         get-engine
-         ScooterWindow-lines-box
-         SearchData
-         get-search-data
-         reset-scooter-state!
          cancel-all-operations!)
 
-(define WINDOW-SIZE-RATIO 0.9)
-(define CONTENT-PADDING 2)
-(define SCROLL-MARGIN 2)
-(define STATUS-HEIGHT 2)
+(struct SearchFieldsState
+        (field-values-box cursor-positions-box current-field-box field-errors-box general-error-box))
 
-(struct SearchData (result-count is-complete results scroll-offset))
+(struct SearchResultsState
+        (result-count-box is-complete-box
+                          results-box
+                          selected-index-box
+                          scroll-offset-box
+                          content-height-box
+                          preserved-fields-state))
+
+(struct SearchPerformingReplacementState ())
+
+(struct SearchReplacementCompleteState (error-scroll-offset-box))
 
 (struct ScooterWindow
-        (current-screen-box ; 'search-fields, 'search-results, 'performing-replacement, 'replacement-complete
-         field-values-box
-         cursor-positions-box
-         current-field-box
-         lines-box
-         completed-box
+        (current-screen-box ; holds one of the above state structs
          cursor-position
-         engine-box
-         selected-index-box
-         scroll-offset-box
-         content-height-box
-         field-errors-box
-         general-error-box
-         error-scroll-offset-box))
+         engine-box))
 
 (define-syntax define-hash-accessors
   (syntax-rules ()
@@ -108,115 +92,71 @@
        (define (setter! state key value)
          (set-box! (state-accessor state) (hash-insert (unbox (state-accessor state)) key value))))]))
 
-(define-hash-accessors get-field-value set-field-value! ScooterWindow-field-values-box)
-(define-hash-accessors get-field-cursor-pos set-field-cursor-pos! ScooterWindow-cursor-positions-box)
-(define-hash-accessors get-field-errors set-field-errors! ScooterWindow-field-errors-box)
-
-(define (get-field-textfield state field-id)
-  (hash-ref (unbox (ScooterWindow-field-values-box state)) field-id))
-
-(define (get-field-text state field-id)
-  (let ([field-value (get-field-value state field-id)])
-    (if (TextField? field-value)
-        (TextField-text field-value)
-        field-value)))
-
 (define (get-current-screen state)
   (unbox (ScooterWindow-current-screen-box state)))
-(define (set-current-screen! state value)
-  (set-box! (ScooterWindow-current-screen-box state) value))
 
-(define (get-field-values state)
-  (unbox (ScooterWindow-field-values-box state)))
-
-(define (get-current-field state)
-  (unbox (ScooterWindow-current-field-box state)))
-(define (set-current-field! state value)
-  (set-box! (ScooterWindow-current-field-box state) value))
-
-(define (get-lines state)
-  (unbox (ScooterWindow-lines-box state)))
-(define (set-lines! state value)
-  (set-box! (ScooterWindow-lines-box state) value))
-
-(define (get-completed state)
-  (unbox (ScooterWindow-completed-box state)))
-(define (set-completed! state value)
-  (set-box! (ScooterWindow-completed-box state) value))
+(define (set-current-screen! state screen-state)
+  (set-box! (ScooterWindow-current-screen-box state) screen-state))
 
 (define (get-engine state)
   (unbox (ScooterWindow-engine-box state)))
 
-(define (get-selected-index state)
-  (unbox (ScooterWindow-selected-index-box state)))
-(define (set-selected-index! state value)
-  (set-box! (ScooterWindow-selected-index-box state) value))
+;; Internal hash accessors for SearchFieldsState
+(define-hash-accessors get-field-value-internal
+                       set-field-value-internal!
+                       SearchFieldsState-field-values-box)
+(define-hash-accessors get-field-cursor-pos-internal
+                       set-field-cursor-pos-internal!
+                       SearchFieldsState-cursor-positions-box)
+(define-hash-accessors get-field-errors-internal
+                       set-field-errors-internal!
+                       SearchFieldsState-field-errors-box)
 
-(define (get-scroll-offset state)
-  (unbox (ScooterWindow-scroll-offset-box state)))
-(define (set-scroll-offset! state value)
-  (set-box! (ScooterWindow-scroll-offset-box state) value))
-
-(define (get-content-height state)
-  (unbox (ScooterWindow-content-height-box state)))
-(define (set-content-height! state value)
-  (set-box! (ScooterWindow-content-height-box state) value))
-
-(define (get-general-error state)
-  (unbox (ScooterWindow-general-error-box state)))
-(define (set-general-error! state value)
-  (set-box! (ScooterWindow-general-error-box state) value))
-(define (clear-general-error! state)
-  (set-box! (ScooterWindow-general-error-box state) #f))
-
-(define (get-error-scroll-offset state)
-  (unbox (ScooterWindow-error-scroll-offset-box state)))
-(define (set-error-scroll-offset! state value)
-  (set-box! (ScooterWindow-error-scroll-offset-box state) value))
-
-(define (get-search-data state)
-  (let ([lines (get-lines state)]) (and (SearchData? lines) lines)))
+(define (get-field-text state field-id)
+  (let ([screen-state (get-current-screen state)])
+    (if (SearchFieldsState? screen-state)
+        (let ([field-value (get-field-value-internal screen-state field-id)])
+          (if (TextField? field-value)
+              (TextField-text field-value)
+              field-value))
+        (error "get-field-text called when not SearchFieldsState"))))
 
 (define (clear-all-errors! state)
   (clear-all-field-errors! state)
-  (clear-general-error! state))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (set-box! (SearchFieldsState-general-error-box screen-state) #f))))
 
-; TODO: tidy this up
+(define (create-default-search-fields-state)
+  (SearchFieldsState (box (create-initial-field-values))
+                     (box (create-initial-cursor-positions))
+                     (box 'search)
+                     (box (hash))
+                     (box #f)))
+
+(define (create-default-search-results-state preserved-fields)
+  (SearchResultsState (box 0) ; result-count-box
+                      (box #f) ; is-complete-box
+                      (box '()) ; results-box
+                      (box 0) ; selected-index-box
+                      (box 0) ; scroll-offset-box
+                      (box 10) ; content-height-box
+                      preserved-fields)) ; preserved-fields-state
+
+(define (create-default-replacement-complete-state)
+  (SearchReplacementCompleteState (box 0)))
+
 (define (create-scooter-window)
   (let ([directory (get-helix-cwd)])
-    (ScooterWindow (box 'search-fields) ; current-screen-box
-                   (box (create-initial-field-values)) ; field-values-box
-                   (box (create-initial-cursor-positions)) ; cursor-positions-box
-                   (box 'search) ; current-field-box
-                   (box (SearchData 0 #f '() 0)) ; lines-box
-                   (box #f) ; completed-box
-                   (position 0 0) ; cursor-position
-                   (box (Scooter-new directory #f)) ; engine-box
-                   (box 0) ; selected-index-box
-                   (box 0) ; scroll-offset-box
-                   (box 10) ; content-height-box
-                   (box (hash)) ; field-errors-box
-                   (box #f) ; general-error-box
-                   (box 0)))) ; error-scroll-offset-box
+    (ScooterWindow (box (create-default-search-fields-state))
+                   (position 0 0)
+                   (box (Scooter-new directory #f)))))
 
 (define (reset-scooter-state! state)
   (cancel-all-operations! state)
-  (let* ([engine (get-engine state)]
-         [default-state (create-scooter-window)]
-         [box-accessors (list ScooterWindow-current-screen-box
-                              ScooterWindow-field-values-box
-                              ScooterWindow-cursor-positions-box
-                              ScooterWindow-current-field-box
-                              ScooterWindow-lines-box
-                              ScooterWindow-completed-box
-                              ScooterWindow-selected-index-box
-                              ScooterWindow-scroll-offset-box
-                              ScooterWindow-field-errors-box
-                              ScooterWindow-general-error-box
-                              ScooterWindow-error-scroll-offset-box)])
+  (let ([engine (get-engine state)])
     (Scooter-reset engine)
-    (for-each (lambda (accessor) (set-box! (accessor state) (unbox (accessor default-state))))
-              box-accessors)))
+    (set-current-screen! state (create-default-search-fields-state))))
 
 (define (cancel-all-operations! state)
   (let ([engine (get-engine state)])
@@ -224,128 +164,157 @@
     (Scooter-cancel-replacement engine)))
 
 (define (clear-all-field-errors! state)
-  (set-box! (ScooterWindow-field-errors-box state) (hash)))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (set-box! (SearchFieldsState-field-errors-box screen-state) (hash)))))
 
 (define (clear-field-error! state field-id)
-  (let ([errors (unbox (ScooterWindow-field-errors-box state))])
-    (when (hash-contains? errors field-id)
-      (set-box! (ScooterWindow-field-errors-box state) (hash-remove errors field-id)))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (let ([errors (unbox (SearchFieldsState-field-errors-box screen-state))])
+        (when (hash-contains? errors field-id)
+          (set-box! (SearchFieldsState-field-errors-box screen-state)
+                    (hash-remove errors field-id)))))))
 
 (define (get-field-errors-safe state field-id)
-  (or (hash-try-get (unbox (ScooterWindow-field-errors-box state)) field-id) '()))
+  (let ([screen-state (get-current-screen state)])
+    (if (SearchFieldsState? screen-state)
+        (or (hash-try-get (unbox (SearchFieldsState-field-errors-box screen-state)) field-id) '())
+        '())))
 
 ;; Navigation and search result functions
 (define RESULT-FETCH-BUFFER 10)
 
 (define (ensure-selection-visible state visible-height)
-  (let ([data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [selected-index (get-selected-index state)]
-             [current-scroll (get-scroll-offset state)]
-             [max-scroll (max 0 (- result-count visible-height))]
-             [new-scroll current-scroll])
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let ([result-count (unbox (SearchResultsState-result-count-box screen-state))])
+        (when result-count
+          (let* ([selected-index (unbox (SearchResultsState-selected-index-box screen-state))]
+                 [current-scroll (unbox (SearchResultsState-scroll-offset-box screen-state))]
+                 [max-scroll (max 0 (- result-count visible-height))]
+                 [new-scroll current-scroll])
 
-        ;; Adjust scroll to keep selection visible with margins (1 above, 2 below)
-        (when (< selected-index (+ current-scroll 1))
-          (set! new-scroll (max 0 (- selected-index 1))))
+            ;; Adjust scroll to keep selection visible with margins (1 above, 2 below)
+            (when (< selected-index (+ current-scroll 1))
+              (set! new-scroll (max 0 (- selected-index 1))))
 
-        (when (or (> selected-index (- (+ current-scroll visible-height) 2))
-                  (> (+ current-scroll visible-height) result-count))
-          (set! new-scroll (min max-scroll (max 0 (- (+ selected-index 2) visible-height)))))
+            (when (or (> selected-index (- (+ current-scroll visible-height) 2))
+                      (> (+ current-scroll visible-height) result-count))
+              (set! new-scroll (min max-scroll (max 0 (- (+ selected-index 2) visible-height)))))
 
-        ;; Update scroll and fetch new results window
-        (set-scroll-offset! state new-scroll)
-        (fetch-results-window state)))))
+            ;; Update scroll and fetch new results window
+            (set-box! (SearchResultsState-scroll-offset-box screen-state) new-scroll)
+            (fetch-results-window state)))))))
 
 (define (fetch-results-window state)
-  (let* ([engine (get-engine state)]
-         [data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [is-complete (SearchData-is-complete data)]
-             [scroll-offset (get-scroll-offset state)]
-             [visible-height (get-content-height state)]
-             [fetch-start scroll-offset]
-             [fetch-end (min (- result-count 1) (+ scroll-offset visible-height RESULT-FETCH-BUFFER))]
-             [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
-                          (Scooter-search-results-window engine fetch-start fetch-end)
-                          '())])
-        (set-box! (ScooterWindow-lines-box state)
-                  (SearchData result-count is-complete results scroll-offset))))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let* ([engine (get-engine state)]
+             [result-count (unbox (SearchResultsState-result-count-box screen-state))])
+        (when result-count
+          (let* ([scroll-offset (unbox (SearchResultsState-scroll-offset-box screen-state))]
+                 [visible-height (unbox (SearchResultsState-content-height-box screen-state))]
+                 [fetch-start scroll-offset]
+                 [fetch-end (min (- result-count 1)
+                                 (+ scroll-offset visible-height RESULT-FETCH-BUFFER))]
+                 [results (if (and (>= result-count 0) (>= fetch-end fetch-start))
+                              (Scooter-search-results-window engine fetch-start fetch-end)
+                              '())])
+            (set-box! (SearchResultsState-results-box screen-state) results)))))))
 
 (define (navigate-by-amount state amount)
-  (let ([data (get-search-data state)])
-    (when data
-      (let* ([result-count (SearchData-result-count data)]
-             [current-selected (get-selected-index state)]
-             [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
-        (when (> result-count 0)
-          (set-selected-index! state new-selected)
-          (ensure-selection-visible state (get-content-height state)))))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let ([result-count (unbox (SearchResultsState-result-count-box screen-state))])
+        (when (and result-count (> result-count 0))
+          (let* ([current-selected (unbox (SearchResultsState-selected-index-box screen-state))]
+                 [new-selected (max 0 (min (- result-count 1) (+ current-selected amount)))])
+            (set-box! (SearchResultsState-selected-index-box screen-state) new-selected)
+            (ensure-selection-visible state
+                                      (unbox (SearchResultsState-content-height-box
+                                              screen-state)))))))))
 
 (define (jump-to-top state)
-  (set-selected-index! state 0)
-  (fetch-results-window state))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (set-box! (SearchResultsState-selected-index-box screen-state) 0)
+      (fetch-results-window state))))
 
 (define (jump-to-bottom state)
-  (let ([data (get-search-data state)])
-    (when data
-      (let ([result-count (SearchData-result-count data)])
-        (when (> result-count 0)
-          (set-selected-index! state (- result-count 1))
-          (ensure-selection-visible state (get-content-height state)))))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let ([result-count (unbox (SearchResultsState-result-count-box screen-state))])
+        (when (and result-count (> result-count 0))
+          (set-box! (SearchResultsState-selected-index-box screen-state) (- result-count 1))
+          (ensure-selection-visible state
+                                    (unbox (SearchResultsState-content-height-box screen-state))))))))
 
 (define (scroll-page state direction)
-  (let ([results-height (get-content-height state)])
-    (navigate-by-amount state (* direction results-height))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let ([results-height (unbox (SearchResultsState-content-height-box screen-state))])
+        (navigate-by-amount state (* direction results-height))))))
 
 (define (scroll-half-page state direction)
-  (let ([results-height (get-content-height state)])
-    (navigate-by-amount state (* direction (max 1 (quotient results-height 2))))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let ([results-height (unbox (SearchResultsState-content-height-box screen-state))])
+        (navigate-by-amount state (* direction (max 1 (quotient results-height 2))))))))
 
 (define (navigate-search-results state direction)
   (navigate-by-amount state direction))
 
 (define (scroll-errors state direction)
-  (let ([engine (get-engine state)])
-    (when (Scooter-replacement-complete? engine)
-      (let* ([stats (Scooter-replacement-stats engine)]
-             [num-errors (ReplacementStats-num-errors stats)]
-             [current-offset (get-error-scroll-offset state)]
-             [new-offset (max 0 (+ current-offset direction))]
-             [max-offset (max 0 (- num-errors 1))])
-        (when (> num-errors 0)
-          (set-error-scroll-offset! state (min max-offset new-offset)))))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchReplacementCompleteState? screen-state)
+      (let ([engine (get-engine state)])
+        (when (Scooter-replacement-complete? engine)
+          (let* ([stats (Scooter-replacement-stats engine)]
+                 [num-errors (ReplacementStats-num-errors stats)]
+                 [current-offset (unbox (SearchReplacementCompleteState-error-scroll-offset-box
+                                         screen-state))]
+                 [new-offset (max 0 (+ current-offset direction))]
+                 [max-offset (max 0 (- num-errors 1))])
+            (when (> num-errors 0)
+              (set-box! (SearchReplacementCompleteState-error-scroll-offset-box screen-state)
+                        (min max-offset new-offset)))))))))
 
 (define (toggle-search-result-inclusion state)
-  (let* ([selected-index (get-selected-index state)]
-         [engine (get-engine state)]
-         [data (get-search-data state)])
-    (when (> (SearchData-result-count data) 0)
-      (Scooter-toggle-inclusion engine selected-index)
-      (fetch-results-window state))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let* ([selected-index (unbox (SearchResultsState-selected-index-box screen-state))]
+             [engine (get-engine state)]
+             [result-count (unbox (SearchResultsState-result-count-box screen-state))])
+        (when (and result-count (> result-count 0))
+          (Scooter-toggle-inclusion engine selected-index)
+          (fetch-results-window state))))))
 
 (define (toggle-all-search-results state)
-  (let* ([engine (get-engine state)]
-         [data (get-search-data state)])
-    (when (and data (> (SearchData-result-count data) 0))
-      (Scooter-toggle-all engine)
-      (fetch-results-window state))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let* ([engine (get-engine state)]
+             [result-count (unbox (SearchResultsState-result-count-box screen-state))])
+        (when (and result-count (> result-count 0))
+          (Scooter-toggle-all engine)
+          (fetch-results-window state))))))
 
 (define (open-selected-search-result state)
-  (let* ([selected-index (get-selected-index state)]
-         [engine (get-engine state)]
-         [data (get-search-data state)])
-    (when (> (SearchData-result-count data) 0)
-      (let* ([results (SearchData-results data)]
-             [local-index (- selected-index (SearchData-scroll-offset data))]
-             [selected-result (list-ref results local-index)]
-             [file-path (SteelSearchResult-full-path selected-result)]
-             [line-num (SteelSearchResult-line-num selected-result)])
-        (helix.open file-path)
-        (helix.goto (int->string line-num))
-        (align_view_center)))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let* ([selected-index (unbox (SearchResultsState-selected-index-box screen-state))]
+             [engine (get-engine state)]
+             [result-count (unbox (SearchResultsState-result-count-box screen-state))]
+             [results (unbox (SearchResultsState-results-box screen-state))]
+             [scroll-offset (unbox (SearchResultsState-scroll-offset-box screen-state))])
+        (when (and result-count (> result-count 0) results)
+          (let* ([local-index (- selected-index scroll-offset)]
+                 [selected-result (list-ref results local-index)]
+                 [file-path (SteelSearchResult-full-path selected-result)]
+                 [line-num (SteelSearchResult-line-num selected-result)])
+            (helix.open file-path)
+            (helix.goto (int->string line-num))
+            (align_view_center)))))))
 
 ;; Drawing functions
 (define (preview-line-to-styled-segments line-segments)
@@ -418,75 +387,120 @@
           (render-styled-segments-in-area frame preview-area row styled-segments bg-style)
           (loop (cdr lines) (+ row 1)))))))
 
-(define (draw-search-results frame content-area initial-data state)
-  (call-with-values
-   (lambda () (calculate-split-areas content-area))
-   (lambda (results-list-area preview-area)
+(define (draw-search-fields frame content-area state)
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (let* ([general-error (unbox (SearchFieldsState-general-error-box screen-state))]
+             [error-height 2]
+             [all-fields (get-all-fields)]
+             [field-count (length all-fields)]
+             [total-fields-height (* field-count 3)] ; Each field is 3 rows high
+             [available-height (- (area-height content-area) error-height)]
+             [current-field (unbox (SearchFieldsState-current-field-box screen-state))]
+             [centered-layout (calculate-centered-layout (area-x content-area)
+                                                         (+ (area-y content-area) error-height)
+                                                         (area-width content-area)
+                                                         available-height
+                                                         (area-width content-area)
+                                                         total-fields-height
+                                                         #f
+                                                         #f
+                                                         #f
+                                                         #t)]
+             [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
 
-     (set-content-height! state (area-height results-list-area))
-     (ensure-selection-visible state (area-height results-list-area))
+        (let ([error-area (calculate-error-message-area content-area)])
+          (draw-error-message frame error-area general-error))
 
-     (let* ([raw-data (or (get-lines state) initial-data)]
-            [styles (ui-styles)]
-            [result-style (UIStyles-text styles)]
-            [highlight-style (UIStyles-selection styles)]
-            [result-count (SearchData-result-count raw-data)]
-            [is-complete (SearchData-is-complete raw-data)]
-            [results (SearchData-results raw-data)]
-            [data-scroll-offset (SearchData-scroll-offset raw-data)]
-            [status-line (string-append "   "
-                                        "Results: "
-                                        (to-string result-count)
-                                        " ["
-                                        (if is-complete "Search complete" "Searching...")
-                                        "]")]
-            [selected-index (get-selected-index state)]
-            [scroll-offset (get-scroll-offset state)]
-            [status-area (calculate-status-area content-area)]
-            [results-count (length results)])
+        (let ([fields-area (area (area-x content-area)
+                                 (CenteredLayout-y centered-layout)
+                                 (area-width content-area)
+                                 total-fields-height)])
+          (draw-all-fields frame
+                           fields-area
+                           current-field
+                           state
+                           get-field-text
+                           get-field-errors-safe))
 
-       (buffer/clear frame content-area)
-       (let ([bg-style (UIStyles-popup (ui-styles))])
-         (let loop ([row 0])
-           (when (< row (area-height content-area))
+        (position-cursor-in-text-field state
+                                       current-field
+                                       field-positions
+                                       (area-x content-area)
+                                       (area-width content-area))))))
+
+(define (draw-search-results frame content-area state)
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (call-with-values
+       (lambda () (calculate-split-areas content-area))
+       (lambda (results-list-area preview-area)
+
+         (set-box! (SearchResultsState-content-height-box screen-state)
+                   (area-height results-list-area))
+         (ensure-selection-visible state (area-height results-list-area))
+
+         (let* ([styles (ui-styles)]
+                [result-style (UIStyles-text styles)]
+                [highlight-style (UIStyles-selection styles)]
+                [result-count (or (unbox (SearchResultsState-result-count-box screen-state)) 0)]
+                [is-complete (unbox (SearchResultsState-is-complete-box screen-state))]
+                [results (or (unbox (SearchResultsState-results-box screen-state)) '())]
+                [status-line (string-append "   "
+                                            "Results: "
+                                            (to-string result-count)
+                                            " ["
+                                            (if is-complete "Search complete" "Searching...")
+                                            "]")]
+                [selected-index (unbox (SearchResultsState-selected-index-box screen-state))]
+                [scroll-offset (unbox (SearchResultsState-scroll-offset-box screen-state))]
+                [status-area (calculate-status-area content-area)]
+                [results-count (length results)])
+
+           (buffer/clear frame content-area)
+           (let ([bg-style (UIStyles-popup (ui-styles))])
+             (let loop ([row 0])
+               (when (< row (area-height content-area))
+                 (frame-set-string! frame
+                                    (area-x content-area)
+                                    (+ (area-y content-area) row)
+                                    (make-space-string (area-width content-area))
+                                    bg-style)
+                 (loop (+ row 1)))))
+
+           (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
              (frame-set-string! frame
-                                (area-x content-area)
-                                (+ (area-y content-area) row)
-                                (make-space-string (area-width content-area))
-                                bg-style)
-             (loop (+ row 1)))))
+                                (area-x status-area)
+                                (area-y status-area)
+                                truncated-status
+                                (UIStyles-popup (ui-styles))))
 
-       (let ([truncated-status (truncate-string status-line (- (area-width status-area) 4))])
-         (frame-set-string! frame
-                            (area-x status-area)
-                            (area-y status-area)
-                            truncated-status
-                            (UIStyles-popup (ui-styles))))
+           ;; Draw results list
+           (when (> results-count 0)
+             (let loop ([index 0]
+                        [current-row 0])
+               (when (and (< index results-count) (< current-row (area-height results-list-area)))
+                 (let* ([result (list-ref results index)]
+                        [absolute-index (+ index scroll-offset)]
+                        [is-selected (= absolute-index selected-index)]
+                        [styled-segments (format-search-result result
+                                                               is-selected
+                                                               styles
+                                                               (area-width results-list-area))])
+                   (render-styled-segments frame
+                                           (area-x results-list-area)
+                                           (+ (area-y results-list-area) current-row)
+                                           styled-segments
+                                           (area-width results-list-area)))
+                 (loop (+ index 1) (+ current-row 1)))))
 
-       ;; Draw results list
-       (when (> results-count 0)
-         (let loop ([index 0]
-                    [current-row 0])
-           (when (and (< index results-count) (< current-row (area-height results-list-area)))
-             (let* ([result (list-ref results index)]
-                    [absolute-index (+ index data-scroll-offset)]
-                    [is-selected (= absolute-index selected-index)]
-                    [styled-segments
-                     (format-search-result result is-selected styles (area-width results-list-area))])
-               (render-styled-segments frame
-                                       (area-x results-list-area)
-                                       (+ (area-y results-list-area) current-row)
-                                       styled-segments
-                                       (area-width results-list-area)))
-             (loop (+ index 1) (+ current-row 1)))))
-
-       ;; Draw preview for selected result
-       (when (and (> results-count 0)
-                  (>= selected-index data-scroll-offset)
-                  (< selected-index (+ data-scroll-offset results-count)))
-         (let* ([local-index (- selected-index data-scroll-offset)]
-                [selected-result (list-ref results local-index)])
-           (draw-file-preview frame preview-area selected-result)))))))
+           ;; Draw preview for selected result
+           (when (and (> results-count 0)
+                      (>= selected-index scroll-offset)
+                      (< selected-index (+ scroll-offset results-count)))
+             (let* ([local-index (- selected-index scroll-offset)]
+                    [selected-result (list-ref results local-index)])
+               (draw-file-preview frame preview-area selected-result)))))))))
 
 (define (draw-performing-replacement frame content-area state)
   (let* ([engine (get-engine state)]
@@ -500,7 +514,8 @@
     (frame-set-string! frame x-pos y-pos status-text text-style)))
 
 (define (draw-replacement-complete frame content-area state)
-  (let* ([engine (get-engine state)]
+  (let* ([screen-state (get-current-screen state)]
+         [engine (get-engine state)]
          [stats (Scooter-replacement-stats engine)]
          [num-successes (ReplacementStats-num-successes stats)]
          [num-ignored (ReplacementStats-num-ignored stats)]
@@ -552,7 +567,8 @@
                   (let* ([errors-y (+ current-y 5)]
                          [error-box-x (area-x content-area)]
                          [error-box-width (area-width content-area)]
-                         [scroll-offset (get-error-scroll-offset state)]
+                         [scroll-offset (unbox (SearchReplacementCompleteState-error-scroll-offset-box
+                                                screen-state))]
                          [visible-errors (drop errors scroll-offset)])
                     (frame-set-string! frame (+ error-box-x 2) errors-y "Errors:" text-style)
                     (let render-errors ([error-list visible-errors]
@@ -585,7 +601,9 @@
 
 (define (clear-errors-on-input! state field-id)
   (clear-field-error! state field-id)
-  (clear-general-error! state))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (set-box! (SearchFieldsState-general-error-box screen-state) #f))))
 
 (define (handle-textfield-key textfield event)
   (cond
@@ -654,25 +672,28 @@
     [else #f]))
 
 (define (insert-text state field-id text)
-  (when (field-is-text? field-id)
-    (clear-errors-on-input! state field-id)
-    (let ([textfield (get-field-value state field-id)])
-      (when (TextField? textfield)
-        (TextField-insert-text textfield text)))))
+  (let ([screen-state (get-current-screen state)])
+    (when (and (SearchFieldsState? screen-state) (field-is-text? field-id))
+      (clear-errors-on-input! state field-id)
+      (let ([textfield (get-field-value-internal screen-state field-id)])
+        (when (TextField? textfield)
+          (TextField-insert-text textfield text))))))
 
 (define (position-cursor-in-text-field state current-field field-positions content-x content-width)
-  (let ([active-field-def (get-field-by-id current-field)])
-    (when (and active-field-def (equal? (field-type active-field-def) FIELD-TYPE-TEXT))
-      (let* ([positions (hash-ref field-positions current-field)]
-             [box-top-y (car positions)]
-             [textfield (get-field-value state current-field)]
-             [cursor-pos (if (TextField? textfield)
-                             (TextField-cursor-pos textfield)
-                             0)]
-             [cursor-row (+ box-top-y 1)]
-             [cursor-col (get-field-cursor-column content-x content-width cursor-pos)])
-        (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
-        (set-position-col! (ScooterWindow-cursor-position state) cursor-col)))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (let ([active-field-def (get-field-by-id current-field)])
+        (when (and active-field-def (equal? (field-type active-field-def) FIELD-TYPE-TEXT))
+          (let* ([positions (hash-ref field-positions current-field)]
+                 [box-top-y (car positions)]
+                 [textfield (get-field-value-internal screen-state current-field)]
+                 [cursor-pos (if (TextField? textfield)
+                                 (TextField-cursor-pos textfield)
+                                 0)]
+                 [cursor-row (+ box-top-y 1)]
+                 [cursor-col (get-field-cursor-column content-x content-width cursor-pos)])
+            (set-position-row! (ScooterWindow-cursor-position state) cursor-row)
+            (set-position-col! (ScooterWindow-cursor-position state) cursor-col)))))))
 
 (define (strip-newlines text)
   (string-replace (string-replace text "\n" " ") "\r" " "))
@@ -691,20 +712,21 @@
 (define (format-keybinding key action)
   (string-append "<" key "> " action))
 
-(define (get-keybinding-help mode)
+(define (get-keybinding-help screen-state)
   (let* ([common-bindings '(("ctrl+r" "reset") ("esc" "hide") ("ctrl+c" "quit"))]
-         [mode-specific-bindings (cond
-                                   [(equal? mode 'search-fields)
-                                    '(("enter" "search") ("tab" "next field") ("space" "toggle"))]
-                                   [(equal? mode 'search-results)
-                                    '(("enter" "replace") ("space" "toggle")
-                                                          ("a" "toggle all")
-                                                          ("e" "open")
-                                                          ; ("alt+e" "open bg") ; TODO: show in popup
-                                                          ("ctrl+o" "back"))]
-                                   [(equal? mode 'performing-replacement) '()]
-                                   [(equal? mode 'replacement-complete) '(("enter" "quit"))]
-                                   [else '()])]
+         [mode-specific-bindings
+          (cond
+            [(SearchFieldsState? screen-state)
+             '(("enter" "search") ("tab" "next field") ("space" "toggle"))]
+            [(SearchResultsState? screen-state)
+             '(("enter" "replace") ("space" "toggle")
+                                   ("a" "toggle all")
+                                   ("e" "open")
+                                   ; ("alt+e" "open bg") ; TODO: show in popup
+                                   ("ctrl+o" "back"))]
+            [(SearchPerformingReplacementState? screen-state) '()]
+            [(SearchReplacementCompleteState? screen-state) '(("enter" "quit"))]
+            [else '()])]
          [all-bindings (append mode-specific-bindings common-bindings)]
          [formatted-bindings (map (lambda (binding) (format-keybinding (car binding) (cadr binding)))
                                   all-bindings)])
@@ -723,9 +745,9 @@
         (area-width content-area)
         1))
 
-(define (draw-keybinding-help frame help-area mode)
+(define (draw-keybinding-help frame help-area screen-state)
   (let* ([hint-style (UIStyles-dim (ui-styles))]
-         [hint-text (get-keybinding-help mode)]
+         [hint-text (get-keybinding-help screen-state)]
          [truncated-hint (truncate-string hint-text (area-width help-area))]
          [text-length (char-width truncated-hint)]
          [available-width (area-width help-area)]
@@ -737,9 +759,7 @@
 (define (scooter-render state rect frame)
   (let* ([window-area (calculate-window-area rect)]
          [content-area (calculate-content-area window-area)]
-         [mode (get-current-screen state)]
-         [search-term (get-field-text state 'search)]
-         [current-field (get-current-field state)]
+         [screen-state (get-current-screen state)]
          [title " Scooter "]
          [popup-style (UIStyles-popup (ui-styles))])
 
@@ -748,98 +768,69 @@
     (let ([title-area (calculate-title-area window-area)]) (draw-title frame title-area title))
 
     (cond
-      [(equal? mode 'search-fields)
-       (let* ([general-error (get-general-error state)]
-              [error-height 2]
-              [all-fields (get-all-fields)]
-              [field-count (length all-fields)]
-              [total-fields-height (* field-count 3)] ; Each field is 3 rows high
-              [available-height (- (area-height content-area) error-height)]
-              [centered-layout (calculate-centered-layout (area-x content-area)
-                                                          (+ (area-y content-area) error-height)
-                                                          (area-width content-area)
-                                                          available-height
-                                                          (area-width content-area)
-                                                          total-fields-height
-                                                          #f
-                                                          #f
-                                                          #f
-                                                          #t)]
-              [field-positions (calculate-field-positions (CenteredLayout-y centered-layout))])
+      [(SearchFieldsState? screen-state) (draw-search-fields frame content-area state)]
 
-         (let ([error-area (calculate-error-message-area content-area)])
-           (draw-error-message frame error-area general-error))
+      [(SearchResultsState? screen-state) (draw-search-results frame content-area state)]
 
-         (let ([fields-area (area (area-x content-area)
-                                  (CenteredLayout-y centered-layout)
-                                  (area-width content-area)
-                                  total-fields-height)])
-           (draw-all-fields frame
-                            fields-area
-                            current-field
-                            state
-                            get-field-text
-                            get-field-errors-safe))
+      [(SearchPerformingReplacementState? screen-state)
+       (draw-performing-replacement frame content-area state)]
 
-         (position-cursor-in-text-field state
-                                        current-field
-                                        field-positions
-                                        (area-x content-area)
-                                        (area-width content-area)))]
-
-      [(equal? mode 'search-results)
-       (let ([lines (get-lines state)]) (draw-search-results frame content-area lines state))]
-
-      [(equal? mode 'performing-replacement) (draw-performing-replacement frame content-area state)]
-
-      [(equal? mode 'replacement-complete) (draw-replacement-complete frame content-area state)])
+      [(SearchReplacementCompleteState? screen-state)
+       (draw-replacement-complete frame content-area state)])
 
     (let ([help-area (calculate-keybinding-help-area content-area)])
-      (draw-keybinding-help frame help-area mode))))
+      (draw-keybinding-help frame help-area screen-state))))
 
 (define (handle-paste-event state paste-text)
-  (when paste-text
-    (let* ([current-field-id (get-current-field state)]
-           [clean-text (strip-newlines paste-text)])
-      (when (field-is-text? current-field-id)
-        (insert-text state current-field-id clean-text)))))
+  (let ([screen-state (get-current-screen state)])
+    (when (and paste-text (SearchFieldsState? screen-state))
+      (let* ([current-field-id (unbox (SearchFieldsState-current-field-box screen-state))]
+             [clean-text (strip-newlines paste-text)])
+        (when (field-is-text? current-field-id)
+          (insert-text state current-field-id clean-text))))))
 
 (define (handle-tab-key state modifier)
-  (let* ([current-field-id (get-current-field state)]
-         [new-field-id (if (equal? modifier key-modifier-shift)
-                           (get-previous-field current-field-id)
-                           (get-next-field current-field-id))])
-    (set-current-field! state new-field-id)))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (let* ([current-field-id (unbox (SearchFieldsState-current-field-box screen-state))]
+             [new-field-id (if (equal? modifier key-modifier-shift)
+                               (get-previous-field current-field-id)
+                               (get-next-field current-field-id))])
+        (set-box! (SearchFieldsState-current-field-box screen-state) new-field-id)))))
 
 (define (handle-enter-key state)
   (let ([search-term (get-field-text state 'search)])
     (if (> (char-width search-term) 0)
         (start-scooter-search state)
-        (set-field-errors! state 'search '("Search text is required")))))
+        (let ([screen-state (get-current-screen state)])
+          (when (SearchFieldsState? screen-state)
+            (set-field-errors-internal! screen-state 'search '("Search text is required")))))))
 
 (define (handle-search-fields-mode-event state event)
-  (cond
-    [(paste-event? event) (handle-paste-event state (paste-event-string event))]
-    [(key-event-tab? event) (handle-tab-key state (key-event-modifier event))]
-    [(key-event-enter? event) (handle-enter-key state)]
-    [else
-     (let* ([current-field-id (get-current-field state)]
-            [field-def (get-field-by-id current-field-id)])
-       (when (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
-         (clear-errors-on-input! state current-field-id)
-         (let ([textfield (get-field-value state current-field-id)])
-           (when (TextField? textfield)
-             (handle-textfield-key textfield event))))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (cond
+        [(paste-event? event) (handle-paste-event state (paste-event-string event))]
+        [(key-event-tab? event) (handle-tab-key state (key-event-modifier event))]
+        [(key-event-enter? event) (handle-enter-key state)]
+        [else
+         (let* ([current-field-id (unbox (SearchFieldsState-current-field-box screen-state))]
+                [field-def (get-field-by-id current-field-id)])
+           (when (and field-def (equal? (field-type field-def) FIELD-TYPE-TEXT))
+             (clear-errors-on-input! state current-field-id)
+             (let ([textfield (get-field-value-internal screen-state current-field-id)])
+               (when (TextField? textfield)
+                 (handle-textfield-key textfield event))))
 
-       (when (and field-def
-                  (equal? (field-type field-def) FIELD-TYPE-BOOLEAN)
-                  (key-event-char event)
-                  (equal? (key-event-char event) #\space))
-         (let ([current-value (get-field-value state current-field-id)])
-           (set-field-value! state current-field-id (not current-value))
-           (when (equal? current-field-id 'fixed-strings)
-             (clear-field-error! state 'search)))))])
-  event-result/consume)
+           (when (and field-def
+                      (equal? (field-type field-def) FIELD-TYPE-BOOLEAN)
+                      (key-event-char event)
+                      (equal? (key-event-char event) #\space))
+             (let ([current-value (get-field-value-internal screen-state current-field-id)])
+               (set-field-value-internal! screen-state current-field-id (not current-value))
+               (when (equal? current-field-id 'fixed-strings)
+                 (clear-field-error! state 'search)))))]))
+    event-result/consume))
 
 (define (key-matches-char? event char)
   (and (key-event-char event) (equal? (key-event-char event) char)))
@@ -850,7 +841,7 @@
 (define (start-replacement state)
   (let ([engine (get-engine state)])
     (Scooter-start-replace engine)
-    (set-current-screen! state 'performing-replacement)
+    (set-current-screen! state (SearchPerformingReplacementState))
     (poll-replacement-progress state)))
 
 (define (handle-performing-replacement-event state event)
@@ -911,59 +902,67 @@
     [else event-result/consume]))
 
 (define (scooter-event-handler state event)
-  (let ([mode (get-current-screen state)])
+  (let ([screen-state (get-current-screen state)])
     (cond
       [(key-with-ctrl? event #\r)
        (reset-scooter-state! state)
        event-result/consume]
-      [(equal? mode 'search-fields) (handle-search-fields-mode-event state event)]
-      [(equal? mode 'search-results) (handle-search-results-mode-event state event)]
-      [(equal? mode 'performing-replacement) (handle-performing-replacement-event state event)]
-      [(equal? mode 'replacement-complete) (handle-replacement-complete-event state event)]
+      [(SearchFieldsState? screen-state) (handle-search-fields-mode-event state event)]
+      [(SearchResultsState? screen-state) (handle-search-results-mode-event state event)]
+      [(SearchPerformingReplacementState? screen-state)
+       (handle-performing-replacement-event state event)]
+      [(SearchReplacementCompleteState? screen-state) (handle-replacement-complete-event state event)]
       [else event-result/consume])))
 
 (define (scooter-cursor-handler state _)
-  (and (equal? (get-current-screen state) 'search-fields)
-       (field-is-text? (get-current-field state))
-       (ScooterWindow-cursor-position state)))
+  (let ([screen-state (get-current-screen state)])
+    (and (SearchFieldsState? screen-state)
+         (field-is-text? (unbox (SearchFieldsState-current-field-box screen-state)))
+         (ScooterWindow-cursor-position state))))
 
 (define (start-scooter-search state)
   (clear-all-errors! state)
   (execute-search-process! state))
 
 (define (cancel-search-and-return-to-fields state)
-  (let ([engine (get-engine state)])
+  (let ([engine (get-engine state)]
+        [preserved-fields (let ([rs-state (get-current-screen state)])
+                            (if (SearchResultsState? rs-state)
+                                (SearchResultsState-preserved-fields-state rs-state)
+                                #f))])
     (Scooter-cancel-search engine)
-    (set-current-screen! state 'search-fields)
+    (if preserved-fields
+        (set-current-screen! state preserved-fields)
+        (set-current-screen! state (create-default-search-fields-state)))
     (clear-all-errors! state)))
 
 (define (execute-search-process! state)
-  (let* ([engine (get-engine state)]
-         [search-term (get-field-text state 'search)]
-         [replace-term (get-field-text state 'replace)]
-         [fixed-strings (get-field-value state 'fixed-strings)]
-         [match-whole-word (get-field-value state 'match-whole-word)]
-         [match-case (get-field-value state 'match-case)]
-         [include-pattern (get-field-text state 'files-include)]
-         [exclude-pattern (get-field-text state 'files-exclude)]
-         [response (Scooter-start-search engine
-                                         search-term
-                                         replace-term
-                                         fixed-strings
-                                         match-whole-word
-                                         match-case
-                                         include-pattern
-                                         exclude-pattern)])
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      (let* ([engine (get-engine state)]
+             [search-term (get-field-text state 'search)]
+             [replace-term (get-field-text state 'replace)]
+             [fixed-strings (get-field-value-internal screen-state 'fixed-strings)]
+             [match-whole-word (get-field-value-internal screen-state 'match-whole-word)]
+             [match-case (get-field-value-internal screen-state 'match-case)]
+             [include-pattern (get-field-text state 'files-include)]
+             [exclude-pattern (get-field-text state 'files-exclude)]
+             [response (Scooter-start-search engine
+                                             search-term
+                                             replace-term
+                                             fixed-strings
+                                             match-whole-word
+                                             match-case
+                                             include-pattern
+                                             exclude-pattern)])
 
-    (if (hash-ref response "success")
-        (begin
-          (set-current-screen! state 'search-results)
-          (set-lines! state (SearchData 0 #f '() 0))
-          (set-completed! state #f)
-          (set-selected-index! state 0)
-          (set-scroll-offset! state 0)
-          (poll-search-results state))
-        (handle-search-errors! state response))))
+        (if (hash-ref response "success")
+            (begin
+              (let ([current-fields-state (get-current-screen state)])
+                (set-current-screen! state
+                                     (create-default-search-results-state current-fields-state)))
+              (poll-search-results state))
+            (handle-search-errors! state response))))))
 
 (define (handle-search-errors! state response)
   (let ([error-type (hash-try-get response "error-type")]
@@ -971,30 +970,35 @@
     (cond
       [(equal? error-type "validation-error") (handle-validation-errors! state response)]
       [(equal? error-type "configuration-error")
-       (set-general-error! state (or message "Configuration error occurred"))]
+       (let ([screen-state (get-current-screen state)])
+         (when (SearchFieldsState? screen-state)
+           (set-box! (SearchFieldsState-general-error-box screen-state)
+                     (or message "Configuration error occurred"))))]
       [error-type
-       (set-general-error! state
-                           (string-append "Error (" error-type "): " (or message "Unknown error")))]
-      [else (set-general-error! state "An unexpected error occurred")])))
+       (let ([screen-state (get-current-screen state)])
+         (when (SearchFieldsState? screen-state)
+           (set-box! (SearchFieldsState-general-error-box screen-state)
+                     (string-append "Error (" error-type "): " (or message "Unknown error")))))]
+      [else
+       (let ([screen-state (get-current-screen state)])
+         (when (SearchFieldsState? screen-state)
+           (set-box! (SearchFieldsState-general-error-box screen-state)
+                     "An unexpected error occurred")))])))
 
 (define (handle-validation-errors! state response)
-  ;; Map validation error response keys to field IDs
-  (when (hash-contains? response "search-text-errors")
-    (set-field-errors! state 'search (hash-ref response "search-text-errors")))
-  (when (hash-contains? response "include-files-errors")
-    (set-field-errors! state 'files-include (hash-ref response "include-files-errors")))
-  (when (hash-contains? response "exclude-files-errors")
-    (set-field-errors! state 'files-exclude (hash-ref response "exclude-files-errors"))))
-
-(define (get-search-status engine)
-  (let ([result-count (Scooter-search-result-count engine)]
-        [is-complete (Scooter-search-complete? engine)])
-    (list is-complete result-count)))
-
-(define (get-search-results engine result-count)
-  (if (> result-count 0)
-      (Scooter-search-results-window engine 0 (max 0 (- result-count 1)))
-      '()))
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchFieldsState? screen-state)
+      ;; Map validation error response keys to field IDs
+      (when (hash-contains? response "search-text-errors")
+        (set-field-errors-internal! screen-state 'search (hash-ref response "search-text-errors")))
+      (when (hash-contains? response "include-files-errors")
+        (set-field-errors-internal! screen-state
+                                    'files-include
+                                    (hash-ref response "include-files-errors")))
+      (when (hash-contains? response "exclude-files-errors")
+        (set-field-errors-internal! screen-state
+                                    'files-exclude
+                                    (hash-ref response "exclude-files-errors"))))))
 
 (define (poll-replacement-progress state)
   (let ([engine (get-engine state)])
@@ -1002,22 +1006,23 @@
      (lambda ()
        (let ([is-complete (Scooter-replacement-complete? engine)])
          (cond
-           [is-complete (set-current-screen! state 'replacement-complete)]
+           [is-complete (set-current-screen! state (create-default-replacement-complete-state))]
            ;; Only continue polling if still on replacement screen
-           [(equal? (get-current-screen state) 'performing-replacement)
+           [(SearchPerformingReplacementState? (get-current-screen state))
             (enqueue-thread-local-callback (lambda () (poll-replacement-progress state)))]))))))
 
 (define (poll-search-results state)
-  (let ([engine (get-engine state)])
-    (enqueue-thread-local-callback
-     (lambda ()
-       (let ([result-count (Scooter-search-result-count engine)]
-             [is-complete (Scooter-search-complete? engine)])
+  (let ([screen-state (get-current-screen state)])
+    (when (SearchResultsState? screen-state)
+      (let ([engine (get-engine state)])
+        (enqueue-thread-local-callback
+         (lambda ()
+           (let ([result-count (Scooter-search-result-count engine)]
+                 [is-complete (Scooter-search-complete? engine)])
 
-         (set-box! (ScooterWindow-lines-box state)
-                   (SearchData result-count is-complete '() (get-scroll-offset state)))
-         (fetch-results-window state)
+             (set-box! (SearchResultsState-result-count-box screen-state) result-count)
+             (set-box! (SearchResultsState-is-complete-box screen-state) is-complete)
+             (fetch-results-window state)
 
-         (cond
-           [is-complete (set-box! (ScooterWindow-completed-box state) #t)]
-           [else (enqueue-thread-local-callback (lambda () (poll-search-results state)))]))))))
+             (when (not is-complete)
+               (enqueue-thread-local-callback (lambda () (poll-search-results state)))))))))))
