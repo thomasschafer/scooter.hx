@@ -389,9 +389,9 @@ impl ScooterHx {
             return;
         };
         let all_included = results.iter().all(|res| res.included);
-        results
-            .iter_mut()
-            .for_each(|res| res.included = !all_included);
+        for res in results {
+            res.included = !all_included;
+        }
     }
 
     pub(crate) fn start_replace(&mut self) {
