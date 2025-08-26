@@ -1,4 +1,5 @@
 (require "helix/components.scm")
+(require "helix/editor.scm")
 (require "helix/misc.scm")
 (require "helix/static.scm")
 (require (prefix-in helix. "helix/commands.scm"))
@@ -996,13 +997,20 @@
                                     'files-exclude
                                     (hash-ref response "exclude-files-errors"))))))
 
+(define (reload-non-dirty-documents)
+  (for-each editor-document-reload
+            (filter (lambda (doc) (not (editor-document-dirty? doc))) (editor-all-documents))))
+
 (define (poll-replacement-progress state)
   (let ([engine (get-engine state)])
     (enqueue-thread-local-callback
      (lambda ()
        (let ([is-complete (Scooter-replacement-complete? engine)])
          (cond
-           [is-complete (set-current-screen! state (create-default-replacement-complete-state))]
+           [is-complete
+            (begin
+              (reload-non-dirty-documents)
+              (set-current-screen! state (create-default-replacement-complete-state)))]
            ;; Only continue polling if still on replacement screen
            [(SearchPerformingReplacementState? (get-current-screen state))
             (enqueue-thread-local-callback (lambda () (poll-replacement-progress state)))]))))))

@@ -1,5 +1,5 @@
 (define package-name 'scooter)
-(define version "0.1.3")
+(define version "0.1.4")
 
 (define dependencies '())
 (define dylibs '((#:name "scooter_hx")))

@@ -1,7 +1,8 @@
 [package]
 name = "scooter-hx-engine"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
+rust-version = "1.89"
 
 [lib]
 name = "scooter_hx"
