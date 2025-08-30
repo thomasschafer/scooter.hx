@@ -162,15 +162,19 @@ impl SteelSearchResult {
         Ok(preview_lines)
     }
 
-    fn from_search_result(s: &SearchResultWithReplacement, directory: &Path) -> Self {
+    fn from_search_result(search_result: &SearchResultWithReplacement, directory: &Path) -> Self {
         Self {
-            display_path: relative_path_from(directory, &s.search_result.path),
-            full_path: s.search_result.path.to_string_lossy().to_string(),
-            line_num: s.search_result.line_number,
-            line: s.search_result.line.clone(),
-            replacement: s.replacement.clone(),
-            replace_result: s.replace_result.clone(),
-            included: s.search_result.included,
+            display_path: relative_path_from(directory, &search_result.search_result.path),
+            full_path: search_result
+                .search_result
+                .path
+                .to_string_lossy()
+                .into_owned(),
+            line_num: search_result.search_result.line_number,
+            line: search_result.search_result.line.clone(),
+            replacement: search_result.replacement.clone(),
+            replace_result: search_result.replace_result.clone(),
+            included: search_result.search_result.included,
         }
     }
 }
@@ -356,15 +360,7 @@ impl ScooterHx {
             .get(start..=end)
             .unwrap_or(&[])
             .iter()
-            .map(|s| SteelSearchResult {
-                display_path: relative_path_from(&self.directory, &s.search_result.path),
-                full_path: s.search_result.path.to_string_lossy().to_string(),
-                line_num: s.search_result.line_number,
-                line: s.search_result.line.clone(),
-                replacement: s.replacement.clone(),
-                replace_result: s.replace_result.clone(),
-                included: s.search_result.included,
-            })
+            .map(|s| SteelSearchResult::from_search_result(s, &self.directory))
             .collect()
     }
 
