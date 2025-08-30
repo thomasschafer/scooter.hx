@@ -1,4 +1,5 @@
-use frep_core::replace::ReplaceResult;
+use frep_core::replace::{ReplaceResult, add_replacement};
+use frep_core::search::{FileSearcher, SearchResultWithReplacement};
 use ignore::WalkState;
 use steel::rvals::Custom;
 use steel::steel_vm::ffi::FFIValue;
@@ -9,10 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
-use frep_core::{
-    search::SearchResult,
-    validation::{self, SearchConfiguration, ValidationResult},
-};
+use frep_core::validation::{self, SearchConfiguration, ValidationResult};
 use scooter_core::{
     diff::{Diff, line_diff},
     utils::{read_lines_range, relative_path_from, split_indexed_lines, strip_control_chars},
@@ -47,10 +45,10 @@ impl ReplacementStats {
 pub(crate) enum State {
     NotStarted,
     SearchInProgress {
-        results: Vec<SearchResult>,
+        results: Vec<SearchResultWithReplacement>,
         cancelled: Arc<AtomicBool>,
     },
-    SearchComplete(Vec<SearchResult>),
+    SearchComplete(Vec<SearchResultWithReplacement>),
     PerformingReplacement {
         cancelled: Arc<AtomicBool>,
         num_replacements_completed: Arc<AtomicUsize>,
@@ -164,15 +162,19 @@ impl SteelSearchResult {
         Ok(preview_lines)
     }
 
-    fn from_search_result(s: &SearchResult, directory: &Path) -> Self {
+    fn from_search_result(search_result: &SearchResultWithReplacement, directory: &Path) -> Self {
         Self {
-            display_path: relative_path_from(directory, &s.path),
-            full_path: s.path.to_string_lossy().to_string(),
-            line_num: s.line_number,
-            line: s.line.clone(),
-            replacement: s.replacement.clone(),
-            replace_result: s.replace_result.clone(),
-            included: s.included,
+            display_path: relative_path_from(directory, &search_result.search_result.path),
+            full_path: search_result
+                .search_result
+                .path
+                .to_string_lossy()
+                .into_owned(),
+            line_num: search_result.search_result.line_number,
+            line: search_result.search_result.line.clone(),
+            replacement: search_result.replacement.clone(),
+            replace_result: search_result.replace_result.clone(),
+            included: search_result.search_result.included,
         }
     }
 }
@@ -261,14 +263,14 @@ impl ScooterHx {
         // TODO: handle errors in UI
         let mut error_handler = ErrorHandler::new();
         let result = validation::validate_search_configuration(search_config, &mut error_handler);
-        let searcher = match result {
+        let file_searcher = match result {
             Err(e) => {
                 return error_response(
                     "configuration-error",
                     &format!("Failed to validate search configuration: {e}"),
                 );
             }
-            Ok(ValidationResult::Success(searcher)) => searcher,
+            Ok(ValidationResult::Success(search_config)) => FileSearcher::new(search_config),
             Ok(ValidationResult::ValidationErrors) => {
                 return validation_error_response(&error_handler);
             }
@@ -285,20 +287,29 @@ impl ScooterHx {
                 cancelled: cancellation_token.clone(),
             };
 
+            let (search, replace) = (
+                file_searcher.search().clone(),
+                file_searcher.replace().clone(),
+            );
             let state_clone = state.clone();
             let consumer_handle = thread::spawn(move || {
                 while let Ok(additional_results) = rx.recv() {
                     let mut state = state_clone.lock().unwrap();
                     match &mut *state {
                         State::SearchInProgress { results, .. } => {
-                            results.extend(additional_results);
+                            for res in additional_results {
+                                let updated = add_replacement(res, &search, &replace);
+                                if let Some(updated) = updated {
+                                    results.push(updated);
+                                }
+                            }
                         }
                         _ => break, // Search was cancelled
                     }
                 }
             });
 
-            searcher.walk_files(Some(&cancellation_token), || {
+            file_searcher.walk_files(Some(&cancellation_token), || {
                 let tx = tx.clone();
                 Box::new(move |results| {
                     // Ignore error - likely state reset, thread about to be killed
@@ -349,15 +360,7 @@ impl ScooterHx {
             .get(start..=end)
             .unwrap_or(&[])
             .iter()
-            .map(|s| SteelSearchResult {
-                display_path: relative_path_from(&self.directory, &s.path),
-                full_path: s.path.to_string_lossy().to_string(),
-                line_num: s.line_number,
-                line: s.line.clone(),
-                replacement: s.replacement.clone(),
-                replace_result: s.replace_result.clone(),
-                included: s.included,
-            })
+            .map(|s| SteelSearchResult::from_search_result(s, &self.directory))
             .collect()
     }
 
@@ -372,7 +375,7 @@ impl ScooterHx {
 
         match search_results.get_mut(idx) {
             Some(res) => {
-                res.included = !res.included;
+                res.search_result.included = !res.search_result.included;
             }
             None => panic!(
                 "No result at idx {idx}. Results have length {len}",
@@ -388,9 +391,9 @@ impl ScooterHx {
         else {
             return;
         };
-        let all_included = results.iter().all(|res| res.included);
+        let all_included = results.iter().all(|res| res.search_result.included);
         for res in results {
-            res.included = !all_included;
+            res.search_result.included = !all_included;
         }
     }
 
@@ -411,6 +414,7 @@ impl ScooterHx {
                     search_results,
                     cancelled_clone,
                     num_replacements_completed_clone,
+                    None,
                     move |result| {
                         let _ = tx.send(result); // Ignore error if receiver is dropped
                     },
@@ -503,7 +507,7 @@ impl ScooterHx {
 mod tests {
     use std::time::Duration;
 
-    use frep_core::line_reader::LineEnding;
+    use frep_core::{line_reader::LineEnding, search::SearchResult};
 
     use super::*;
     use crate::test_utils::wait_until;
@@ -542,59 +546,58 @@ mod tests {
         };
 
         let expected = vec![
-            SearchResult {
-                path: temp_dir.path().to_path_buf().join("file1.txt"),
-                line_number: 2,
-                line: "It contains TEST_PATTERN that should be replaced.".to_owned(),
-                line_ending: LineEnding::Lf,
+            SearchResultWithReplacement {
+                search_result: SearchResult {
+                    path: temp_dir.path().to_path_buf().join("file1.txt"),
+                    line_number: 2,
+                    line: "It contains TEST_PATTERN that should be replaced.".to_owned(),
+                    line_ending: LineEnding::Lf,
+                    included: true,
+                },
                 replacement: "It contains REPLACEMENT that should be replaced.".to_owned(),
-                included: true,
                 replace_result: None,
             },
-            SearchResult {
-                path: temp_dir.path().to_path_buf().join("file1.txt"),
-                line_number: 3,
-                line: "Multiple lines with TEST_PATTERN here.".to_owned(),
-                line_ending: LineEnding::Lf,
+            SearchResultWithReplacement {
+                search_result: SearchResult {
+                    path: temp_dir.path().to_path_buf().join("file1.txt"),
+                    line_number: 3,
+                    line: "Multiple lines with TEST_PATTERN here.".to_owned(),
+                    line_ending: LineEnding::Lf,
+                    included: true,
+                },
                 replacement: "Multiple lines with REPLACEMENT here.".to_owned(),
-                included: true,
                 replace_result: None,
             },
-            SearchResult {
-                path: temp_dir.path().to_path_buf().join("file2.txt"),
-                line_number: 1,
-                line: "Another file with TEST_PATTERN.".to_owned(),
-                line_ending: LineEnding::Lf,
+            SearchResultWithReplacement {
+                search_result: SearchResult {
+                    path: temp_dir.path().to_path_buf().join("file2.txt"),
+                    line_number: 1,
+                    line: "Another file with TEST_PATTERN.".to_owned(),
+                    line_ending: LineEnding::Lf,
+                    included: true,
+                },
                 replacement: "Another file with REPLACEMENT.".to_owned(),
-                included: true,
                 replace_result: None,
             },
-            SearchResult {
-                path: temp_dir
-                    .path()
-                    .to_path_buf()
-                    .join("subdir")
-                    .join("file3.txt"),
-                line_number: 1,
-                line: "Nested file with TEST_PATTERN.".to_owned(),
-                line_ending: LineEnding::Lf,
+            SearchResultWithReplacement {
+                search_result: SearchResult {
+                    path: temp_dir
+                        .path()
+                        .to_path_buf()
+                        .join("subdir")
+                        .join("file3.txt"),
+                    line_number: 1,
+                    line: "Nested file with TEST_PATTERN.".to_owned(),
+                    line_ending: LineEnding::Lf,
+                    included: true,
+                },
                 replacement: "Nested file with REPLACEMENT.".to_owned(),
-                included: true,
                 replace_result: None,
             },
         ];
-        search_results_clone.sort_by_key(|s| (s.path.clone(), s.line_number));
+        search_results_clone
+            .sort_by_key(|s| (s.search_result.path.clone(), s.search_result.line_number));
         assert_eq!(search_results_clone, expected);
-
-        // let mut window = scooter.search_results_window(0, 3).clone();
-        // window.sort_by_key(|s| (s.0.path.clone(), s.0.line_number));
-        // assert_eq!(
-        //     window,
-        //     expected
-        //         .into_iter()
-        //         .map(SteelSearchResult::from)
-        //         .collect::<Vec<_>>()
-        // );
 
         scooter.start_replace();
 
