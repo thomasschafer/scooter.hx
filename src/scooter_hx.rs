@@ -128,7 +128,7 @@ impl SteelSearchResult {
 
         let path_display = format!("{}:{}", self.display_path, self.line_num);
 
-        vec![path_display, error.to_string()]
+        vec![path_display, error.clone()]
     }
 
     fn try_build_preview(&self, screen_height: usize) -> Result<Vec<LineWithStyle>, String> {
