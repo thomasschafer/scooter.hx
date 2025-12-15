@@ -15,7 +15,7 @@ etcetera = "0.11.0"
 frep-core = "0.1.3"
 ignore = "0.4.25"
 log = "0.4.29"
-scooter-core = { version = "0.1.6", features = ["steel"] }
+scooter-core = { version = "0.2.2", features = ["steel"] }
 simple-log = "2.4.0"
 steel-core = { version = "0.7.0", features = ["dylibs", "sync"] }
 steel-derive = { version = "0.6.0" }
