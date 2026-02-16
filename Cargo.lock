@@ -1472,7 +1472,7 @@ dependencies = [
  "rayon",
  "similar",
  "steel-core",
- "steel-derive",
+ "steel-derive 0.6.0",
  "syntect",
  "tokio",
  "unicode-width 0.2.2",
@@ -1491,7 +1491,7 @@ dependencies = [
  "scooter-core",
  "simple-log",
  "steel-core",
- "steel-derive",
+ "steel-derive 0.8.1",
  "tempfile",
  "tokio",
  "unicode-width 0.2.2",
@@ -1709,7 +1709,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "steel-derive",
+ "steel-derive 0.6.0",
  "steel-gen",
  "steel-parser",
  "strsim",
@@ -1723,6 +1723,17 @@ name = "steel-derive"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bab7d1c6e3ee7b3ba6a4187b545d7dc1fa6e4929f0721a8798cfc3b8c7ed2b23"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
+]
+
+[[package]]
+name = "steel-derive"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0de4808c296b88a7fd0b45f7307c68757b5481250ad67a0b4719745c548b9ba"
 dependencies = [
  "proc-macro2",
  "quote",
