@@ -1491,7 +1491,7 @@ dependencies = [
  "scooter-core",
  "simple-log",
  "steel-core",
- "steel-derive 0.8.1",
+ "steel-derive 0.8.2",
  "tempfile",
  "tokio",
  "unicode-width 0.2.2",
@@ -1731,9 +1731,9 @@ dependencies = [
 
 [[package]]
 name = "steel-derive"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0de4808c296b88a7fd0b45f7307c68757b5481250ad67a0b4719745c548b9ba"
+checksum = "7a564df3ca16e0be05e71bdcc3fe52f8b71e47be9c73e7a0bf43840fde591997"
 dependencies = [
  "proc-macro2",
  "quote",
