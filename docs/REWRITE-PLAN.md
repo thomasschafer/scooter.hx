@@ -71,7 +71,7 @@ Phase 2 (post-rewrite, agreed 2026-07-10): syntax highlighting + docs automation
 |-------|-------------|--------|
 | SH0 | Spike: load a helix runtime grammar via tree-house, run highlights.scm, print theme-scope spans (proves ABI/loader) | done |
 | SH1 | Highlight engine: language detection (languages.toml + fallback map), grammar/query loading with inherits + caching, spans API, scope:<name> run tags resolved in Steel | done |
-| SH2 | Preview integration: highlighted context lines, preview pane background = editor background (deliberate Helix-native deviation from TUI), snapshots + themed SGR e2e, perf guard | todo |
+| SH2 | Preview integration: highlighted context lines, preview pane background = editor background (deliberate Helix-native deviation from TUI), snapshots + themed SGR e2e, perf guard | in progress |
 | D1 | Docs automation like scooter's xtask: declarative options table as single source of truth, xtask readme generator (TOC/CONFIG/KEYS markers, core keys.rs doc parsing via cargo metadata), CI --check job | todo |
 | END | Endgame: merge scooter PR, publish scooter-core, repoint dep, Tom regenerates gif, prune docs/specs, final PRs | todo |
 
