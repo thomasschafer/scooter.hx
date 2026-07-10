@@ -10,20 +10,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 abi_stable = "0.11.1"
-crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
-etcetera = "0.11.0"
-frep-core = "0.1.3"
-ignore = "0.4.25"
-log = "0.4.30"
-scooter-core = { version = "0.1.6", features = ["steel"] }
-simple-log = "2.4.0"
-steel-core = { version = "0.7.0", features = ["dylibs", "sync"] }
-steel-derive = { version = "0.8.2" }
-unicode-width = "0.2.2"
-
-[dev-dependencies]
-tempfile = "3.27"
-tokio = { version = "1.50", features = ["full"] }
+steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a", features = ["dylibs", "sync"] }
+steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a" }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

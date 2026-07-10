@@ -1,178 +1,214 @@
-use scooter_core::fields::TextField;
+//! Minimal Steel bridge used to prove the rewrite toolchain end to end.
+
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
+use abi_stable::std_types::RVec;
 use steel::{
     declare_module,
-    steel_vm::ffi::{FFIModule, RegisterFFIFn},
+    rvals::Custom,
+    steel_vm::ffi::{FFIModule, FFIValue, RegisterFFIFn},
 };
 
-#[cfg(test)]
-#[macro_use]
-mod test_utils;
+const CTRL_MODIFIER: usize = 2;
 
-mod logging;
-pub mod scooter_hx;
-mod unicode;
-mod validation;
+/// Opaque state passed between Steel and this dylib.
+#[derive(Default)]
+struct ScooterEngine;
+
+impl Custom for ScooterEngine {
+    fn fmt_ffi(&self) -> Option<abi_stable::std_types::RString> {
+        Some("#<ScooterEngine>".into())
+    }
+}
+
+/// Keep Rust unwinding inside the dylib boundary. Every exported operation uses
+/// this helper and returns its operation-specific safe fallback after logging.
+fn ffi_guard<T>(
+    entry_point: &str,
+    operation: impl FnOnce() -> T,
+    fallback: impl FnOnce() -> T,
+) -> T {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(value) => value,
+        Err(payload) => {
+            let message = payload.downcast_ref::<&str>().map_or_else(
+                || {
+                    payload
+                        .downcast_ref::<String>()
+                        .map_or("non-string panic payload", String::as_str)
+                },
+                |message| *message,
+            );
+            eprintln!("scooter-hx: panic in {entry_point}: {message}");
+            fallback()
+        }
+    }
+}
+
+fn scooter_engine_new() -> ScooterEngine {
+    ffi_guard(
+        "Scooter-engine-new",
+        ScooterEngine::default,
+        ScooterEngine::default,
+    )
+}
+
+fn clip(text: &str, width: usize) -> String {
+    text.chars().take(width).collect()
+}
+
+#[derive(Debug)]
+struct Run {
+    x: usize,
+    y: usize,
+    text: String,
+    tag: String,
+}
+
+fn add_run(runs: &mut Vec<Run>, x: usize, y: usize, text: &str, tag: &str, width: usize) {
+    if x >= width {
+        return;
+    }
+
+    let text = clip(text, width - x);
+    if !text.is_empty() {
+        runs.push(Run {
+            x,
+            y,
+            text,
+            tag: tag.to_string(),
+        });
+    }
+}
+
+fn demo_frame(width: usize, height: usize) -> Vec<Run> {
+    if width == 0 || height == 0 {
+        return Vec::new();
+    }
+
+    let mut runs = Vec::with_capacity(height.saturating_mul(2).saturating_add(8));
+    let horizontal = "-".repeat(width);
+    add_run(&mut runs, 0, 0, &horizontal, "dim", width);
+    if height > 1 {
+        add_run(&mut runs, 0, height - 1, &horizontal, "dim", width);
+    }
+
+    for y in 1..height.saturating_sub(1) {
+        add_run(&mut runs, 0, y, "|", "dim", width);
+        if width > 1 {
+            add_run(&mut runs, width - 1, y, "|", "dim", width);
+        }
+    }
+
+    let content = [
+        (1, "S1 TOOLCHAIN SPIKE", "active"),
+        (3, "Search:  demo query", "text"),
+        (5, " > fixtures/alpha.txt:2 selected result", "selection"),
+        (7, "- before: old value", "diff-removed"),
+        (8, "+ after:  new value", "diff-added"),
+        (10, "info: STATIC FRAME READY", "info"),
+        (12, "error: demo error style", "error"),
+    ];
+
+    for (y, text, tag) in content {
+        if y < height.saturating_sub(1) {
+            add_run(&mut runs, 2, y, text, tag, width);
+        }
+    }
+
+    runs
+}
+
+fn frame_to_ffi(runs: Vec<Run>) -> FFIValue {
+    let mut frame = RVec::with_capacity(runs.len());
+
+    for Run { x, y, text, tag } in runs {
+        let mut run = RVec::with_capacity(4);
+        run.push(FFIValue::from(x));
+        run.push(FFIValue::from(y));
+        run.push(FFIValue::from(text));
+        run.push(FFIValue::from(tag));
+        frame.push(FFIValue::from(run));
+    }
+
+    FFIValue::from(frame)
+}
+
+fn empty_frame() -> FFIValue {
+    FFIValue::from(RVec::new())
+}
+
+fn scooter_render(_engine: &ScooterEngine, width: usize, height: usize) -> FFIValue {
+    ffi_guard(
+        "Scooter-render",
+        || frame_to_ffi(demo_frame(width, height)),
+        empty_frame,
+    )
+}
+
+fn scooter_handle_key(_engine: &ScooterEngine, code: &str, modifiers: usize) -> String {
+    ffi_guard(
+        "Scooter-handle-key",
+        || {
+            if code == "esc" {
+                "hide".to_string()
+            } else if code == "c" && modifiers & CTRL_MODIFIER != 0 {
+                "quit".to_string()
+            } else {
+                "consumed".to_string()
+            }
+        },
+        || "consumed".to_string(),
+    )
+}
 
 declare_module!(create_module);
 
-#[allow(clippy::too_many_lines)]
 fn create_module() -> FFIModule {
+    ffi_guard("steel/scooter module initialization", build_module, || {
+        FFIModule::new("steel/scooter")
+    })
+}
+
+fn build_module() -> FFIModule {
     let mut module = FFIModule::new("steel/scooter");
-
     module
-        // Scooter
-        .register_fn("Scooter-new", scooter_hx::ScooterHx::new)
-        .register_fn("Scooter-reset", scooter_hx::ScooterHx::reset)
-        .register_fn("Scooter-start-search", scooter_hx::ScooterHx::start_search)
-        .register_fn(
-            "Scooter-cancel-search",
-            scooter_hx::ScooterHx::cancel_search,
-        )
-        .register_fn(
-            "Scooter-search-complete?",
-            scooter_hx::ScooterHx::search_complete,
-        )
-        .register_fn(
-            "Scooter-search-result-count",
-            scooter_hx::ScooterHx::search_result_count,
-        )
-        .register_fn(
-            "Scooter-search-results-window",
-            scooter_hx::ScooterHx::search_results_window,
-        )
-        .register_fn(
-            "Scooter-toggle-inclusion",
-            scooter_hx::ScooterHx::toggle_inclusion,
-        )
-        .register_fn("Scooter-toggle-all", scooter_hx::ScooterHx::toggle_all)
-        .register_fn(
-            "Scooter-start-replace",
-            scooter_hx::ScooterHx::start_replace,
-        )
-        .register_fn(
-            "Scooter-num-replacements-complete",
-            scooter_hx::ScooterHx::num_replacements_complete,
-        )
-        .register_fn(
-            "Scooter-replacement-complete?",
-            scooter_hx::ScooterHx::replacement_complete,
-        )
-        .register_fn(
-            "Scooter-cancel-replacement",
-            scooter_hx::ScooterHx::cancel_replacement,
-        )
-        .register_fn(
-            "Scooter-replacement-stats",
-            scooter_hx::ScooterHx::replacement_stats,
-        )
-        .register_fn(
-            "Scooter-replacement-errors",
-            scooter_hx::ScooterHx::replacement_errors,
-        )
-        // SteelSearchResult
-        .register_fn(
-            "SteelSearchResult-display-path",
-            scooter_hx::SteelSearchResult::display_path,
-        )
-        .register_fn(
-            "SteelSearchResult-full-path",
-            scooter_hx::SteelSearchResult::full_path,
-        )
-        .register_fn(
-            "SteelSearchResult-line-num",
-            scooter_hx::SteelSearchResult::line_num,
-        )
-        .register_fn(
-            "SteelSearchResult-included",
-            scooter_hx::SteelSearchResult::included,
-        )
-        .register_fn(
-            "SteelSearchResult-build-preview",
-            scooter_hx::SteelSearchResult::build_preview,
-        )
-        .register_fn(
-            "SteelSearchResult-display-error",
-            scooter_hx::SteelSearchResult::display_error,
-        )
-        // ReplacementStats
-        .register_fn(
-            "ReplacementStats-num-successes",
-            scooter_hx::ReplacementStats::num_successes,
-        )
-        .register_fn(
-            "ReplacementStats-num-ignored",
-            scooter_hx::ReplacementStats::num_ignored,
-        )
-        .register_fn(
-            "ReplacementStats-num-errors",
-            scooter_hx::ReplacementStats::num_errors,
-        )
-        // unicode
-        .register_fn("unicode-display-width", unicode::display_width)
-        .register_fn("unicode-truncate-to-width", unicode::truncate_to_width)
-        // TextField
-        .register_type::<scooter_core::fields::TextField>("TextField?")
-        .register_fn("TextField-new", scooter_core::fields::TextField::new)
-        .register_fn("TextField-text", |tf: &TextField| {
-            scooter_core::fields::TextField::text(tf).to_owned()
-        })
-        .register_fn(
-            "TextField-cursor-pos",
-            scooter_core::fields::TextField::visual_cursor_pos,
-        )
-        .register_fn(
-            "TextField-move-cursor-left",
-            scooter_core::fields::TextField::move_cursor_left,
-        )
-        .register_fn(
-            "TextField-move-cursor-start",
-            scooter_core::fields::TextField::move_cursor_start,
-        )
-        .register_fn(
-            "TextField-move-cursor-right",
-            scooter_core::fields::TextField::move_cursor_right,
-        )
-        .register_fn(
-            "TextField-move-cursor-end",
-            scooter_core::fields::TextField::move_cursor_end,
-        )
-        .register_fn(
-            "TextField-enter-char",
-            scooter_core::fields::TextField::enter_char,
-        )
-        .register_fn(
-            "TextField-delete-char",
-            scooter_core::fields::TextField::delete_char,
-        )
-        .register_fn(
-            "TextField-delete-char-forward",
-            scooter_core::fields::TextField::delete_char_forward,
-        )
-        .register_fn(
-            "TextField-move-cursor-back-word",
-            scooter_core::fields::TextField::move_cursor_back_word,
-        )
-        .register_fn(
-            "TextField-delete-word-backward",
-            scooter_core::fields::TextField::delete_word_backward,
-        )
-        .register_fn(
-            "TextField-move-cursor-forward-word",
-            scooter_core::fields::TextField::move_cursor_forward_word,
-        )
-        .register_fn(
-            "TextField-delete-word-forward",
-            scooter_core::fields::TextField::delete_word_forward,
-        )
-        .register_fn("TextField-clear", scooter_core::fields::TextField::clear)
-        .register_fn(
-            "TextField-delete-to-start",
-            scooter_core::fields::TextField::delete_to_start,
-        )
-        .register_fn(
-            "TextField-insert-text",
-            scooter_core::fields::TextField::insert_text,
-        );
-
+        .register_fn("Scooter-engine-new", scooter_engine_new)
+        .register_fn("Scooter-render", scooter_render)
+        .register_fn("Scooter-handle-key", scooter_handle_key);
     module
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ScooterEngine, demo_frame, scooter_handle_key};
+
+    #[test]
+    fn demo_frame_uses_every_style_tag() {
+        let tags = demo_frame(80, 20)
+            .into_iter()
+            .map(|run| run.tag)
+            .collect::<Vec<_>>();
+
+        for tag in [
+            "text",
+            "dim",
+            "selection",
+            "active",
+            "error",
+            "info",
+            "diff-added",
+            "diff-removed",
+        ] {
+            assert!(tags.iter().any(|actual| actual == tag), "missing {tag}");
+        }
+    }
+
+    #[test]
+    fn key_statuses_follow_the_ffi_contract() {
+        let engine = ScooterEngine;
+        assert_eq!(scooter_handle_key(&engine, "esc", 0), "hide");
+        assert_eq!(scooter_handle_key(&engine, "c", 2), "quit");
+        assert_eq!(scooter_handle_key(&engine, "c", 0), "consumed");
+    }
 }
