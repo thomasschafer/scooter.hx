@@ -59,8 +59,8 @@ Statuses: todo / in progress / in review / done. Each chunk has a spec in `docs/
 | E3 | Renderer: search fields screen (fields, errors, cursor, collapse behaviour, TUI-style checkboxes, size responsiveness) | done |
 | E4 | Renderer: results list + preview (context lines, single/multiline diffs, wrapping, preview errors) | done |
 | E5 | Renderer: footer hints, popups (error/help/text), toasts, performing-replacement + results screens | done |
-| F1 | TUI parity fixes from milestone review: no preview line numbers (2-space context prefix), right-aligned (n) result indices in list rows, red/blue selection split for excluded/included rows, selection only when results focussed, " Scooter " window border title, plus popup colour-bleed fix (explicit fg/bg on overlay styles) | in progress |
-| E6 | Pump/session lifecycle: busy?, action queue, reset/cancel-all, hide/resume correctness | todo |
+| F1 | TUI parity fixes from milestone review: no preview line numbers (2-space context prefix), right-aligned (n) result indices in list rows, red/blue selection split for excluded/included rows, selection only when results focussed, " Scooter " window border title, plus popup colour-bleed fix (explicit fg/bg on overlay styles) | done |
+| E6 | Pump/session lifecycle: busy?, action queue, reset/cancel-all, hide/resume correctness, green popup borders, themed border e2e | in progress |
 | E7 | Headless test suite: key-sequence-driven insta snapshots of rendered runs against fixture dirs, ported scenarios from scooter's tests | todo |
 | H1 | Steel shim: component/window, blit, poll loop, cursor | todo |
 | H2 | Steel commands + session + config surface (`:scooter`, `:scooter-new`, `scooter-keys!`, `scooter-set!`) | todo |

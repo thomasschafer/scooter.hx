@@ -32,3 +32,9 @@ Read `docs/REWRITE-PLAN.md` for context. S1-E5 and F1 are committed. E6 hardens 
 - The pump/handle-key return-shape change touches the Steel FFI contract — keep the encoding simple (lists of strings/ints) and update every Steel call site; the e2e suites are the safety net.
 - `shutdown_background` abandons blocking tasks; the search walker polls the cancellation flag, so tasks die soon after anyway. Signal cancellation BEFORE shutdown.
 - Keep DRAIN_LIMIT behaviour; actions must not be lost when the limit is hit mid-drain (they are just queued for the next pump).
+
+## Riders (small fixes bundled into this chunk)
+
+8. Popup borders: the TUI's `create_popup_block` uses a green border (`border_style(Color::Green)`) on all popups. Introduce a `"popup-border"` tag for popup border runs (title keeps its current tag), mapped in the Steel style table to the same green-ish scope used for `diff-added`, with the explicit fg/bg discipline from F1.
+
+9. Harden the popup border uniformity e2e: set `theme = "catppuccin_mocha"` in the harness helix config (`e2e-env.sh`) so popup/field/background colours genuinely differ (text-based assertions are unaffected since plain captures strip colours), and tighten `e2e_assert_popup_border_has_uniform_style` to inspect the span from the popup's own top-left corner to the title (not the whole row), so coincidental theme uniformity can't mask regressions.
