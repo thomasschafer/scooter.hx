@@ -60,9 +60,9 @@ Statuses: todo / in progress / in review / done. Each chunk has a spec in `docs/
 | F1 | TUI parity fixes from milestone review: no preview line numbers (2-space context prefix), right-aligned (n) result indices in list rows, red/blue selection split for excluded/included rows, selection only when results focussed, " Scooter " window border title, plus popup colour-bleed fix (explicit fg/bg on overlay styles) | done |
 | E6 | Pump/session lifecycle: busy?, action queue, reset/cancel-all, hide/resume correctness, green popup borders, themed border e2e | done |
 | E7 | Headless frame snapshot suite (insta) over engine render output | done |
-| A1 | Audit fixes: overlay surface-bg unification (popup border/interior mismatch), styling invariant table, file logging instead of stderr, tag enum, view.rs module split, teardown ergonomics, wrap parity, themed bg e2e | in progress |
-| C1 | Steel config surface (`scooter-set!`, `scooter-keys!`) + full key decode table (absorbs old E1/E2/H2; H1 was absorbed by S1-F1) | todo |
-| H3 | Helix behaviours: open in editor (fg/bg), reload non-dirty docs after replace | todo |
+| A1 | Audit fixes: overlay surface-bg unification (popup border/interior mismatch), styling invariant table, file logging instead of stderr, tag enum, view.rs module split, teardown ergonomics, wrap parity, themed bg e2e | done |
+| C1 | Steel config surface (`scooter-set!`, `scooter-keys!`) + full key decode table (absorbs old E1/E2/H2; H1 was absorbed by S1-F1) | done |
+| H3 | Helix behaviours: open in editor (fg/bg), reload non-dirty docs after replace | in progress |
 | P | Polish: README, cog.scm, CI (test + release workflows), delete dead code, swap path deps for released scooter-core | todo |
 
 Sequencing (updated): remaining order is E7 -> C1 -> H3 -> P. The original E1/E2/H1/H2 rows were absorbed: H1 (Steel shim) landed incrementally across S1-F1; E1+E2+H2 merged into C1. U1 so far needs only try_recv (already on the scooter branch).
