@@ -239,6 +239,78 @@ mod tests {
         );
     }
 
+    #[test]
+    fn headless_results_preview_tracks_selection_markers_multiselect_and_wrapping() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(
+            fixture.path().join("matches.txt"),
+            format!(
+                "before one\nalpha first {}\nbetween results\nalpha second result\nafter second\n",
+                "very-long-context ".repeat(16)
+            ),
+        )
+        .expect("write fixture");
+
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        for character in "alpha".chars() {
+            engine.handle_key(&character.to_string(), 0);
+        }
+        wait_until_complete(&mut engine);
+        assert_eq!(engine.handle_key("tab", 0), "rerender");
+        for character in "OMEGA".chars() {
+            engine.handle_key(&character.to_string(), 0);
+        }
+        wait_until_preview_updated(&mut engine);
+        assert_eq!(engine.handle_key("enter", 0), "rerender");
+
+        let initial = rendered_rows(&mut engine, 160, 45).join("\n");
+        assert!(initial.contains("(1) before one"));
+        assert!(initial.contains("- alpha first"));
+        assert!(initial.contains("+ OMEGA first"));
+
+        engine.handle_key("j", 0);
+        let second = rendered_rows(&mut engine, 160, 45).join("\n");
+        assert!(second.contains("+ OMEGA second result"));
+        engine.handle_key("k", 0);
+        let first = rendered_rows(&mut engine, 160, 45).join("\n");
+        assert!(first.contains("+ OMEGA first"));
+
+        engine.handle_key("j", 0);
+        engine.handle_key(" ", 0);
+        let toggled = rendered_rows(&mut engine, 160, 45).join("\n");
+        assert!(
+            toggled
+                .lines()
+                .any(|line| line.contains("matches.txt:4") && line.contains("[ ]"))
+        );
+        engine.handle_key("a", 0);
+        let after_toggle_all = rendered_rows(&mut engine, 160, 45).join("\n");
+        assert!(
+            after_toggle_all
+                .lines()
+                .filter(|line| line.contains("matches.txt:"))
+                .all(|line| line.contains("[x]"))
+        );
+
+        engine.handle_key("k", 0);
+        engine.handle_key("v", 0);
+        engine.handle_key("j", 0);
+        let multiselect = engine.render(160, 45);
+        assert!(
+            multiselect.runs.iter().any(|run| {
+                run.tag == "selection-secondary" && run.text.contains("matches.txt")
+            })
+        );
+        engine.handle_key("esc", 0);
+        engine.handle_key("k", 0);
+
+        let unwrapped = rendered_rows(&mut engine, 160, 45).join("\n");
+        assert!(!unwrapped.contains("↪ "));
+        engine.handle_key("l", 2);
+        let wrapped = rendered_rows(&mut engine, 160, 45).join("\n");
+        assert!(wrapped.contains("↪ "));
+    }
+
     fn wait_until_complete(engine: &mut ScooterEngine) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
@@ -269,6 +341,18 @@ mod tests {
         )
     }
 
+    fn wait_until_preview_updated(engine: &mut ScooterEngine) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let _ = engine.pump();
+            if engine.app.is_preview_updated() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("replacement previews did not finish updating");
+    }
+
     fn wait_until_invalid_search(engine: &mut ScooterEngine) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
@@ -291,7 +375,27 @@ mod tests {
             .runs
             .into_iter()
             .map(|run| run.text)
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect()
+    }
+
+    fn rendered_rows(engine: &mut ScooterEngine, width: usize, height: usize) -> Vec<String> {
+        let mut rows = std::collections::BTreeMap::<usize, Vec<_>>::new();
+        for run in engine.render(width, height).runs {
+            rows.entry(run.y).or_default().push(run);
+        }
+        rows.into_values()
+            .map(|mut row| {
+                row.sort_by_key(|run| run.x);
+                let mut rendered = String::new();
+                for run in row {
+                    let current_width = rendered.chars().count();
+                    if run.x > current_width {
+                        rendered.push_str(&" ".repeat(run.x - current_width));
+                    }
+                    rendered.push_str(&run.text);
+                }
+                rendered
+            })
+            .collect()
     }
 }

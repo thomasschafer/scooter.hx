@@ -36,11 +36,14 @@
     (hash "text" text
           "dim" (safe-theme-scope "ui.text.inactive" text)
           "selection" (safe-theme-scope "ui.selection" text)
+          "selection-secondary" (style-with-dim (safe-theme-scope "ui.selection" text))
           "active" (safe-theme-scope "ui.text.focus" hint)
           "error" (safe-theme-scope "error" text)
           "info" (safe-theme-scope "info" text)
           "diff-added" (safe-theme-scope "diff.plus" text)
-          "diff-removed" (safe-theme-scope "diff.minus" text))))
+          "diff-added-emph" (style-with-reversed (safe-theme-scope "diff.plus" text))
+          "diff-removed" (safe-theme-scope "diff.minus" text)
+          "diff-removed-emph" (style-with-reversed (safe-theme-scope "diff.minus" text)))))
 
 (define (centered-window rect)
   (let* ([screen-width (area-width rect)]

@@ -12,6 +12,7 @@ export XDG_CACHE_HOME="$REPO/.dev/cache"
 export HELIX_RUNTIME="$HOME/Development/helix/runtime"
 export FIXTURE_DIR="$REPO/.dev/fixtures/basic"
 export SEARCH_FIXTURE_DIR="$REPO/.dev/fixtures/search"
+export PREVIEW_FIXTURE_DIR="$REPO/.dev/fixtures/preview"
 export HX_BINARY="$HOME/Development/helix/target/release/hx"
 
 if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
@@ -21,7 +22,7 @@ if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR"
+mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR"
 
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
 printf '%s\n' 'alpha: first fixture line' 'alpha: second fixture line' > "$FIXTURE_DIR/alpha.txt"
@@ -32,6 +33,13 @@ printf '%s\n' 'alpha one' 'alphabet one' > "$SEARCH_FIXTURE_DIR/one.txt"
 printf '%s\n' 'alpha two' 'alphabet two' > "$SEARCH_FIXTURE_DIR/two.txt"
 printf '%s\n' 'alpha three' > "$SEARCH_FIXTURE_DIR/three.txt"
 printf '%s\n' '# Scooter E3 fixture' 'static, deterministic content' > "$SEARCH_FIXTURE_DIR/README.md"
+
+printf '%s\n' \
+  'preview context before first result' \
+  'alpha first result' \
+  'preview context between results' \
+  'alpha second result' \
+  'preview context after second result' > "$PREVIEW_FIXTURE_DIR/preview.txt"
 
 e2e_capture_pane() {
   tmux -L "$TMUX_SOCKET" capture-pane -p -t "$PANE_TARGET" -S - 2>/dev/null || true
