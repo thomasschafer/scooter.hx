@@ -26,7 +26,7 @@
 (define (resume-session!)
   (let ([window (make-scooter-window *scooter-session*)])
     ;; Results may have arrived while the window was hidden.
-    (scooter-response-status (Scooter-pump *scooter-session*))
+    (consume-scooter-response! (Scooter-pump *scooter-session*))
     (push-component!
      (new-component!
       "scooter-window"

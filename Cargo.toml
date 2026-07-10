@@ -10,7 +10,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 abi_stable = "0.11.1"
+etcetera = "0.11.0"
+log = "0.4.30"
 scooter-core = { path = "../scooter/scooter-core" }
+simple-log = "2.4.0"
 steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a", features = ["dylibs", "sync"] }
 steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a" }
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }

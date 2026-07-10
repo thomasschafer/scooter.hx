@@ -83,7 +83,7 @@ fn paint_run(canvas: &mut [Vec<Cell>], Run { x, y, text, tag }: Run) {
     };
 
     let mut column = x;
-    for character in text.chars() {
+    for character in stable_snapshot_text(&text).chars() {
         let character = visible_character(character);
         let character_width = UnicodeWidthChar::width(character).unwrap_or(1).max(1);
         if column >= row.len() {
@@ -92,7 +92,7 @@ fn paint_run(canvas: &mut [Vec<Cell>], Run { x, y, text, tag }: Run) {
 
         row[column] = Cell {
             character,
-            tag: Some(tag.clone()),
+            tag: Some(tag.as_str().to_string()),
             continuation: false,
         };
         for offset in 1..character_width {
@@ -101,12 +101,22 @@ fn paint_run(canvas: &mut [Vec<Cell>], Run { x, y, text, tag }: Run) {
             };
             *cell = Cell {
                 character: '\0',
-                tag: Some(tag.clone()),
+                tag: Some(tag.as_str().to_string()),
                 continuation: true,
             };
         }
         column = column.saturating_add(character_width);
     }
+}
+
+/// A popup can cover the middle of a right-aligned search-duration run.  At
+/// that point insta's whole-string filters cannot recognise the duration, so
+/// replace it before painting while preserving its six-cell display width.
+fn stable_snapshot_text(text: &str) -> String {
+    let Some((prefix, _duration)) = text.split_once("[Time taken: ") else {
+        return text.to_string();
+    };
+    format!("{prefix}[Time taken: 0.000s]")
 }
 
 fn visible_character(character: char) -> char {

@@ -80,7 +80,7 @@ impl ScooterEngine {
     }
 
     pub(crate) fn handle_key(&mut self, code: &str, modifiers: usize) -> EngineResponse {
-        if self.runtime.is_none() {
+        if self.active_runtime().is_none() {
             return self.response("rerender");
         }
 
@@ -101,12 +101,17 @@ impl ScooterEngine {
         }
 
         let result = {
-            let _guard = self.runtime.as_ref().expect("active runtime").enter();
+            let Some(runtime) = self.runtime.as_ref() else {
+                return self.response("rerender");
+            };
+            let _guard = runtime.enter();
             self.app.handle_key_event(key_event)
         };
         let status = if matches!(result, EventHandlingResult::Exit(_)) {
-            let _guard = self.runtime.as_ref().expect("active runtime").enter();
-            self.app.cancel_in_progress_tasks();
+            if let Some(runtime) = self.runtime.as_ref() {
+                let _guard = runtime.enter();
+                self.app.cancel_in_progress_tasks();
+            }
             "quit"
         } else {
             "rerender"
@@ -117,7 +122,7 @@ impl ScooterEngine {
     }
 
     pub(crate) fn pump(&mut self) -> EngineResponse {
-        if self.runtime.is_none() {
+        if self.active_runtime().is_none() {
             return self.response("idle");
         }
 
@@ -130,7 +135,7 @@ impl ScooterEngine {
     }
 
     pub(crate) fn busy(&self) -> bool {
-        if self.runtime.is_none() {
+        if self.active_runtime().is_none() {
             return false;
         }
 
@@ -152,15 +157,19 @@ impl ScooterEngine {
     }
 
     pub(crate) fn render(&mut self, width: usize, height: usize) -> view::Frame {
+        if self.active_runtime().is_none() {
+            return view::Frame::default();
+        }
         view::render(&mut self.app, width, height)
     }
 
     pub(crate) fn cursor(&self, width: usize, height: usize) -> Option<(usize, usize)> {
+        self.active_runtime()?;
         view::cursor(&self.app, width, height)
     }
 
     pub(crate) fn reset(&mut self) {
-        if let Some(runtime) = self.runtime.as_ref() {
+        if let Some(runtime) = self.active_runtime() {
             let _guard = runtime.enter();
             self.app.reset();
         }
@@ -170,7 +179,7 @@ impl ScooterEngine {
     }
 
     pub(crate) fn quit(&mut self) {
-        if let Some(runtime) = self.runtime.as_ref() {
+        if let Some(runtime) = self.active_runtime() {
             let _guard = runtime.enter();
             self.app.cancel_in_progress_tasks();
         }
@@ -197,7 +206,14 @@ impl ScooterEngine {
             )
     }
 
+    fn active_runtime(&self) -> Option<&Runtime> {
+        self.runtime.as_ref()
+    }
+
     fn drain_ready_events(&mut self) -> bool {
+        if self.active_runtime().is_none() {
+            return false;
+        }
         let mut processed = false;
 
         for _ in 0..DRAIN_LIMIT {
@@ -208,15 +224,17 @@ impl ScooterEngine {
             match event {
                 Event::Rerender => {}
                 Event::Internal(event) => {
-                    let _guard = self.runtime.as_ref().expect("active runtime").enter();
-                    let _ = self.app.handle_internal_event(event);
+                    if let Some(runtime) = self.runtime.as_ref() {
+                        let _guard = runtime.enter();
+                        let _ = self.app.handle_internal_event(event);
+                    }
                 }
                 Event::LaunchEditor((path, line)) => {
                     self.actions
                         .push_back(EngineAction::OpenFile { path, line });
                 }
                 Event::ExitAndReplace(_) => {
-                    eprintln!("scooter-hx: unexpected ExitAndReplace for directory input");
+                    log::warn!("scooter-hx: unexpected ExitAndReplace for directory input");
                 }
             }
         }
@@ -230,8 +248,10 @@ impl ScooterEngine {
                 break;
             };
             processed = true;
-            let _guard = self.runtime.as_ref().expect("active runtime").enter();
-            let _ = self.app.handle_background_processing_event(event);
+            if let Some(runtime) = self.runtime.as_ref() {
+                let _guard = runtime.enter();
+                let _ = self.app.handle_background_processing_event(event);
+            }
         }
 
         processed
@@ -267,6 +287,7 @@ mod tests {
         replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
         search::{SearchResult, SearchResultWithReplacement},
     };
+    use crate::view::StyleTag;
     use tempfile::tempdir;
     use tokio::sync::mpsc;
 
@@ -297,7 +318,7 @@ mod tests {
             .render(100, 36)
             .runs
             .into_iter()
-            .filter(|run| run.tag == "active")
+            .filter(|run| run.tag == StyleTag::Active)
             .map(|run| run.text)
             .collect::<String>();
         assert!(active.contains("Replace text"));
@@ -327,13 +348,13 @@ mod tests {
             invalid_frame
                 .runs
                 .iter()
-                .any(|run| run.tag == "error" && run.text.contains("(Error: "))
+                .any(|run| run.tag == StyleTag::Error && run.text.contains("(Error: "))
         );
         assert!(
             invalid_frame
                 .runs
                 .iter()
-                .any(|run| run.tag == "error" && run.text.contains("Invalid search"))
+                .any(|run| run.tag == StyleTag::Error && run.text.contains("Invalid search"))
         );
     }
 
@@ -360,11 +381,11 @@ mod tests {
         assert!(
             !fields_focussed.runs.iter().any(|run| {
                 matches!(
-                    run.tag.as_str(),
-                    "selection"
-                        | "selection-secondary"
-                        | "selection-excluded"
-                        | "selection-secondary-excluded"
+                    run.tag,
+                    StyleTag::Selection
+                        | StyleTag::SelectionSecondary
+                        | StyleTag::SelectionExcluded
+                        | StyleTag::SelectionSecondaryExcluded
                 )
             }),
             "result rows must not be highlighted while fields are focussed"
@@ -374,24 +395,24 @@ mod tests {
             .iter()
             .find(|run| run.text == " (1)")
             .expect("first result index is rendered");
-        assert_eq!(first_index.tag, "info");
+        assert_eq!(first_index.tag, StyleTag::Info);
         assert!(
             fields_focussed
                 .runs
                 .iter()
-                .any(|run| run.text == "[x] " && run.tag == "info")
+                .any(|run| run.text == "[x] " && run.tag == StyleTag::Info)
         );
         assert!(
             fields_focussed
                 .runs
                 .iter()
-                .any(|run| run.text == "matches.txt" && run.tag == "text")
+                .any(|run| run.text == "matches.txt" && run.tag == StyleTag::Text)
         );
         assert!(
             fields_focussed
                 .runs
                 .iter()
-                .any(|run| run.text == ":2" && run.tag == "info")
+                .any(|run| run.text == ":2" && run.tag == StyleTag::Info)
         );
         // A 160-column frame has a 144-column content block beginning at x=8;
         // its wide results list is floor((144 - 1) * 2 / 5) = 57 cells.
@@ -414,13 +435,15 @@ mod tests {
             focussed
                 .runs
                 .iter()
-                .any(|run| { run.tag == "selection" && run.x == 8 && run.text == " ".repeat(57) })
+                .any(|run| {
+                    run.tag == StyleTag::Selection && run.x == 8 && run.text == " ".repeat(57)
+                })
         );
         assert!(
             focussed
                 .runs
                 .iter()
-                .any(|run| run.tag == "selection" && run.text == " (1)")
+                .any(|run| run.tag == StyleTag::Selection && run.text == " (1)")
         );
 
         engine.handle_key("j", 0);
@@ -443,7 +466,7 @@ mod tests {
             excluded_primary
                 .runs
                 .iter()
-                .any(|run| run.tag == "selection-excluded" && run.text == "[ ] ")
+                .any(|run| run.tag == StyleTag::SelectionExcluded && run.text == "[ ] ")
         );
 
         engine.handle_key("v", 0);
@@ -453,7 +476,9 @@ mod tests {
             excluded_range
                 .runs
                 .iter()
-                .any(|run| { run.tag == "selection-secondary-excluded" && run.text == "[ ] " })
+                .any(|run| {
+                    run.tag == StyleTag::SelectionSecondaryExcluded && run.text == "[ ] "
+                })
         );
         engine.handle_key("esc", 0);
 
@@ -471,7 +496,7 @@ mod tests {
         let multiselect = engine.render(160, 45);
         assert!(
             multiselect.runs.iter().any(|run| {
-                run.tag == "selection-secondary" && run.text.contains("matches.txt")
+                run.tag == StyleTag::SelectionSecondary && run.text.contains("matches.txt")
             })
         );
         engine.handle_key("esc", 0);
@@ -481,7 +506,8 @@ mod tests {
         assert!(!unwrapped.contains("↪ "));
         engine.handle_key("l", 2);
         let wrapped = rendered_rows(&mut engine, 160, 45).join("\n");
-        assert!(wrapped.contains("↪ "));
+        assert!(!wrapped.contains("↪ "));
+        assert!(wrapped.lines().count() > unwrapped.lines().count());
     }
 
     #[test]

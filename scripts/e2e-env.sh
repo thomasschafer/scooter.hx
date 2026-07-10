@@ -15,6 +15,7 @@ export SEARCH_FIXTURE_DIR="$REPO/.dev/fixtures/search"
 export PREVIEW_FIXTURE_DIR="$REPO/.dev/fixtures/preview"
 export LIFECYCLE_FIXTURE_DIR="$REPO/.dev/fixtures/lifecycle"
 export HX_BINARY="$HOME/Development/helix/target/release/hx"
+export E2E_THEME="${E2E_THEME:-catppuccin_mocha}"
 
 if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
   printf '%s\n' "Missing generated Helix Steel modules at $STEEL_HOME/cogs/helix." >&2
@@ -27,8 +28,9 @@ mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXT
 
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
 # A themed popup exposes accidental inheritance between the field, popup, and
-# border runs. Plain pane captures below remain independent of this setting.
-printf '%s\n' 'theme = "catppuccin_mocha"' > "$XDG_CONFIG_HOME/helix/config.toml"
+# border runs.  The caller may select Helix's built-in default theme as a
+# second e2e target without changing its real configuration.
+printf 'theme = "%s"\n' "$E2E_THEME" > "$XDG_CONFIG_HOME/helix/config.toml"
 printf '%s\n' 'alpha: first fixture line' 'alpha: second fixture line' > "$FIXTURE_DIR/alpha.txt"
 printf '%s\n' 'bravo: a separate fixture' 'bravo: another fixture line' > "$FIXTURE_DIR/bravo.txt"
 printf '%s\n' '# Scooter S1 fixture' 'static, deterministic content' > "$FIXTURE_DIR/README.md"
@@ -100,6 +102,93 @@ e2e_assert_popup_border_has_uniform_style() {
     exit 1;
   ' "$title"; then
     e2e_fail "popup '$title' top border does not have one uniform SGR style"
+  fi
+}
+
+e2e_assert_popup_interior_matches_border_background() {
+  local title="$1"
+  local capture
+  capture="$(e2e_capture_pane_with_style)"
+
+  if ! printf '%s\n' "$capture" | perl -CS -e '
+    my $title = shift;
+    my $background;
+    my @rows;
+    my $graphics = 0;
+
+    sub apply_sgr {
+      my ($sequence) = @_;
+      my @codes = split /;/, $sequence;
+      @codes = (0) unless @codes;
+      for (my $index = 0; $index < @codes; $index++) {
+        my $code = $codes[$index];
+        if ($code == 0 || $code == 49) {
+          $background = undef;
+        } elsif ($code == 48 && $codes[$index + 1] // q{} eq q{2}
+                 && $index + 4 < @codes) {
+          $background = join q{:}, q{rgb}, @codes[$index + 2 .. $index + 4];
+          $index += 4;
+        } elsif ($code == 48 && $codes[$index + 1] // q{} eq q{5}
+                 && $index + 2 < @codes) {
+          $background = q{indexed:} . $codes[$index + 2];
+          $index += 2;
+        }
+      }
+    }
+
+    while (my $line = <STDIN>) {
+      chomp $line;
+      my @cells;
+      pos($line) = 0;
+      while (pos($line) < length($line)) {
+        if ($line =~ /\G\e\[([0-9;]*)m/gc) {
+          apply_sgr($1);
+          next;
+        }
+        if ($line =~ /\G\e\([0B]/gc) {
+          $graphics = substr($&, -1) eq q{0};
+          next;
+        }
+        $line =~ /\G(.)/gcs or last;
+        my $character = $1;
+        if ($graphics) {
+          $character = { l => "\x{250c}", x => "\x{2502}" }->{$character}
+            // $character;
+        }
+        push @cells, { character => $character, background => $background };
+      }
+      push @rows, \@cells;
+    }
+
+    for my $row_index (0 .. $#rows) {
+      my $row = $rows[$row_index];
+      my $title_start = join(q{}, map { $_->{character} } @$row);
+      my $at = index($title_start, $title);
+      next if $at < 0;
+      my @corners = grep { $row->[$_]{character} eq "\x{250c}" } 0 .. $at;
+      my $column = $corners[-1];
+      if (!defined $column || !defined $row->[$column]{background}) {
+        print STDERR "could not resolve popup border background\n";
+        exit 1;
+      }
+      my $border_background = $row->[$column]{background};
+      for my $inside_row (@rows[$row_index + 1 .. $#rows]) {
+        next unless defined $inside_row->[$column]
+          && $inside_row->[$column]{character} eq "\x{2502}";
+        my $interior_background = $inside_row->[$column + 1]{background};
+        if (!defined $interior_background || $interior_background ne $border_background) {
+          print STDERR "popup interior background does not match its border\n";
+          exit 1;
+        }
+        exit 0;
+      }
+      print STDERR "could not locate popup interior\n";
+      exit 1;
+    }
+    print STDERR "could not locate popup title $title\n";
+    exit 1;
+  ' "$title"; then
+    e2e_fail "popup '$title' interior background does not match its border"
   fi
 }
 

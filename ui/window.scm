@@ -17,7 +17,7 @@
          scooter-window-render
          scooter-window-cursor
          scooter-window-event-handler
-         scooter-response-status
+         consume-scooter-response!
          start-scooter-poll-loop!)
 
 (struct ScooterWindowState (engine visible polling))
@@ -25,11 +25,14 @@
 (define (make-scooter-window engine)
   (ScooterWindowState engine (box #t) (box #f)))
 
-;; Helix may not define every semantic scope in a theme. Keep rendering alive
-;; when that happens, using the supplied fallback style instead.
-(define (safe-theme-scope scope fallback)
+;; `theme->fg` and `theme->bg` in this Helix build each return a Style (not a
+;; colour) and are deprecated in favour of `theme-scope`.  Guard both a
+;; missing scope and an unexpected result here, so every style accessor below
+;; receives a Style and every colour fallback stays a Color-or-#false.
+(define (safe-theme-style scope fallback)
   (with-handler (lambda (_) fallback)
-    (theme-scope scope)))
+    (let ([resolved (theme-scope scope)])
+      (if (Style? resolved) resolved fallback))))
 
 (define (colour-or colour fallback)
   (if colour colour fallback))
@@ -44,48 +47,81 @@
    (style-fg style (colour-or (style->fg style) foreground))
    (colour-or (style->bg style) background)))
 
+;; Content styles are patched onto whichever fill was painted first.  Start
+;; from a new Style so a theme scope's optional background cannot punch a hole
+;; through a popup or a selected result row.
+(define (style-with-foreground style-value foreground)
+  (style-fg (style) (colour-or (style->fg style-value) foreground)))
+
+;; Style invariant (the table is deliberately exhaustive):
+;;
+;;   tag                             kind
+;;   popup, popup-border, toast-border overlay: explicit fg + surface bg
+;;   text, active, error, info         content: fg/modifiers; inherits fill
+;;   diff-added, diff-added-emph       content: fg/modifiers; inherits fill
+;;   diff-removed, diff-removed-emph   content: fg/modifiers; inherits fill
+;;   selection, selection-secondary    selected-row fill: explicit selection bg
+;;   selection-excluded,
+;;   selection-secondary-excluded       selected-row fill: explicit error bg
+;;
+;; The last four are the one intentional kind of content fill: a full result
+;; row must replace its background before its text is painted.  Every run
+;; layered over it uses one of the content styles above, so it still inherits
+;; that selected background.  All popup/toast surfaces use the overlay rule.
 (define (style-table)
-  (let* ([text (safe-theme-scope "ui.text" (style))]
-         [background (safe-theme-scope "ui.background" (theme->bg *helix.cx*))]
-         [foreground (colour-or (style->fg (theme->fg *helix.cx*)) (style->fg text))]
+  (let* ([theme-text (safe-theme-style "ui.text" (style))]
+         [theme-background (safe-theme-style "ui.background" (style))]
+         [text theme-text]
+         [background theme-background]
+         [foreground (colour-or (style->fg text) (style->fg theme-text))]
          [background-colour
-          (colour-or (style->bg (theme->bg *helix.cx*)) (style->bg background))]
-         [hint (safe-theme-scope "hint" text)]
+          (colour-or (style->bg background) (style->bg theme-background))]
+         [hint (style-with-foreground (safe-theme-style "hint" text) foreground)]
          [selection (style-with-explicit-colours
-                     (safe-theme-scope "ui.selection" text)
+                     (safe-theme-style "ui.selection" text)
                      foreground
                      background-colour)]
-         [error (safe-theme-scope "error" text)]
+         [error (style-with-foreground (safe-theme-style "error" text) foreground)]
          [error-background (colour-or (style->fg error) background-colour)]
          [selection-excluded
           (style-bg (style-fg (style) foreground) error-background)]
-         [popup (style-with-explicit-colours
-                 (safe-theme-scope "ui.popup" text)
-                 foreground
-                 background-colour)]
-         [diff-added (safe-theme-scope "diff.plus" text)])
-    (hash "text" text
-          "dim" (safe-theme-scope "ui.text.inactive" text)
+         [popup-scope (safe-theme-style "ui.popup" text)]
+         ;; A popup's own background wins when it is present.  Every overlay
+         ;; cell below uses this exact resolved surface so `frame-set-string!`
+         ;; can never inherit a different background from content underneath.
+         [surface-bg (colour-or (style->bg popup-scope) background-colour)]
+         [popup (style-with-explicit-colours popup-scope foreground surface-bg)]
+         [diff-added (style-with-foreground
+                      (safe-theme-style "diff.plus" text)
+                      foreground)])
+    (hash "text" (style-with-foreground text foreground)
           "selection" selection
           "selection-secondary" (style-with-dim selection)
           "selection-excluded" selection-excluded
           "selection-secondary-excluded" (style-with-dim selection-excluded)
-          "active" (safe-theme-scope "ui.text.focus" hint)
+          "active" (style-with-foreground
+                    (safe-theme-style "ui.text.focus" hint)
+                    foreground)
           "popup" popup
           "popup-border" (style-with-explicit-colours
                            diff-added
                            foreground
-                           background-colour)
+                           surface-bg)
           "toast-border" (style-with-explicit-colours
                            diff-added
                            foreground
-                           background-colour)
+                           surface-bg)
           "error" error
-          "info" (safe-theme-scope "info" text)
+          "info" (style-with-foreground (safe-theme-style "info" text) foreground)
           "diff-added" diff-added
-          "diff-added-emph" (style-with-reversed (safe-theme-scope "diff.plus" text))
-          "diff-removed" (safe-theme-scope "diff.minus" text)
-          "diff-removed-emph" (style-with-reversed (safe-theme-scope "diff.minus" text)))))
+          "diff-added-emph" (style-with-reversed diff-added)
+          "diff-removed" (style-with-foreground
+                           (safe-theme-style "diff.minus" text)
+                           foreground)
+          "diff-removed-emph" (style-with-reversed
+                                (style-with-foreground
+                                 (safe-theme-style "diff.minus" text)
+                                 foreground)))))
 
 (define (centered-window rect)
   (let* ([screen-width (area-width rect)]
@@ -103,6 +139,21 @@
         (max 0 (- (area-width window-area) 2))
         (max 0 (- (area-height window-area) 2))))
 
+(define *unknown-scooter-style-tags* (box '()))
+
+;; Rust's tag enum makes this path exceptional, but do not allow a future
+;; engine/style-table mismatch to take down Helix's render callback.  Warn only
+;; once for each tag; a stale dylib can otherwise redraw thousands of frames.
+(define (style-for-run styles tag)
+  (if (hash-contains? styles tag)
+      (hash-ref styles tag)
+      (begin
+        (unless (member tag (unbox *unknown-scooter-style-tags*))
+          (set-box! *unknown-scooter-style-tags*
+                    (cons tag (unbox *unknown-scooter-style-tags*)))
+          (log::warn! (string-append "scooter-hx: unknown style tag: " tag)))
+        (hash-ref styles "text"))))
+
 (define (blit-run! frame content-area styles run)
   (let ([x (list-ref run 0)]
         [y (list-ref run 1)]
@@ -114,7 +165,7 @@
                          (+ (area-x content-area) x)
                          (+ (area-y content-area) y)
                          text
-                         (hash-ref styles tag)))))
+                         (style-for-run styles tag)))))
 
 (define (scooter-window-render state rect frame)
   (let* ([window-area (centered-window rect)]
@@ -179,7 +230,7 @@
                     ":"
                     (number->string (list-ref action 2))))))
 
-(define (scooter-response-status response)
+(define (consume-scooter-response! response)
   (for-each consume-scooter-action! (cdr response))
   (car response))
 
@@ -194,7 +245,7 @@
      (lambda ()
        (set-box! (ScooterWindowState-polling state) #f)
        (when (unbox (ScooterWindowState-visible state))
-         (scooter-response-status
+         (consume-scooter-response!
           (Scooter-pump (ScooterWindowState-engine state)))
          (when (Scooter-busy? (ScooterWindowState-engine state))
            (start-scooter-poll-loop! state)))))))
@@ -203,7 +254,7 @@
 (define (scooter-window-event-handler state event)
   (let ([code (event-code event)])
     (if code
-        (let ([status (scooter-response-status
+        (let ([status (consume-scooter-response!
                        (Scooter-handle-key (ScooterWindowState-engine state)
                                            code
                                            (event-modifiers event)))])

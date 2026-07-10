@@ -1558,8 +1558,11 @@ name = "scooter-hx-engine"
 version = "0.1.4"
 dependencies = [
  "abi_stable",
+ "etcetera",
  "insta",
+ "log",
  "scooter-core",
+ "simple-log",
  "steel-core",
  "steel-derive",
  "tempfile",

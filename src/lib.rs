@@ -2,6 +2,7 @@
 
 mod engine;
 mod key;
+mod logging;
 mod view;
 
 #[cfg(test)]
@@ -42,7 +43,7 @@ fn ffi_guard<T>(
                 },
                 |message| *message,
             );
-            eprintln!("scooter-hx: panic in {entry_point}: {message}");
+            log::warn!("scooter-hx: panic in {entry_point}: {message}");
             fallback()
         }
     }
@@ -120,7 +121,7 @@ fn frame_to_ffi(runs: Vec<Run>) -> FFIValue {
         run.push(FFIValue::from(x));
         run.push(FFIValue::from(y));
         run.push(FFIValue::from(text));
-        run.push(FFIValue::from(tag));
+        run.push(FFIValue::from(tag.as_str().to_string()));
         frame.push(FFIValue::from(run));
     }
     FFIValue::from(frame)
@@ -175,6 +176,7 @@ fn create_module() -> FFIModule {
 }
 
 fn build_module() -> FFIModule {
+    logging::initialise();
     let mut module = FFIModule::new("steel/scooter");
     module
         .register_fn("Scooter-engine-new", scooter_engine_new)
@@ -253,5 +255,30 @@ mod tests {
             let _ = scooter_pump(&mut engine);
             let _ = scooter_busy(&engine);
         }
+    }
+
+    #[test]
+    fn ffi_calls_after_quit_are_safe_noops() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        scooter_quit(&mut engine);
+
+        let FFIValue::Vector(handle_key) = scooter_handle_key(&mut engine, "a", 0) else {
+            panic!("post-quit key response must be a list");
+        };
+        assert!(matches!(
+            &handle_key[0],
+            FFIValue::StringV(status) if status.as_str() == "rerender"
+        ));
+        let FFIValue::Vector(pump) = scooter_pump(&mut engine) else {
+            panic!("post-quit pump response must be a list");
+        };
+        assert!(matches!(
+            &pump[0],
+            FFIValue::StringV(status) if status.as_str() == "idle"
+        ));
+        assert!(matches!(scooter_render(&mut engine, 120, 40), FFIValue::Vector(frame) if frame.is_empty()));
+        assert!(!scooter_busy(&engine));
+        assert!(matches!(scooter_cursor(&engine, 120, 40), FFIValue::BoolV(false)));
     }
 }

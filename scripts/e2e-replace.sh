@@ -56,6 +56,7 @@ e2e_wait_for_present 'Invalid search'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter
 e2e_wait_for_present 'Errors'
 e2e_assert_popup_border_has_uniform_style 'Errors'
+e2e_assert_popup_interior_matches_border_background 'Errors'
 e2e_capture_pane > "$CAPTURE_DIR/f1-error-popup.txt"
 e2e_capture_pane_with_style > "$CAPTURE_DIR/f1-error-popup.ansi"
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Escape
