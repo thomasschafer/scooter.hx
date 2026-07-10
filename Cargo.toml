@@ -10,8 +10,14 @@ crate-type = ["cdylib"]
 
 [dependencies]
 abi_stable = "0.11.1"
+scooter-core = { path = "../scooter/scooter-core" }
 steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a", features = ["dylibs", "sync"] }
 steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a" }
+tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
+unicode-width = "0.2.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

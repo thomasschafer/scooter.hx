@@ -1,19 +1,19 @@
-//! Minimal Steel bridge used to prove the rewrite toolchain end to end.
+//! Steel FFI boundary for the native Scooter rewrite.
+
+mod engine;
+mod key;
+mod view;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use abi_stable::std_types::RVec;
+use engine::ScooterEngine;
 use steel::{
     declare_module,
     rvals::Custom,
     steel_vm::ffi::{FFIModule, FFIValue, RegisterFFIFn},
 };
-
-const CTRL_MODIFIER: usize = 2;
-
-/// Opaque state passed between Steel and this dylib.
-#[derive(Default)]
-struct ScooterEngine;
+use view::Run;
 
 impl Custom for ScooterEngine {
     fn fmt_ffi(&self) -> Option<abi_stable::std_types::RString> {
@@ -45,83 +45,59 @@ fn ffi_guard<T>(
     }
 }
 
-fn scooter_engine_new() -> ScooterEngine {
+fn scooter_engine_new(directory: &str) -> Result<ScooterEngine, String> {
     ffi_guard(
         "Scooter-engine-new",
-        ScooterEngine::default,
-        ScooterEngine::default,
+        || ScooterEngine::new(directory).map_err(|error| error.to_string()),
+        || Err("Scooter engine creation panicked".to_string()),
     )
 }
 
-fn clip(text: &str, width: usize) -> String {
-    text.chars().take(width).collect()
+fn scooter_handle_key(engine: &mut ScooterEngine, code: &str, modifiers: usize) -> String {
+    ffi_guard(
+        "Scooter-handle-key",
+        || engine.handle_key(code, modifiers),
+        || "rerender".to_string(),
+    )
 }
 
-#[derive(Debug)]
-struct Run {
-    x: usize,
-    y: usize,
-    text: String,
-    tag: String,
+fn scooter_pump(engine: &mut ScooterEngine) -> String {
+    ffi_guard("Scooter-pump", || engine.pump(), || "idle".to_string())
 }
 
-fn add_run(runs: &mut Vec<Run>, x: usize, y: usize, text: &str, tag: &str, width: usize) {
-    if x >= width {
-        return;
-    }
-
-    let text = clip(text, width - x);
-    if !text.is_empty() {
-        runs.push(Run {
-            x,
-            y,
-            text,
-            tag: tag.to_string(),
-        });
-    }
+fn scooter_busy(engine: &ScooterEngine) -> bool {
+    ffi_guard("Scooter-busy?", || engine.busy(), || false)
 }
 
-fn demo_frame(width: usize, height: usize) -> Vec<Run> {
-    if width == 0 || height == 0 {
-        return Vec::new();
-    }
+fn scooter_render(engine: &mut ScooterEngine, width: usize, height: usize) -> FFIValue {
+    ffi_guard(
+        "Scooter-render",
+        || frame_to_ffi(engine.render(width, height).runs),
+        empty_frame,
+    )
+}
 
-    let mut runs = Vec::with_capacity(height.saturating_mul(2).saturating_add(8));
-    let horizontal = "-".repeat(width);
-    add_run(&mut runs, 0, 0, &horizontal, "dim", width);
-    if height > 1 {
-        add_run(&mut runs, 0, height - 1, &horizontal, "dim", width);
-    }
+fn scooter_cursor(engine: &ScooterEngine, width: usize, height: usize) -> FFIValue {
+    ffi_guard(
+        "Scooter-cursor",
+        || match engine.cursor(width, height) {
+            Some((x, y)) => position_to_ffi(x, y),
+            None => FFIValue::from(false),
+        },
+        || FFIValue::from(false),
+    )
+}
 
-    for y in 1..height.saturating_sub(1) {
-        add_run(&mut runs, 0, y, "|", "dim", width);
-        if width > 1 {
-            add_run(&mut runs, width - 1, y, "|", "dim", width);
-        }
-    }
+fn scooter_reset(engine: &mut ScooterEngine) {
+    ffi_guard("Scooter-reset", || engine.reset(), || ());
+}
 
-    let content = [
-        (1, "S1 TOOLCHAIN SPIKE", "active"),
-        (3, "Search:  demo query", "text"),
-        (5, " > fixtures/alpha.txt:2 selected result", "selection"),
-        (7, "- before: old value", "diff-removed"),
-        (8, "+ after:  new value", "diff-added"),
-        (10, "info: STATIC FRAME READY", "info"),
-        (12, "error: demo error style", "error"),
-    ];
-
-    for (y, text, tag) in content {
-        if y < height.saturating_sub(1) {
-            add_run(&mut runs, 2, y, text, tag, width);
-        }
-    }
-
-    runs
+fn scooter_quit(engine: &mut ScooterEngine) {
+    ffi_guard("Scooter-quit", || engine.quit(), || ());
 }
 
 fn frame_to_ffi(runs: Vec<Run>) -> FFIValue {
     let mut frame = RVec::with_capacity(runs.len());
-
     for Run { x, y, text, tag } in runs {
         let mut run = RVec::with_capacity(4);
         run.push(FFIValue::from(x));
@@ -130,36 +106,18 @@ fn frame_to_ffi(runs: Vec<Run>) -> FFIValue {
         run.push(FFIValue::from(tag));
         frame.push(FFIValue::from(run));
     }
-
     FFIValue::from(frame)
+}
+
+fn position_to_ffi(x: usize, y: usize) -> FFIValue {
+    let mut position = RVec::with_capacity(2);
+    position.push(FFIValue::from(x));
+    position.push(FFIValue::from(y));
+    FFIValue::from(position)
 }
 
 fn empty_frame() -> FFIValue {
     FFIValue::from(RVec::new())
-}
-
-fn scooter_render(_engine: &ScooterEngine, width: usize, height: usize) -> FFIValue {
-    ffi_guard(
-        "Scooter-render",
-        || frame_to_ffi(demo_frame(width, height)),
-        empty_frame,
-    )
-}
-
-fn scooter_handle_key(_engine: &ScooterEngine, code: &str, modifiers: usize) -> String {
-    ffi_guard(
-        "Scooter-handle-key",
-        || {
-            if code == "esc" {
-                "hide".to_string()
-            } else if code == "c" && modifiers & CTRL_MODIFIER != 0 {
-                "quit".to_string()
-            } else {
-                "consumed".to_string()
-            }
-        },
-        || "consumed".to_string(),
-    )
 }
 
 declare_module!(create_module);
@@ -174,41 +132,12 @@ fn build_module() -> FFIModule {
     let mut module = FFIModule::new("steel/scooter");
     module
         .register_fn("Scooter-engine-new", scooter_engine_new)
+        .register_fn("Scooter-handle-key", scooter_handle_key)
+        .register_fn("Scooter-pump", scooter_pump)
+        .register_fn("Scooter-busy?", scooter_busy)
         .register_fn("Scooter-render", scooter_render)
-        .register_fn("Scooter-handle-key", scooter_handle_key);
+        .register_fn("Scooter-cursor", scooter_cursor)
+        .register_fn("Scooter-reset", scooter_reset)
+        .register_fn("Scooter-quit", scooter_quit);
     module
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{ScooterEngine, demo_frame, scooter_handle_key};
-
-    #[test]
-    fn demo_frame_uses_every_style_tag() {
-        let tags = demo_frame(80, 20)
-            .into_iter()
-            .map(|run| run.tag)
-            .collect::<Vec<_>>();
-
-        for tag in [
-            "text",
-            "dim",
-            "selection",
-            "active",
-            "error",
-            "info",
-            "diff-added",
-            "diff-removed",
-        ] {
-            assert!(tags.iter().any(|actual| actual == tag), "missing {tag}");
-        }
-    }
-
-    #[test]
-    fn key_statuses_follow_the_ffi_contract() {
-        let engine = ScooterEngine;
-        assert_eq!(scooter_handle_key(&engine, "esc", 0), "hide");
-        assert_eq!(scooter_handle_key(&engine, "c", 2), "quit");
-        assert_eq!(scooter_handle_key(&engine, "c", 0), "consumed");
-    }
 }

@@ -1,12 +1,28 @@
 (require "helix/components.scm")
+(require "helix/misc.scm")
 (require-builtin steel/ffi)
 
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-render
-                          Scooter-handle-key))
+                          Scooter-cursor
+                          Scooter-handle-key
+                          Scooter-pump
+                          Scooter-busy?))
 
-(provide scooter-render
-         scooter-event-handler)
+(provide ScooterWindowState
+         ScooterWindowState-engine
+         ScooterWindowState-visible
+         ScooterWindowState-polling
+         make-scooter-window
+         scooter-window-render
+         scooter-window-cursor
+         scooter-window-event-handler
+         start-scooter-poll-loop!)
+
+(struct ScooterWindowState (engine visible polling))
+
+(define (make-scooter-window engine)
+  (ScooterWindowState engine (box #t) (box #f)))
 
 ;; Helix may not define every semantic scope in a theme. Keep rendering alive
 ;; when that happens, using the supplied fallback style instead.
@@ -36,6 +52,12 @@
           width
           height)))
 
+(define (window-content-area window-area)
+  (area (+ (area-x window-area) 1)
+        (+ (area-y window-area) 1)
+        (max 0 (- (area-width window-area) 2))
+        (max 0 (- (area-height window-area) 2))))
+
 (define (blit-run! frame content-area styles run)
   (let ([x (list-ref run 0)]
         [y (list-ref run 1)]
@@ -49,23 +71,28 @@
                          text
                          (hash-ref styles tag)))))
 
-(define (scooter-render engine rect frame)
+(define (scooter-window-render state rect frame)
   (let* ([window-area (centered-window rect)]
-         [window-width (area-width window-area)]
-         [window-height (area-height window-area)]
-         [content-area (area (+ (area-x window-area) 1)
-                             (+ (area-y window-area) 1)
-                             (max 0 (- window-width 2))
-                             (max 0 (- window-height 2)))]
-         ;; Construct this exactly once for this frame, rather than once per run.
+         [content-area (window-content-area window-area)]
          [styles (style-table)]
-         [popup-style (safe-theme-scope "ui.popup" (hash-ref styles "text"))])
+         [popup-style (safe-theme-scope "ui.popup" (hash-ref styles "text"))]
+         [engine (ScooterWindowState-engine state)])
     (buffer/clear frame window-area)
     (block/render frame window-area (make-block popup-style popup-style "all" "plain"))
     (for-each (lambda (run) (blit-run! frame content-area styles run))
               (Scooter-render engine
                               (area-width content-area)
                               (area-height content-area)))))
+
+(define (scooter-window-cursor state rect)
+  (let* ([window-area (centered-window rect)]
+         [content-area (window-content-area window-area)]
+         [cursor (Scooter-cursor (ScooterWindowState-engine state)
+                                 (area-width content-area)
+                                 (area-height content-area))])
+    (and cursor
+         (position (+ (area-y content-area) (list-ref cursor 1))
+                   (+ (area-x content-area) (list-ref cursor 0))))))
 
 ;; The engine contract deliberately contains only portable key names and the
 ;; shift/ctrl/alt bits. Helix's super bit is not part of that contract.
@@ -90,11 +117,29 @@
     [(key-event-delete? event) "delete"]
     [else #f]))
 
-(define (scooter-event-handler engine event)
+;; Polling is owned by the component state: a closed component marks itself
+;; invisible, so a delayed callback can never pump a hidden stale window.
+(define (start-scooter-poll-loop! state)
+  (when (and (unbox (ScooterWindowState-visible state))
+             (not (unbox (ScooterWindowState-polling state))))
+    (set-box! (ScooterWindowState-polling state) #t)
+    (enqueue-thread-local-callback-with-delay
+     50
+     (lambda ()
+       (set-box! (ScooterWindowState-polling state) #f)
+       (when (unbox (ScooterWindowState-visible state))
+         (Scooter-pump (ScooterWindowState-engine state))
+         (when (Scooter-busy? (ScooterWindowState-engine state))
+           (start-scooter-poll-loop! state)))))))
+
+;; Returns the engine status string so the entry point can own session teardown.
+(define (scooter-window-event-handler state event)
   (let ([code (event-code event)])
     (if code
-        (let ([status (Scooter-handle-key engine code (event-modifiers event))])
-          (if (or (equal? status "hide") (equal? status "quit"))
-              event-result/close
-              event-result/consume))
-        event-result/consume)))
+        (let ([status (Scooter-handle-key (ScooterWindowState-engine state)
+                                          code
+                                          (event-modifiers event))])
+          (when (Scooter-busy? (ScooterWindowState-engine state))
+            (start-scooter-poll-loop! state))
+          status)
+        "rerender")))
