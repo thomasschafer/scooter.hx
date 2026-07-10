@@ -32,3 +32,7 @@ Read `docs/REWRITE-PLAN.md` for context (this chunk merges the plan's E1 + H2 + 
 - `scripts/check.sh` + all e2e scripts (including the new config one) pass twice consecutively.
 - README gets a new drafted section documenting the config API (keep the rest of README untouched; final README rewrite happens in P).
 - Write `docs/specs/C1-REPORT.md` with deviations and upstream needs. Do not commit. Do not modify `../scooter`.
+
+## Rider
+
+8. Restore the preview wrap continuation prefix removed in A1 item 11: the A1 spec was wrong — the TUI DOES prefix wrapped continuation lines, with `"  ↪ "` styled dim (`WRAPPED_LINE_PREFIX`, TUI view.rs:531). Match it exactly: same string, dim styling (reintroduce the dim tag mapped to `ui.text.inactive` as a content/fg-patch tag per the window.scm invariant table). Update the wrapping snapshot and note the change.
