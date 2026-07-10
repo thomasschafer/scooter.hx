@@ -16,7 +16,9 @@ This plugin provides the following commands (which you can bind a keymap to in t
 
 Once open, you can hit `escape` to hide the window (and open it again with `:scooter`), or `ctrl-c` to quit and cancel any in-progress searches/replacements.
 
-When viewing the search results, you can hit `e` to open up one of the results (keeping the existing session running). You can also use `<alt>-e` to open a search result in the background, without hiding the window. 
+When viewing the search results, you can hit `e` to open one in Helix (the
+session stays available to resume). You can also use `<alt>-e` to open a
+result in the background without hiding the window.
 
 ## Configuration
 
@@ -30,6 +32,14 @@ Configure Scooter in `init.scm`, after requiring the plugin. Settings apply when
 ```
 
 `scooter-set!` accepts `multiline`, `hidden`, `advanced-regex`, `include-git-folders`, `escape-sequences`, `wrap-text`, and `window-size` (a number from `0.5` to `1.0`). `scooter-keys!` accepts a single key string or a list, using Scooter's normal key syntax such as `"C-o"`, `"A-m"`, and `"S-tab"`. Its first argument is a core key path without the `keys.` prefix, for example `general.quit`, `search.fields.trigger_search`, `search.results.move_down`, or `results.quit`.
+
+The foreground open action follows `search.results.open_in_editor` if you
+remap it. Its background counterpart uses `alt` plus that action's first
+binding only when it is a plain character key (so the default is `e` and
+`alt-e`). Scooter always opens files in Helix; the scooter TOML `editor_open`
+setting is intentionally not supported. After a replacement completes,
+Scooter reloads every open, non-dirty Helix document so the editor shows the
+new contents immediately.
 
 ## Installation
 

@@ -4,11 +4,11 @@ use std::{collections::VecDeque, mem, path::PathBuf};
 
 use scooter_core::{
     app::{
-        App, Event, EventHandlingResult, FocussedSection, InputSource, Screen,
-        SearchPhase,
+        App, BackgroundProcessingEvent, Event, EventHandlingResult, FocussedSection,
+        InputSource, InternalEvent, Screen, SearchPhase,
     },
     fields::SearchFieldValues,
-    keyboard::KeyCode,
+    keyboard::{KeyCode, KeyEvent, KeyModifiers},
 };
 use tokio::runtime::{Builder, Runtime};
 
@@ -20,6 +20,8 @@ const DRAIN_LIMIT: usize = 1_000;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum EngineAction {
     OpenFile { path: PathBuf, line: usize },
+    OpenFileBackground { path: PathBuf, line: usize },
+    ReloadDocuments,
 }
 
 /// The result returned after a key dispatch or a background-event pump.
@@ -102,16 +104,28 @@ impl ScooterEngine {
         };
 
         if key_event.code == KeyCode::Esc && self.should_hide_for_escape() {
-            self.drain_ready_events();
+            self.drain_ready_events(false);
             return self.response("hide");
         }
         if key_event.code == KeyCode::Esc && self.should_ignore_escape() {
             // The TUI does nothing for Escape while replacement work/results
             // are on screen.  Keep that behaviour native rather than letting
             // core's legacy Escape compatibility popup leak into Helix.
-            self.drain_ready_events();
+            self.drain_ready_events(false);
             return self.response("rerender");
         }
+        if self.should_ignore_background_open_key(key_event) {
+            // Alt plus a potential background-open character is never text
+            // input. It is intentionally a no-op until results are focussed.
+            self.drain_ready_events(false);
+            return self.response("rerender");
+        }
+
+        // Background open is a Helix-only addition.  Re-submit the configured
+        // foreground binding to core so it retains ownership of selection and
+        // launch semantics; only the deferred action's tag differs.
+        let background_open = self.background_open_key(key_event);
+        let key_event = background_open.unwrap_or(key_event);
 
         let result = {
             let Some(runtime) = self.runtime.as_ref() else {
@@ -130,7 +144,7 @@ impl ScooterEngine {
             "rerender"
         };
 
-        self.drain_ready_events();
+        self.drain_ready_events(background_open.is_some());
         self.response(status)
     }
 
@@ -139,7 +153,7 @@ impl ScooterEngine {
             return self.response("idle");
         }
 
-        let status = if self.drain_ready_events() {
+        let status = if self.drain_ready_events(false) {
             "rerender"
         } else {
             "idle"
@@ -223,7 +237,51 @@ impl ScooterEngine {
         self.runtime.as_ref()
     }
 
-    fn drain_ready_events(&mut self) -> bool {
+    /// Return the configured foreground open binding when `key_event` is its
+    /// Alt-modified plain-character counterpart in the focussed results list.
+    /// Non-character and already-modified bindings deliberately have no
+    /// background-open shorthand.
+    fn background_open_key(&self, key_event: KeyEvent) -> Option<KeyEvent> {
+        let Screen::SearchFields(state) = &self.app.ui_state.current_screen else {
+            return None;
+        };
+        if state.focussed_section != FocussedSection::SearchResults {
+            return None;
+        }
+
+        self.configured_background_open_key(key_event)
+    }
+
+    fn should_ignore_background_open_key(&self, key_event: KeyEvent) -> bool {
+        matches!(
+            &self.app.ui_state.current_screen,
+            Screen::SearchFields(state)
+                if state.focussed_section == FocussedSection::SearchFields
+        ) && self.configured_background_open_key(key_event).is_some()
+    }
+
+    fn configured_background_open_key(&self, key_event: KeyEvent) -> Option<KeyEvent> {
+        let configured = self
+            .app
+            .config
+            .keys
+            .search
+            .results
+            .open_in_editor
+            .first()
+            .copied()?;
+        if !matches!(configured.code, KeyCode::Char(_))
+            || configured.modifiers != KeyModifiers::NONE
+            || key_event.code != configured.code
+            || key_event.modifiers != KeyModifiers::ALT
+        {
+            return None;
+        }
+
+        Some(configured)
+    }
+
+    fn drain_ready_events(&mut self, tag_launches_as_background: bool) -> bool {
         if self.active_runtime().is_none() {
             return false;
         }
@@ -237,14 +295,26 @@ impl ScooterEngine {
             match event {
                 Event::Rerender => {}
                 Event::Internal(event) => {
+                    let replacement_completed = matches!(
+                        &event,
+                        InternalEvent::Background(BackgroundProcessingEvent::ReplacementCompleted(_))
+                    );
                     if let Some(runtime) = self.runtime.as_ref() {
                         let _guard = runtime.enter();
-                        let _ = self.app.handle_internal_event(event);
+                        let result = self.app.handle_internal_event(event);
+                        if replacement_completed
+                            && matches!(result, EventHandlingResult::Rerender)
+                        {
+                            self.actions.push_back(EngineAction::ReloadDocuments);
+                        }
                     }
                 }
                 Event::LaunchEditor((path, line)) => {
-                    self.actions
-                        .push_back(EngineAction::OpenFile { path, line });
+                    self.actions.push_back(if tag_launches_as_background {
+                        EngineAction::OpenFileBackground { path, line }
+                    } else {
+                        EngineAction::OpenFile { path, line }
+                    });
                 }
                 Event::ExitAndReplace(_) => {
                     log::warn!("scooter-hx: unexpected ExitAndReplace for directory input");
@@ -261,9 +331,14 @@ impl ScooterEngine {
                 break;
             };
             processed = true;
+            let replacement_completed =
+                matches!(&event, BackgroundProcessingEvent::ReplacementCompleted(_));
             if let Some(runtime) = self.runtime.as_ref() {
                 let _guard = runtime.enter();
-                let _ = self.app.handle_background_processing_event(event);
+                let result = self.app.handle_background_processing_event(event);
+                if replacement_completed && matches!(result, EventHandlingResult::Rerender) {
+                    self.actions.push_back(EngineAction::ReloadDocuments);
+                }
             }
         }
 
@@ -296,7 +371,7 @@ mod tests {
 
     use crate::view::StyleTag;
     use scooter_core::{
-        app::{Event, FocussedSection, Popup, Screen, SearchPhase},
+        app::{BackgroundProcessingEvent, Event, FocussedSection, Popup, Screen, SearchPhase},
         line_reader::LineEnding,
         replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
         search::{SearchResult, SearchResultWithReplacement},
@@ -669,6 +744,78 @@ mod tests {
                 line: 7,
             }]
         );
+    }
+
+    #[test]
+    fn alt_first_configured_open_binding_launches_in_background_only_from_results() {
+        let fixture = tempdir().expect("fixture directory");
+        let expected_path = fixture.path().join("selected.txt");
+        fs::write(&expected_path, "alpha result\n").expect("write fixture");
+        let options = EngineOptions::from_entries([OptionEntry::keys(
+            "keys.search.results.open_in_editor",
+            &["o", "e"],
+        )])
+        .expect("options parse");
+        let mut engine =
+            ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
+
+        for character in "alpha".chars() {
+            assert_eq!(engine.handle_key(&character.to_string(), 0), "rerender");
+        }
+        wait_until_complete(&mut engine);
+
+        // Alt plus the configured base key has no special meaning while a
+        // text field is focussed: it neither launches nor enters a character.
+        let fields_response = engine.handle_key("o", 4);
+        assert!(fields_response.actions.is_empty());
+        assert_eq!(engine.app.search_fields.search().text(), "alpha");
+
+        assert_eq!(engine.handle_key("enter", 0), "rerender");
+        assert!(matches!(
+            &engine.app.ui_state.current_screen,
+            Screen::SearchFields(state)
+                if state.focussed_section == FocussedSection::SearchResults
+        ));
+
+        // The feature follows the first remapped binding, not a hardcoded e.
+        let wrong_key_response = engine.handle_key("e", 4);
+        assert!(wrong_key_response.actions.is_empty());
+        let response = engine.handle_key("o", 4);
+        assert_eq!(
+            response.actions,
+            vec![EngineAction::OpenFileBackground {
+                path: expected_path,
+                line: 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn replacement_completion_queues_reload_documents_when_pumped_later() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        let (sender, receiver) = mpsc::unbounded_channel();
+        engine.app.ui_state.current_screen =
+            Screen::PerformingReplacement(PerformingReplacementState::new(
+                receiver,
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicUsize::new(0)),
+                1,
+            ));
+        sender
+            .send(BackgroundProcessingEvent::ReplacementCompleted(ReplaceState {
+                num_successes: 1,
+                num_ignored: 0,
+                errors: vec![],
+                replacement_errors_pos: 0,
+            }))
+            .expect("replacement receiver lives");
+
+        // A hidden session does not pump. Once resumed, the queued completion
+        // both reaches core's results screen and emits its deferred reload.
+        let response = engine.pump();
+        assert!(matches!(engine.app.ui_state.current_screen, Screen::Results(_)));
+        assert_eq!(response.actions, vec![EngineAction::ReloadDocuments]);
     }
 
     #[test]

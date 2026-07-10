@@ -1,5 +1,8 @@
 (require "helix/components.scm")
+(require "helix/editor.scm")
 (require "helix/misc.scm")
+(require "helix/static.scm")
+(require (prefix-in helix. "helix/commands.scm"))
 (require-builtin steel/ffi)
 
 (#%require-dylib "libscooter_hx"
@@ -260,20 +263,50 @@
     [(key-event-F? event 24) "f24"]
     [else #f]))
 
-;; Pump and key dispatch both return `(status action...)`. H3 will turn
-;; `open-file` into a Helix editor action; until then keep the queue visible in
-;; the Helix log instead of silently dropping it at the FFI boundary.
+;; Pump and key dispatch both return `(status action...)`. Actions mutate
+;; Helix only here, leaving Rust independent of the host editor.
+(define (open-scooter-file! path line)
+  (helix.open path)
+  (helix.goto (number->string line))
+  (align_view_center))
+
+(define (reload-non-dirty-documents!)
+  (for-each editor-document-reload
+            (filter (lambda (document) (not (editor-document-dirty? document)))
+                    (editor-all-documents))))
+
+;; Opening is queued behind the component event callback. For foreground
+;; opens this lets the caller return `hide` and close the popup before Helix
+;; changes the active document; background opens retain the component.
+(define (enqueue-scooter-open! action)
+  (let ([path (list-ref action 1)]
+        [line (list-ref action 2)])
+    (enqueue-thread-local-callback
+     (lambda () (open-scooter-file! path line)))))
+
 (define (consume-scooter-action! action)
-  (when (equal? (car action) "open-file")
-    (log::info!
-     (string-append "scooter-hx: ignoring open-file until H3: "
-                    (list-ref action 1)
-                    ":"
-                    (number->string (list-ref action 2))))))
+  (cond
+    [(equal? (car action) "open-file")
+     (enqueue-scooter-open! action)
+     "hide"]
+    [(equal? (car action) "open-file-bg")
+     (enqueue-scooter-open! action)
+     "rerender"]
+    [(equal? (car action) "reload-docs")
+     (reload-non-dirty-documents!)
+     "rerender"]
+    [else
+     (log::warn!
+      (string-append "scooter-hx: unknown engine action: " (car action)))
+     "rerender"]))
 
 (define (consume-scooter-response! response)
-  (for-each consume-scooter-action! (cdr response))
-  (car response))
+  (let ([should-hide #f])
+    (for-each (lambda (action)
+                (when (equal? (consume-scooter-action! action) "hide")
+                  (set! should-hide #t)))
+              (cdr response))
+    (if should-hide "hide" (car response))))
 
 ;; Polling is owned by the component state: a closed component marks itself
 ;; invisible, so a delayed callback can never pump a hidden stale window.

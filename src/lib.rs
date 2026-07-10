@@ -201,20 +201,33 @@ fn frame_to_ffi(runs: Vec<Run>) -> FFIValue {
 
 /// Encode an engine result as `(status action...)`, where each action is its
 /// own simple list. Keep this portable wire format deliberately narrow: Steel
-/// only needs strings and integer line numbers to hand it to Helix in H3.
+/// only needs action names, paths, and integer line numbers to hand it to
+/// Helix.
 fn response_to_ffi(response: EngineResponse) -> FFIValue {
     let mut values = RVec::with_capacity(response.actions.len() + 1);
     values.push(FFIValue::from(response.status.to_string()));
     for action in response.actions {
-        let mut value = RVec::with_capacity(3);
         match action {
             EngineAction::OpenFile { path, line } => {
+                let mut value = RVec::with_capacity(3);
                 value.push(FFIValue::from("open-file".to_string()));
                 value.push(FFIValue::from(path.to_string_lossy().into_owned()));
                 value.push(FFIValue::from(line));
+                values.push(FFIValue::from(value));
+            }
+            EngineAction::OpenFileBackground { path, line } => {
+                let mut value = RVec::with_capacity(3);
+                value.push(FFIValue::from("open-file-bg".to_string()));
+                value.push(FFIValue::from(path.to_string_lossy().into_owned()));
+                value.push(FFIValue::from(line));
+                values.push(FFIValue::from(value));
+            }
+            EngineAction::ReloadDocuments => {
+                let mut value = RVec::with_capacity(1);
+                value.push(FFIValue::from("reload-docs".to_string()));
+                values.push(FFIValue::from(value));
             }
         }
-        values.push(FFIValue::from(value));
     }
     FFIValue::from(values)
 }
