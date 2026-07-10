@@ -65,7 +65,17 @@ Statuses: todo / in progress / in review / done. Each chunk has a spec in `docs/
 | H3 | Helix behaviours: open in editor (fg/bg), reload non-dirty docs after replace | done |
 | P | Polish: README, cog.scm, CI (test + release workflows), delete dead code, dependency strategy | done |
 
-Sequencing (updated): remaining order is E7 -> C1 -> H3 -> P. The original E1/E2/H1/H2 rows were absorbed: H1 (Steel shim) landed incrementally across S1-F1; E1+E2+H2 merged into C1. U1 so far needs only try_recv (already on the scooter branch).
+Phase 2 (post-rewrite, agreed 2026-07-10): syntax highlighting + docs automation before the release gif.
+
+| Chunk | Description | Status |
+|-------|-------------|--------|
+| SH0 | Spike: load a helix runtime grammar via tree-house, run highlights.scm, print theme-scope spans (proves ABI/loader) | todo |
+| SH1 | Highlight engine: language detection (languages.toml + fallback map), grammar/query loading with inherits + caching, spans API, scope:<name> run tags resolved in Steel | todo |
+| SH2 | Preview integration: highlighted context lines, preview pane background = editor background (deliberate Helix-native deviation from TUI), snapshots + themed SGR e2e, perf guard | todo |
+| D1 | Docs automation like scooter's xtask: declarative options table as single source of truth, xtask readme generator (TOC/CONFIG/KEYS markers, core keys.rs doc parsing via cargo metadata), CI --check job | todo |
+| END | Endgame: merge scooter PR, publish scooter-core, repoint dep, Tom regenerates gif, prune docs/specs, final PRs | todo |
+
+Sequencing (updated): SH0 -> SH1 -> SH2 -> D1 -> END. Original phase-1 sequencing was E7 -> C1 -> H3 -> P. The original E1/E2/H1/H2 rows were absorbed: H1 (Steel shim) landed incrementally across S1-F1; E1+E2+H2 merged into C1. U1 so far needs only try_recv (already on the scooter branch).
 
 ## Validation
 
