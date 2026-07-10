@@ -49,6 +49,12 @@ impl ScooterEngine {
         if key_event.code == KeyCode::Esc && self.should_hide_for_escape() {
             return "hide".to_string();
         }
+        if key_event.code == KeyCode::Esc && self.should_ignore_escape() {
+            // The TUI does nothing for Escape while replacement work/results
+            // are on screen.  Keep that behaviour native rather than letting
+            // core's legacy Escape compatibility popup leak into Helix.
+            return "rerender".to_string();
+        }
 
         let result = {
             let _guard = self.runtime.enter();
@@ -119,6 +125,14 @@ impl ScooterEngine {
             )
     }
 
+    fn should_ignore_escape(&self) -> bool {
+        !self.app.show_popup()
+            && matches!(
+                self.app.ui_state.current_screen,
+                Screen::PerformingReplacement(_) | Screen::Results(_)
+            )
+    }
+
     fn drain_ready_events(&mut self) -> bool {
         let mut processed = false;
 
@@ -165,12 +179,24 @@ impl ScooterEngine {
 #[cfg(test)]
 mod tests {
     use std::{
-        fs, thread,
+        fs,
+        path::PathBuf,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize},
+        },
+        thread,
         time::{Duration, Instant},
     };
 
-    use scooter_core::app::{FocussedSection, Screen, SearchPhase};
+    use scooter_core::{
+        app::{FocussedSection, Popup, Screen, SearchPhase},
+        line_reader::LineEnding,
+        replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
+        search::{SearchResult, SearchResultWithReplacement},
+    };
     use tempfile::tempdir;
+    use tokio::sync::mpsc;
 
     use super::ScooterEngine;
 
@@ -311,6 +337,98 @@ mod tests {
         assert!(wrapped.contains("↪ "));
     }
 
+    #[test]
+    fn headless_help_toast_and_replacement_flow_render_and_mutate_files() {
+        let fixture = tempdir().expect("fixture directory");
+        let file = fixture.path().join("matches.txt");
+        fs::write(&file, "alpha one\nalphabet two\n").expect("write fixture");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+
+        assert_eq!(engine.handle_key("h", 2), "rerender");
+        assert!(matches!(engine.app.popup(), Some(Popup::Help)));
+        let help = joined_runs(&mut engine);
+        assert!(help.contains("Help"));
+        assert!(help.contains("jump to results"));
+        assert!(help.contains("quit"));
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert!(engine.app.popup().is_none());
+
+        assert_eq!(engine.handle_key("m", 4), "rerender");
+        assert_eq!(engine.app.toast_message(), Some("Multiline: ON"));
+        assert!(joined_runs(&mut engine).contains("Multiline: ON"));
+        wait_until_toast_dismissed(&mut engine);
+
+        for character in "alpha".chars() {
+            assert_eq!(engine.handle_key(&character.to_string(), 0), "rerender");
+        }
+        wait_until_complete(&mut engine);
+        assert_eq!(engine.handle_key("tab", 0), "rerender");
+        for character in "OMEGA".chars() {
+            assert_eq!(engine.handle_key(&character.to_string(), 0), "rerender");
+        }
+        wait_until_preview_updated(&mut engine);
+
+        assert_eq!(engine.handle_key("enter", 0), "rerender");
+        assert!(matches!(
+            engine.app.ui_state.current_screen,
+            Screen::SearchFields(ref state)
+                if state.focussed_section == FocussedSection::SearchResults
+        ));
+        assert_eq!(engine.handle_key("enter", 0), "rerender");
+        wait_until_replacement_complete(&mut engine);
+
+        let Screen::Results(state) = &engine.app.ui_state.current_screen else {
+            panic!("replacement did not reach the results screen");
+        };
+        assert_eq!(state.num_successes, 2);
+        assert_eq!(state.num_ignored, 0);
+        assert!(state.errors.is_empty());
+        let results = joined_runs(&mut engine);
+        assert!(results.contains("Successful replacements (lines):"));
+        assert!(results.contains("Success!"));
+        assert!(results.contains('2'));
+        assert_eq!(
+            fs::read_to_string(&file).expect("read replacement"),
+            "OMEGA one\nOMEGAbet two\n"
+        );
+
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert!(engine.app.popup().is_none());
+        assert_eq!(engine.handle_key("enter", 0), "quit");
+    }
+
+    #[test]
+    fn results_errors_and_non_search_escape_are_rendered_without_hiding() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        engine.app.ui_state.current_screen = Screen::Results(ReplaceState {
+            num_successes: 1,
+            num_ignored: 2,
+            errors: vec![error_result("failed.txt", 4, "permission denied")],
+            replacement_errors_pos: 0,
+        });
+
+        let results = joined_runs(&mut engine);
+        assert!(results.contains("Ignored (lines):"));
+        assert!(results.contains("Errors:"));
+        assert!(results.contains("failed.txt:4"));
+        assert!(results.contains("permission denied"));
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert!(engine.app.popup().is_none());
+
+        let (_sender, receiver) = mpsc::unbounded_channel();
+        engine.app.ui_state.current_screen =
+            Screen::PerformingReplacement(PerformingReplacementState::new(
+                receiver,
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicUsize::new(0)),
+                1,
+            ));
+        assert!(joined_runs(&mut engine).contains("Performing replacement..."));
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert!(engine.app.popup().is_none());
+    }
+
     fn wait_until_complete(engine: &mut ScooterEngine) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
@@ -351,6 +469,30 @@ mod tests {
             thread::sleep(Duration::from_millis(10));
         }
         panic!("replacement previews did not finish updating");
+    }
+
+    fn wait_until_toast_dismissed(engine: &mut ScooterEngine) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            let _ = engine.pump();
+            if engine.app.toast_message().is_none() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("toast did not dismiss");
+    }
+
+    fn wait_until_replacement_complete(engine: &mut ScooterEngine) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let _ = engine.pump();
+            if matches!(engine.app.ui_state.current_screen, Screen::Results(_)) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("replacement did not complete");
     }
 
     fn wait_until_invalid_search(engine: &mut ScooterEngine) {
@@ -397,5 +539,20 @@ mod tests {
                 rendered
             })
             .collect()
+    }
+
+    fn error_result(path: &str, line: usize, error: &str) -> SearchResultWithReplacement {
+        SearchResultWithReplacement {
+            search_result: SearchResult::new_line(
+                Some(PathBuf::from(path)),
+                line,
+                "original".to_string(),
+                LineEnding::Lf,
+                true,
+            ),
+            replacement: "replacement".to_string(),
+            replace_result: Some(ReplaceResult::Error(error.to_string())),
+            preview_error: None,
+        }
     }
 }

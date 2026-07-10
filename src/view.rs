@@ -1,11 +1,12 @@
 //! Native frame model for Scooter's search-fields screen.
 
-use std::{cmp::min, path::Path, time::Duration};
+use std::{cmp::min, path::Path, sync::atomic::Ordering, time::Duration};
 
 use scooter_core::{
-    app::{App, FocussedSection, InputSource, Screen, SearchPhase, SearchState},
+    app::{App, FocussedSection, InputSource, Popup, Screen, SearchPhase, SearchState},
     diff::line_diff,
     fields::{Field, NUM_SEARCH_FIELDS, SearchField},
+    replace::{PerformingReplacementState, ReplaceState},
     search::{MatchContent, SearchResultWithReplacement},
     utils::{read_lines_range, relative_path, strip_control_chars},
 };
@@ -44,6 +45,20 @@ const NARROW_LIST_HEIGHT: usize = 5;
 const MULTILINE_DETAILED_DIFF_MAX_BYTES: usize = 20_000;
 const WRAPPED_LINE_PREFIX: &str = "↪ ";
 
+#[derive(Debug, Clone, Copy)]
+struct PopupArea {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+}
+
+#[derive(Debug, Clone)]
+struct PopupLine {
+    text: String,
+    tag: &'static str,
+}
+
 #[derive(Debug, Clone)]
 struct PreviewSegment {
     text: String,
@@ -65,96 +80,109 @@ struct PreviewSections {
 type IndexedLine = (usize, String);
 type ContextLines = Vec<IndexedLine>;
 
-/// Render the search fields, result banner, results list, and preview pane.
+/// Render Scooter's active screen plus its footer and transient overlays.
 pub(crate) fn render(app: &mut App, width: usize, height: usize) -> Frame {
     let mut frame = Frame::default();
     if width == 0 || height == 0 {
         return frame;
     }
 
-    let Screen::SearchFields(search_fields_state) = &app.ui_state.current_screen else {
-        return frame;
-    };
+    // The footer is a permanent final row, so every screen layout receives
+    // only the rows above it.  This also leaves the toast a stable anchor.
+    let content_height = height.saturating_sub(1);
+    frame.cursor = cursor(app, width, height);
+    match &mut app.ui_state.current_screen {
+        Screen::SearchFields(search_fields_state) => {
+            let fields_focussed =
+                search_fields_state.focussed_section == FocussedSection::SearchFields;
+            let requested_count = if fields_focussed {
+                NUM_SEARCH_FIELDS as usize
+            } else {
+                FIELD_COUNT_WHEN_RESULTS_FOCUSSED
+            };
+            let layout = fields_layout(width, content_height, requested_count);
 
-    let fields_focussed = search_fields_state.focussed_section == FocussedSection::SearchFields;
-    let requested_count = if fields_focussed {
-        NUM_SEARCH_FIELDS as usize
-    } else {
-        FIELD_COUNT_WHEN_RESULTS_FOCUSSED
-    };
-    let layout = fields_layout(width, height, requested_count);
+            for (index, field) in app
+                .search_fields
+                .fields
+                .iter()
+                .take(layout.count)
+                .enumerate()
+            {
+                let highlighted = fields_focussed && index == app.search_fields.highlighted;
+                render_field(
+                    &mut frame.runs,
+                    field,
+                    layout,
+                    index,
+                    highlighted,
+                    width,
+                    content_height,
+                );
+            }
 
-    for (index, field) in app
-        .search_fields
-        .fields
-        .iter()
-        .take(layout.count)
-        .enumerate()
-    {
-        let highlighted = fields_focussed && index == app.search_fields.highlighted;
-        render_field(
-            &mut frame.runs,
-            field,
-            layout,
-            index,
-            highlighted,
-            width,
-            height,
-        );
+            if layout.banner_y < content_height {
+                let search_is_empty = app.search_fields.search().text().is_empty();
+                let search_is_invalid = app.search_fields.fields[0].error().is_some();
+                let wrap_preview_text = app.config.preview.wrap_text;
+                let input_source = &app.input_source;
+                let replacements_in_progress = search_fields_state.replacements_in_progress();
+
+                if let Some(search_state) = search_fields_state.search_state.as_mut() {
+                    render_results(
+                        &mut frame.runs,
+                        input_source,
+                        wrap_preview_text,
+                        search_state,
+                        replacements_in_progress,
+                        layout,
+                        width,
+                        content_height,
+                    );
+                } else if search_is_empty {
+                    render_banner(
+                        &mut frame.runs,
+                        layout,
+                        0,
+                        "Search is empty",
+                        "error",
+                        None,
+                        false,
+                        replacements_in_progress,
+                        width,
+                        content_height,
+                    );
+                } else if search_is_invalid {
+                    render_banner(
+                        &mut frame.runs,
+                        layout,
+                        0,
+                        "Invalid search",
+                        "error",
+                        None,
+                        false,
+                        replacements_in_progress,
+                        width,
+                        content_height,
+                    );
+                }
+            }
+        }
+        Screen::PerformingReplacement(state) => {
+            render_performing_replacement(&mut frame.runs, state, width, content_height);
+        }
+        Screen::Results(state) => {
+            render_replacement_results(&mut frame.runs, state, width, content_height);
+        }
     }
 
-    frame.cursor = field_cursor(app, layout, height);
+    render_footer(&mut frame.runs, app, width, height - 1);
 
-    if layout.banner_y >= height {
-        return frame;
+    if let Some(popup) = app.popup() {
+        render_popup(&mut frame.runs, app, popup, width, content_height);
     }
-
-    let search_is_empty = app.search_fields.search().text().is_empty();
-    let search_is_invalid = app.search_fields.fields[0].error().is_some();
-    let wrap_preview_text = app.config.preview.wrap_text;
-    let input_source = &app.input_source;
-    let Screen::SearchFields(search_fields_state) = &mut app.ui_state.current_screen else {
-        return frame;
-    };
-    let replacements_in_progress = search_fields_state.replacements_in_progress();
-
-    if let Some(search_state) = search_fields_state.search_state.as_mut() {
-        render_results(
-            &mut frame.runs,
-            input_source,
-            wrap_preview_text,
-            search_state,
-            replacements_in_progress,
-            layout,
-            width,
-            height,
-        );
-    } else if search_is_empty {
-        render_banner(
-            &mut frame.runs,
-            layout,
-            0,
-            "Search is empty",
-            "error",
-            None,
-            false,
-            replacements_in_progress,
-            width,
-            height,
-        );
-    } else if search_is_invalid {
-        render_banner(
-            &mut frame.runs,
-            layout,
-            0,
-            "Invalid search",
-            "error",
-            None,
-            false,
-            replacements_in_progress,
-            width,
-            height,
-        );
+    if let Some(message) = app.toast_message() {
+        render_toast(&mut frame.runs, message, width, content_height);
     }
 
     frame
@@ -174,7 +202,451 @@ pub(crate) fn cursor(app: &App, width: usize, height: usize) -> Option<(usize, u
     } else {
         FIELD_COUNT_WHEN_RESULTS_FOCUSSED
     };
-    field_cursor(app, fields_layout(width, height, requested_count), height)
+    let content_height = height.saturating_sub(1);
+    field_cursor(
+        app,
+        fields_layout(width, content_height, requested_count),
+        content_height,
+    )
+}
+
+fn render_footer(runs: &mut Vec<Run>, app: &App, width: usize, y: usize) {
+    let hints = app
+        .keymaps_compact()
+        .into_iter()
+        .map(|(key, action)| format!("{key} {action}"))
+        .collect::<Vec<_>>()
+        .join(" / ");
+    add_centered_run(runs, y, &hints, "info", 0, width, width, y + 1);
+}
+
+fn render_popup(runs: &mut Vec<Run>, app: &App, popup: &Popup, width: usize, height: usize) {
+    match popup {
+        Popup::Error => {
+            let errors = app.errors();
+            let mut lines = Vec::new();
+            for (index, error) in errors.iter().enumerate() {
+                lines.push(PopupLine {
+                    text: error.name.clone(),
+                    tag: "active",
+                });
+                lines.extend(error.long.split('\n').map(|text| PopupLine {
+                    text: text.to_string(),
+                    tag: "error",
+                }));
+                if index + 1 < errors.len() {
+                    lines.push(PopupLine {
+                        text: String::new(),
+                        tag: "text",
+                    });
+                }
+            }
+            render_paragraph_popup(runs, "Errors", &lines, width, height);
+        }
+        Popup::Help => render_help_popup(runs, &app.keymaps_all(), width, height),
+        Popup::Text { title, body } => {
+            let lines = body
+                .split('\n')
+                .map(|text| PopupLine {
+                    text: text.to_string(),
+                    tag: "text",
+                })
+                .collect::<Vec<_>>();
+            render_paragraph_popup(runs, title, &lines, width, height);
+        }
+    }
+}
+
+fn render_paragraph_popup(
+    runs: &mut Vec<Run>,
+    title: &str,
+    lines: &[PopupLine],
+    width: usize,
+    height: usize,
+) {
+    let area = popup_area(width, height, lines.len());
+    draw_popup_box(runs, area, title, width, height);
+    let (x, y, content_width, content_height) = popup_inner(area);
+    for (offset, line) in lines.iter().take(content_height).enumerate() {
+        add_run(
+            runs,
+            x,
+            y + offset,
+            &line.text,
+            line.tag,
+            x + content_width,
+            height,
+        );
+    }
+}
+
+fn render_help_popup(
+    runs: &mut Vec<Run>,
+    keymaps: &[(String, String)],
+    width: usize,
+    height: usize,
+) {
+    let area = popup_area(width, height, keymaps.len());
+    draw_popup_box(runs, area, "Help", width, height);
+    let (x, y, content_width, content_height) = popup_inner(area);
+    let max_key_width = keymaps
+        .iter()
+        .map(|(key, _)| display_width(key))
+        .max()
+        .unwrap_or(0);
+    let key_width = max_key_width.min(content_width.saturating_sub(2));
+
+    for (offset, (key, action)) in keymaps.iter().take(content_height).enumerate() {
+        let key = truncate(key, key_width);
+        let key_x = x + key_width.saturating_sub(display_width(&key));
+        add_run(
+            runs,
+            key_x,
+            y + offset,
+            &key,
+            "info",
+            x + content_width,
+            height,
+        );
+
+        let action_x = x + key_width.saturating_add(1);
+        if action_x < x + content_width {
+            add_run(
+                runs,
+                action_x,
+                y + offset,
+                action,
+                "text",
+                x + content_width,
+                height,
+            );
+        }
+    }
+}
+
+fn popup_area(width: usize, height: usize, content_height: usize) -> PopupArea {
+    if width == 0 || height == 0 {
+        return PopupArea {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+        };
+    }
+    let popup_width = (width * 85 / 100).clamp(1, width.min(125));
+    let max_height = (height * 80 / 100).clamp(1, height);
+    let popup_height = content_height.saturating_add(2).max(1).min(max_height);
+    PopupArea {
+        x: width.saturating_sub(popup_width) / 2,
+        y: height.saturating_sub(popup_height) / 2,
+        width: popup_width,
+        height: popup_height,
+    }
+}
+
+fn popup_inner(area: PopupArea) -> (usize, usize, usize, usize) {
+    (
+        area.x.saturating_add(2).min(area.x + area.width),
+        area.y.saturating_add(1),
+        area.width.saturating_sub(4),
+        area.height.saturating_sub(2),
+    )
+}
+
+fn draw_popup_box(
+    runs: &mut Vec<Run>,
+    area: PopupArea,
+    title: &str,
+    frame_width: usize,
+    frame_height: usize,
+) {
+    if frame_width == 0 || frame_height == 0 || area.height == 0 {
+        return;
+    }
+
+    // This is intentionally emitted before all border/content runs.  Steel
+    // blits in order, so it clears the underlying screen without requiring a
+    // separate clear primitive across the FFI boundary.
+    for row in 0..area.height {
+        add_run(
+            runs,
+            area.x,
+            area.y + row,
+            &" ".repeat(area.width),
+            "popup",
+            frame_width,
+            frame_height,
+        );
+    }
+    draw_box_border(runs, area, Some(title), "popup", frame_width, frame_height);
+}
+
+fn draw_box_border(
+    runs: &mut Vec<Run>,
+    area: PopupArea,
+    title: Option<&str>,
+    tag: &str,
+    frame_width: usize,
+    frame_height: usize,
+) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    if area.width == 1 {
+        for row in 0..area.height {
+            add_run(
+                runs,
+                area.x,
+                area.y + row,
+                "│",
+                tag,
+                frame_width,
+                frame_height,
+            );
+        }
+        return;
+    }
+
+    add_run(
+        runs,
+        area.x,
+        area.y,
+        &format!("┌{}┐", "─".repeat(area.width.saturating_sub(2))),
+        tag,
+        frame_width,
+        frame_height,
+    );
+    if let Some(title) = title.filter(|_| area.width > 2) {
+        add_centered_run(
+            runs,
+            area.y,
+            title,
+            tag,
+            area.x + 1,
+            area.width.saturating_sub(2),
+            frame_width,
+            frame_height,
+        );
+    }
+    for row in 1..area.height.saturating_sub(1) {
+        add_run(
+            runs,
+            area.x,
+            area.y + row,
+            "│",
+            tag,
+            frame_width,
+            frame_height,
+        );
+        add_run(
+            runs,
+            area.x + area.width - 1,
+            area.y + row,
+            "│",
+            tag,
+            frame_width,
+            frame_height,
+        );
+    }
+    if area.height > 1 {
+        add_run(
+            runs,
+            area.x,
+            area.y + area.height - 1,
+            &format!("└{}┘", "─".repeat(area.width.saturating_sub(2))),
+            tag,
+            frame_width,
+            frame_height,
+        );
+    }
+}
+
+fn render_toast(runs: &mut Vec<Run>, message: &str, width: usize, height: usize) {
+    if width == 0 || height == 0 {
+        return;
+    }
+    let toast_width = display_width(message).saturating_add(4).min(width);
+    let toast_height = 3.min(height);
+    let area = PopupArea {
+        x: (width - toast_width) / 2,
+        y: height.saturating_sub(toast_height + 2),
+        width: toast_width,
+        height: toast_height,
+    };
+
+    for row in 0..area.height {
+        add_run(
+            runs,
+            area.x,
+            area.y + row,
+            &" ".repeat(area.width),
+            "popup",
+            width,
+            height,
+        );
+    }
+    draw_box_border(runs, area, None, "diff-added", width, height);
+    if area.height > 1 {
+        add_centered_run(
+            runs,
+            area.y + 1,
+            message,
+            "text",
+            area.x + 1,
+            area.width.saturating_sub(2),
+            width,
+            height,
+        );
+    }
+}
+
+fn render_performing_replacement(
+    runs: &mut Vec<Run>,
+    state: &PerformingReplacementState,
+    width: usize,
+    height: usize,
+) {
+    let completed = state.num_replacements_completed.load(Ordering::Relaxed);
+    #[allow(clippy::cast_precision_loss)]
+    let percentage = (completed as f64 / state.total_replacements.max(1) as f64) * 100.0;
+    let lines = [
+        ("Performing replacement...".to_string(), "text"),
+        (String::new(), "text"),
+        (
+            format!(
+                "Completed: {completed}/{} ({percentage:.2}%)",
+                state.total_replacements
+            ),
+            "info",
+        ),
+        (
+            format!(
+                "Time: {}",
+                format_duration(state.replacement_started.elapsed())
+            ),
+            "info",
+        ),
+    ];
+    let start_y = height.saturating_sub(lines.len()) / 2;
+    for (offset, (text, tag)) in lines.iter().enumerate() {
+        add_centered_run(runs, start_y + offset, text, tag, 0, width, width, height);
+    }
+}
+
+fn render_replacement_results(
+    runs: &mut Vec<Run>,
+    state: &ReplaceState,
+    width: usize,
+    height: usize,
+) {
+    let (x, content_width) = default_content_width(width);
+    if state.errors.is_empty() {
+        let start_y = height.saturating_sub(10) / 2;
+        add_centered_run(
+            runs,
+            start_y,
+            "Success!",
+            "diff-added",
+            x,
+            content_width,
+            width,
+            height,
+        );
+        render_results_tallies(runs, state, x, start_y + 1, content_width, width, height);
+        return;
+    }
+
+    render_results_tallies(runs, state, x, 0, content_width, width, height);
+    let list_title_y = 9;
+    add_run(
+        runs,
+        x,
+        list_title_y,
+        "Errors:",
+        "text",
+        x + content_width,
+        height,
+    );
+
+    let mut y = list_title_y + 1;
+    for result in state.errors.iter().skip(state.replacement_errors_pos) {
+        if y.saturating_add(2) >= height {
+            break;
+        }
+        let (path, error) = result.display_error();
+        add_run(runs, x, y + 1, &path, "text", x + content_width, height);
+        add_run(runs, x, y + 2, error, "error", x + content_width, height);
+        y += 3;
+    }
+}
+
+fn render_results_tallies(
+    runs: &mut Vec<Run>,
+    state: &ReplaceState,
+    x: usize,
+    y: usize,
+    width: usize,
+    frame_width: usize,
+    frame_height: usize,
+) {
+    for (index, (title, number)) in [
+        ("Successful replacements (lines):", state.num_successes),
+        ("Ignored (lines):", state.num_ignored),
+        ("Errors:", state.errors.len()),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let area = PopupArea {
+            x,
+            y: y + index * 3,
+            width,
+            height: 3,
+        };
+        draw_box_border(runs, area, Some(title), "text", frame_width, frame_height);
+        add_run(
+            runs,
+            x + 1,
+            area.y + 1,
+            &number.to_string(),
+            "text",
+            x + width.saturating_sub(1),
+            frame_height,
+        );
+    }
+}
+
+fn default_content_width(width: usize) -> (usize, usize) {
+    if width == 0 {
+        return (0, 0);
+    }
+    let percentage = if width >= 300 { 80 } else { 90 };
+    let content_width = (width * percentage / 100).clamp(1, width);
+    ((width - content_width) / 2, content_width)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_centered_run(
+    runs: &mut Vec<Run>,
+    y: usize,
+    text: &str,
+    tag: &str,
+    x: usize,
+    width: usize,
+    frame_width: usize,
+    frame_height: usize,
+) {
+    let text = truncate(text, width);
+    let text_width = display_width(&text);
+    add_run(
+        runs,
+        x + width.saturating_sub(text_width) / 2,
+        y,
+        &text,
+        tag,
+        frame_width,
+        frame_height,
+    );
 }
 
 fn field_cursor(app: &App, layout: FieldsLayout, height: usize) -> Option<(usize, usize)> {
@@ -1322,17 +1794,25 @@ fn display_width(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::BTreeMap,
-        fs, thread,
+        fs,
+        path::PathBuf,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize},
+        },
+        thread,
         time::{Duration, Instant},
     };
 
     use scooter_core::{
-        app::{Screen, SearchPhase},
+        app::{Popup, Screen, SearchPhase},
+        errors::AppError,
         line_reader::LineEnding,
+        replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
         search::{ByteRangeParams, Line, SearchResult, SearchResultWithReplacement},
     };
     use tempfile::tempdir;
+    use tokio::sync::mpsc;
 
     use crate::engine::ScooterEngine;
 
@@ -1427,17 +1907,75 @@ mod tests {
         assert!(preview.runs.iter().any(|run| run.tag == "diff-removed"));
         assert!(preview.runs.iter().any(|run| run.tag == "diff-added"));
 
-        let mut widths = (0..=3).collect::<Vec<_>>();
-        widths.extend([10, 24, 60, 79, 80, 81, 110, 111, 160, 250]);
-        let mut heights = (0..=3).collect::<Vec<_>>();
-        heights.extend([4, 10, 23, 24, 40, 55, 80]);
+        assert_all_sizes_are_well_formed(&mut engine);
+    }
 
-        for width in widths {
-            for &height in &heights {
-                let frame = engine.render(width, height);
-                assert_frame_is_well_formed(&frame, width, height);
-            }
-        }
+    #[test]
+    fn overlays_and_replacement_screens_stay_inside_the_render_grid() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+
+        assert_eq!(engine.handle_key("h", 2), "rerender");
+        assert!(
+            engine
+                .render(100, 36)
+                .runs
+                .iter()
+                .any(|run| run.tag == "popup")
+        );
+        assert_all_sizes_are_well_formed(&mut engine);
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+
+        engine.app.add_error(AppError {
+            name: "Search error".to_string(),
+            long: "first detail\nsecond detail".to_string(),
+        });
+        assert_all_sizes_are_well_formed(&mut engine);
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+
+        engine.app.ui_state.popup = Some(Popup::Text {
+            title: "Notice".to_string(),
+            body: "first line\nsecond line".to_string(),
+        });
+        assert_all_sizes_are_well_formed(&mut engine);
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+
+        assert_eq!(engine.handle_key("m", 4), "rerender");
+        assert!(
+            engine
+                .render(100, 36)
+                .runs
+                .iter()
+                .any(|run| run.text.contains("Multiline: ON"))
+        );
+        assert_all_sizes_are_well_formed(&mut engine);
+        wait_until_toast_dismissed(&mut engine);
+
+        let (_sender, receiver) = mpsc::unbounded_channel();
+        engine.app.ui_state.current_screen =
+            Screen::PerformingReplacement(PerformingReplacementState::new(
+                receiver,
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicUsize::new(1)),
+                2,
+            ));
+        assert_all_sizes_are_well_formed(&mut engine);
+
+        engine.app.ui_state.current_screen = Screen::Results(ReplaceState {
+            num_successes: 3,
+            num_ignored: 1,
+            errors: vec![],
+            replacement_errors_pos: 0,
+        });
+        assert_all_sizes_are_well_formed(&mut engine);
+
+        engine.app.ui_state.current_screen = Screen::Results(ReplaceState {
+            num_successes: 3,
+            num_ignored: 1,
+            errors: vec![error_result("failed.txt", 7, "permission denied")],
+            replacement_errors_pos: 0,
+        });
+        assert_all_sizes_are_well_formed(&mut engine);
     }
 
     #[test]
@@ -1473,8 +2011,33 @@ mod tests {
         panic!("search did not complete");
     }
 
+    fn wait_until_toast_dismissed(engine: &mut ScooterEngine) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            engine.pump();
+            if engine.app.toast_message().is_none() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("toast did not dismiss");
+    }
+
+    fn assert_all_sizes_are_well_formed(engine: &mut ScooterEngine) {
+        let mut widths = (0..=3).collect::<Vec<_>>();
+        widths.extend([10, 24, 60, 79, 80, 81, 110, 111, 160, 250]);
+        let mut heights = (0..=3).collect::<Vec<_>>();
+        heights.extend([4, 10, 23, 24, 40, 55, 80]);
+
+        for width in widths {
+            for &height in &heights {
+                let frame = engine.render(width, height);
+                assert_frame_is_well_formed(&frame, width, height);
+            }
+        }
+    }
+
     fn assert_frame_is_well_formed(frame: &Frame, width: usize, height: usize) {
-        let mut rows = BTreeMap::new();
         for run in &frame.runs {
             assert!(
                 run.y < height,
@@ -1484,20 +2047,21 @@ mod tests {
                 run.x + display_width(&run.text) <= width,
                 "run exceeds width: {run:?} at {width}x{height}"
             );
-            rows.entry(run.y).or_insert_with(Vec::new).push(run);
         }
+    }
 
-        for (y, runs) in &mut rows {
-            runs.sort_by_key(|run| run.x);
-            for pair in runs.windows(2) {
-                let [previous, next] = pair else {
-                    unreachable!()
-                };
-                assert!(
-                    previous.x + display_width(&previous.text) <= next.x,
-                    "overlapping runs on row {y} at {width}x{height}: {previous:?} then {next:?}"
-                );
-            }
+    fn error_result(path: &str, line: usize, error: &str) -> SearchResultWithReplacement {
+        SearchResultWithReplacement {
+            search_result: SearchResult::new_line(
+                Some(PathBuf::from(path)),
+                line,
+                "original".to_string(),
+                LineEnding::Lf,
+                true,
+            ),
+            replacement: "replacement".to_string(),
+            replace_result: Some(ReplaceResult::Error(error.to_string())),
+            preview_error: None,
         }
     }
 

@@ -38,6 +38,7 @@
           "selection" (safe-theme-scope "ui.selection" text)
           "selection-secondary" (style-with-dim (safe-theme-scope "ui.selection" text))
           "active" (safe-theme-scope "ui.text.focus" hint)
+          "popup" (safe-theme-scope "ui.popup" text)
           "error" (safe-theme-scope "error" text)
           "info" (safe-theme-scope "info" text)
           "diff-added" (safe-theme-scope "diff.plus" text)
