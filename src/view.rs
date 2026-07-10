@@ -91,7 +91,7 @@ pub(crate) fn render(app: &mut App, width: usize, height: usize) -> Frame {
                 &mut frame.runs,
                 base_path,
                 search_state,
-                layout.banner_y,
+                layout,
                 width,
                 height,
             );
@@ -103,9 +103,9 @@ pub(crate) fn render(app: &mut App, width: usize, height: usize) -> Frame {
             };
             add_run(
                 &mut frame.runs,
-                0,
+                layout.x,
                 layout.banner_y,
-                &format!("Results: 0 [{status}]"),
+                &truncate(&format!("Results: 0 [{status}]"), layout.width),
                 tag,
                 width,
                 height,
@@ -146,10 +146,9 @@ pub(crate) fn cursor(app: &App, width: usize, height: usize) -> Option<(usize, u
 fn fields_layout(frame_width: usize, height: usize, requested_count: usize) -> FieldsLayout {
     let count = requested_count.min(height / FIELD_HEIGHT);
     let fields_height = count * FIELD_HEIGHT;
-    let banner_and_results = usize::from(height > fields_height);
-    let spare_height = height.saturating_sub(fields_height + banner_and_results);
-    // Match the TUI's centred field stack while reserving room for the results below it.
-    let y = spare_height / 3;
+    // Match the TUI: fields at the top of the content area, a one-row gap,
+    // then the results banner and list fill the remaining height.
+    let y = 0;
     let width = (frame_width.max(1) * 9 / 10).clamp(1, frame_width.max(1));
     let x = frame_width.saturating_sub(width) / 2;
 
@@ -158,7 +157,7 @@ fn fields_layout(frame_width: usize, height: usize, requested_count: usize) -> F
         y,
         width,
         count,
-        banner_y: y + fields_height,
+        banner_y: y + fields_height + 1,
     }
 }
 
@@ -247,7 +246,7 @@ fn render_results(
     runs: &mut Vec<Run>,
     base_path: &Path,
     search_state: &mut SearchState,
-    banner_y: usize,
+    layout: FieldsLayout,
     width: usize,
     height: usize,
 ) {
@@ -255,18 +254,21 @@ fn render_results(
     let elapsed = search_state.phase.elapsed().map(format_duration).unwrap_or_default();
     add_run(
         runs,
-        0,
-        banner_y,
-        &format!(
-            "Results: {} [{status}]{elapsed}",
-            search_state.results.len()
+        layout.x,
+        layout.banner_y,
+        &truncate(
+            &format!(
+                "Results: {} [{status}]{elapsed}",
+                search_state.results.len()
+            ),
+            layout.width,
         ),
         tag,
         width,
         height,
     );
 
-    let list_y = banner_y.saturating_add(1);
+    let list_y = layout.banner_y.saturating_add(1);
     let num_to_render = height.saturating_sub(list_y);
     search_state.num_displayed = Some(num_to_render);
     clamp_result_offset(search_state, num_to_render);
@@ -292,9 +294,9 @@ fn render_results(
         );
         add_run(
             runs,
-            0,
+            layout.x,
             list_y + index.saturating_sub(search_state.view_offset),
-            &text,
+            &truncate(&text, layout.width),
             if selected { "selection" } else { "text" },
             width,
             height,
