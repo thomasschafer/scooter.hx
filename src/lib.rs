@@ -4,6 +4,9 @@ mod engine;
 mod key;
 mod view;
 
+#[cfg(test)]
+mod snapshot_tests;
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use abi_stable::std_types::RVec;

@@ -17,6 +17,7 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
 unicode-width = "0.2.0"
 
 [dev-dependencies]
+insta = { version = "1.47.2", features = ["filters"] }
 tempfile = "3.27.0"
 
 [lints.clippy]

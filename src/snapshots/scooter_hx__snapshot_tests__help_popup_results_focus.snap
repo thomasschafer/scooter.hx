@@ -1,0 +1,78 @@
+---
+source: src/snapshot_tests.rs
+expression: snapshot
+---
+canvas: 120x40
+00 |      ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────┐      |
+01 |      │alpha                                                                                                     │      |
+02 |      └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘      |
+03 |      ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────┐      |
+04 |      │                                                                                                          │      |
+05 |      └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘      |
+06 |                                                                                                                        |
+07 |      Res┌────────────────────────────────────────────────Help────────────────────────────────────────────────┐2s]      |
+08 |         │ <space> toggle                                                                                     │         |
+09 |      [x]│     <a> toggle all                                                                                 │(1)      |
+10 |         │     <v> toggle multi-select mode                                                                   │         |
+11 |         │   <A-;> flip multi-select direction                                                                │         |
+12 |         │     <e> open in editor                                                                             │         |
+13 |         │   <esc> back to search fields                                                                      │         |
+14 |         │     <j> down                                                                                       │         |
+15 |      - a│     <k> up                                                                                         │         |
+16 |      +  │   <C-u> up half a page                                                                             │         |
+17 |         │   <C-d> down half a page                                                                           │         |
+18 |         │   <C-b> up a full page                                                                             │         |
+19 |         │   <C-f> down a full page                                                                           │         |
+20 |         │     <g> jump to top                                                                                │         |
+21 |         │     <G> jump to bottom                                                                             │         |
+22 |         │ <enter> replace selected                                                                           │         |
+23 |         │   <C-l> toggle text wrapping in preview                                                            │         |
+24 |         │   <C-t> toggle hidden files                                                                        │         |
+25 |         │   <A-m> toggle multiline                                                                           │         |
+26 |         │   <A-e> toggle escape sequences                                                                    │         |
+27 |         │   <C-r> reset                                                                                      │         |
+28 |         │   <C-h> help                                                                                       │         |
+29 |         │   <esc> close popup / exit multi-select                                                            │         |
+30 |         │   <C-c> quit                                                                                       │         |
+31 |         └────────────────────────────────────────────────────────────────────────────────────────────────────┘         |
+32 |                                                                                                                        |
+33 |                                                                                                                        |
+34 |                                                                                                                        |
+35 |                                                                                                                        |
+36 |                                                                                                                        |
+37 |                                                                                                                        |
+38 |                                                                                                                        |
+39 |           <space> toggle / <esc> back to search fields / <enter> replace selected / <C-h> help / <C-c> quit            |
+tags:
+00: 6-114 text
+01: 6-12 text | 113-114 text
+02: 6-114 text
+03: 6-114 text
+04: 6-7 text | 113-114 text
+05: 6-114 text
+07: 6-9 text | 9-58 popup-border | 58-62 popup | 62-111 popup-border | 111-114 diff-added
+08: 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-25 text | 25-110 popup | 110-111 popup-border
+09: 6-9 selection | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-29 text | 29-110 popup | 110-111 popup-border | 111-114 selection
+10: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-43 text | 43-110 popup | 110-111 popup-border
+11: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-46 text | 46-110 popup | 110-111 popup-border
+12: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border
+13: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-40 text | 40-110 popup | 110-111 popup-border
+14: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
+15: 6-8 diff-removed | 8-9 diff-removed-emph | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-21 text | 21-110 popup | 110-111 popup-border
+16: 6-8 diff-added | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border
+17: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border
+18: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border
+19: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border
+20: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-30 text | 30-110 popup | 110-111 popup-border
+21: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border
+22: 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border
+23: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border
+24: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-38 text | 38-110 popup | 110-111 popup-border
+25: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border
+26: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-42 text | 42-110 popup | 110-111 popup-border
+27: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-24 text | 24-110 popup | 110-111 popup-border
+28: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
+29: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border
+30: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
+31: 9-111 popup-border
+39: 11-108 info
