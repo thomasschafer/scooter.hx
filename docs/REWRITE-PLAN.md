@@ -52,11 +52,11 @@ Statuses: todo / in progress / in review / done. Each chunk has a spec in `docs/
 | Chunk | Description | Status |
 |-------|-------------|--------|
 | S1 | Toolchain spike: dylib skeleton on steel-core 0.8.2 rev, static styled runs blitted in a popup with theme-scope styles, key round-trip, e2e tmux harness script | done |
-| S2 | App embedded: tokio runtime, handle-key/pump/busy?, minimal fields view, live search visible in hx (milestone: Tom tries it) | in review |
+| S2 | App embedded: tokio runtime, handle-key/pump/busy?, minimal fields view, live search visible in hx (milestone: Tom tries it) | done |
 | U1 | Upstream scooter branch: try_recv, esc introspection, misc pub accessors | todo |
 | E1 | Config bridge: Steel config API -> core Config/AppRunConfig, keymap parsing + conflict surfacing | todo |
 | E2 | Key decode/dispatch: full Steel event -> KeyCode/Modifiers mapping, esc/hide/quit semantics | todo |
-| E3 | Renderer: search fields screen (fields, errors, cursor, collapse behaviour) | todo |
+| E3 | Renderer: search fields screen (fields, errors, cursor, collapse behaviour, TUI-style checkboxes, size responsiveness) | in progress |
 | E4 | Renderer: results list + preview (context lines, single/multiline diffs, wrapping, preview errors) | todo |
 | E5 | Renderer: banner, footer hints, popups (error/help/text), toasts, performing-replacement + results screens | todo |
 | E6 | Pump/session lifecycle: busy?, action queue, reset/cancel-all, hide/resume correctness | todo |
@@ -72,7 +72,7 @@ Sequencing: S1 -> S2 are strictly first. U1 can start once S2 confirms the exact
 
 Three layers:
 
-1. Codex self-validation (required before any chunk is handed back): `scripts/check.sh` clean (build + clippy + tests on a single pinned toolchain; a bare `cargo clippy` fails on this machine due to a Nix/rustup toolchain mix — see the script header); insta snapshots for renderer changes; and for anything user-visible, the e2e harness — build the dylib, install into the scratch STEEL_HOME, launch `hx` in tmux against a fixture workspace, send keys, capture panes, and assert on expected content. The harness (built in S1) lives in `scripts/` so both Codex and Claude run exactly the same checks.
+1. Codex self-validation (required before any chunk is handed back): renders must be checked at multiple terminal sizes (small/medium/large — `scripts/e2e-sizes.sh` once it lands in E3); `scripts/check.sh` clean (build + clippy + tests on a single pinned toolchain; a bare `cargo clippy` fails on this machine due to a Nix/rustup toolchain mix — see the script header); insta snapshots for renderer changes; and for anything user-visible, the e2e harness — build the dylib, install into the scratch STEEL_HOME, launch `hx` in tmux against a fixture workspace, send keys, capture panes, and assert on expected content. The harness (built in S1) lives in `scripts/` so both Codex and Claude run exactly the same checks.
 2. Claude review: diff review against the chunk spec, full test suite, independent e2e runs in tmux, and behaviour comparison against the real scooter TUI running on the same fixture (same core, so it's a strong oracle for behaviour even though rendering differs).
 3. Tom at milestones: tests the locally built plugin + hx via `scripts/try.sh [directory]`, which launches the isolated dev build in any directory without touching the real helix/steel setup. First milestone after S2, second after H3, final before PRs.
 
