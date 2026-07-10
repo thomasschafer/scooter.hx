@@ -63,7 +63,7 @@ Statuses: todo / in progress / in review / done. Each chunk has a spec in `docs/
 | A1 | Audit fixes: overlay surface-bg unification (popup border/interior mismatch), styling invariant table, file logging instead of stderr, tag enum, view.rs module split, teardown ergonomics, wrap parity, themed bg e2e | done |
 | C1 | Steel config surface (`scooter-set!`, `scooter-keys!`) + full key decode table (absorbs old E1/E2/H2; H1 was absorbed by S1-F1) | done |
 | H3 | Helix behaviours: open in editor (fg/bg), reload non-dirty docs after replace | done |
-| P | Polish: README, cog.scm, CI (test + release workflows), delete dead code, dependency strategy | in progress |
+| P | Polish: README, cog.scm, CI (test + release workflows), delete dead code, dependency strategy | done |
 
 Sequencing (updated): remaining order is E7 -> C1 -> H3 -> P. The original E1/E2/H1/H2 rows were absorbed: H1 (Steel shim) landed incrementally across S1-F1; E1+E2+H2 merged into C1. U1 so far needs only try_recv (already on the scooter branch).
 

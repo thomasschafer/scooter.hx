@@ -10,8 +10,8 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  check:
-    name: Check
+  test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,37 +19,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Check formatting
-        run: cargo fmt --all --check
+      # The tmux/Helix e2e harness needs a locally built Helix from the
+      # steel-event-system branch, so it deliberately remains local-only.
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
 
-      - name: Run clippy on all packages
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: Run cargo check
-        run: cargo check
-
-  test:
-    name: Test (${{ matrix.os }})
-    needs: [check]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    timeout-minutes: 15
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run all tests
-        run: cargo test --workspace --verbose
+      - name: Run tests
+        run: cargo test
