@@ -390,7 +390,7 @@ fn draw_popup_box(
         area,
         Some(title),
         TitleAlignment::Center,
-        "popup",
+        ("popup-border", "popup"),
         frame_width,
         frame_height,
     );
@@ -401,7 +401,7 @@ fn draw_box_border(
     area: PopupArea,
     title: Option<&str>,
     title_alignment: TitleAlignment,
-    tag: &str,
+    tags: (&str, &str),
     frame_width: usize,
     frame_height: usize,
 ) {
@@ -415,7 +415,7 @@ fn draw_box_border(
                 area.x,
                 area.y + row,
                 "│",
-                tag,
+                tags.0,
                 frame_width,
                 frame_height,
             );
@@ -428,7 +428,7 @@ fn draw_box_border(
         area.x,
         area.y,
         &format!("┌{}┐", "─".repeat(area.width.saturating_sub(2))),
-        tag,
+        tags.0,
         frame_width,
         frame_height,
     );
@@ -438,7 +438,7 @@ fn draw_box_border(
                 runs,
                 area.y,
                 title,
-                tag,
+                tags.1,
                 area.x + 1,
                 area.width.saturating_sub(2),
                 frame_width,
@@ -449,7 +449,7 @@ fn draw_box_border(
                 area.x + 1,
                 area.y,
                 title,
-                tag,
+                tags.1,
                 area.x + area.width.saturating_sub(1),
                 frame_height,
             ),
@@ -461,7 +461,7 @@ fn draw_box_border(
             area.x,
             area.y + row,
             "│",
-            tag,
+            tags.0,
             frame_width,
             frame_height,
         );
@@ -470,7 +470,7 @@ fn draw_box_border(
             area.x + area.width - 1,
             area.y + row,
             "│",
-            tag,
+            tags.0,
             frame_width,
             frame_height,
         );
@@ -481,7 +481,7 @@ fn draw_box_border(
             area.x,
             area.y + area.height - 1,
             &format!("└{}┘", "─".repeat(area.width.saturating_sub(2))),
-            tag,
+            tags.0,
             frame_width,
             frame_height,
         );
@@ -517,7 +517,7 @@ fn render_toast(runs: &mut Vec<Run>, message: &str, width: usize, height: usize)
         area,
         None,
         TitleAlignment::Center,
-        "toast-border",
+        ("toast-border", "toast-border"),
         width,
         height,
     );
@@ -643,7 +643,7 @@ fn render_results_tallies(
             area,
             Some(title),
             TitleAlignment::Left,
-            "text",
+            ("text", "text"),
             frame_width,
             frame_height,
         );
@@ -2037,6 +2037,10 @@ mod tests {
             .find(|run| run.text == "Notice")
             .expect("popup title");
         assert_eq!((title.x, title.y), (46, 18));
+        assert_eq!(title.tag, "popup");
+        assert!(runs.iter().any(|run| {
+            run.x == 7 && run.y == 18 && run.text.starts_with('┌') && run.tag == "popup-border"
+        }));
         let body = runs
             .iter()
             .find(|run| run.text == "body")

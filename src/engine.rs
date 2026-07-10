@@ -1,6 +1,6 @@
 //! Runtime-owning bridge between Steel and `scooter_core::app::App`.
 
-use std::path::PathBuf;
+use std::{collections::VecDeque, mem, path::PathBuf};
 
 use scooter_core::{
     app::{
@@ -17,10 +17,44 @@ use crate::{key, view};
 
 const DRAIN_LIMIT: usize = 1_000;
 
+/// A deferred request for the Steel layer to perform a Helix action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum EngineAction {
+    OpenFile { path: PathBuf, line: usize },
+}
+
+/// The result returned after a key dispatch or a background-event pump.
+///
+/// Actions are deliberately batched with the status so Steel can consume one
+/// simple list at the FFI boundary. The queue is drained only into this value,
+/// never dropped when the event drain reaches [`DRAIN_LIMIT`].
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct EngineResponse {
+    pub(crate) status: &'static str,
+    pub(crate) actions: Vec<EngineAction>,
+}
+
+impl EngineResponse {
+    fn new(status: &'static str, actions: Vec<EngineAction>) -> Self {
+        Self { status, actions }
+    }
+}
+
+// Retain concise existing status assertions while tests also inspect the
+// queued actions explicitly where that is the behaviour under test.
+impl PartialEq<&str> for EngineResponse {
+    fn eq(&self, other: &&str) -> bool {
+        self.status == *other
+    }
+}
+
 /// The single-thread-owned state for one Helix Scooter session.
 pub(crate) struct ScooterEngine {
-    runtime: Runtime,
+    // Taking the runtime lets `quit` use `shutdown_background` rather than
+    // Runtime's blocking Drop implementation on Helix's UI thread.
+    runtime: Option<Runtime>,
     pub(crate) app: App,
+    actions: VecDeque<EngineAction>,
 }
 
 impl ScooterEngine {
@@ -38,30 +72,40 @@ impl ScooterEngine {
             Config::default(),
         )
         .map_err(|error| error.to_string())?;
-        Ok(Self { runtime, app })
+        Ok(Self {
+            runtime: Some(runtime),
+            app,
+            actions: VecDeque::new(),
+        })
     }
 
-    pub(crate) fn handle_key(&mut self, code: &str, modifiers: usize) -> String {
+    pub(crate) fn handle_key(&mut self, code: &str, modifiers: usize) -> EngineResponse {
+        if self.runtime.is_none() {
+            return self.response("rerender");
+        }
+
         let Some(key_event) = key::decode(code, modifiers) else {
-            return "rerender".to_string();
+            return self.response("rerender");
         };
 
         if key_event.code == KeyCode::Esc && self.should_hide_for_escape() {
-            return "hide".to_string();
+            self.drain_ready_events();
+            return self.response("hide");
         }
         if key_event.code == KeyCode::Esc && self.should_ignore_escape() {
             // The TUI does nothing for Escape while replacement work/results
             // are on screen.  Keep that behaviour native rather than letting
             // core's legacy Escape compatibility popup leak into Helix.
-            return "rerender".to_string();
+            self.drain_ready_events();
+            return self.response("rerender");
         }
 
         let result = {
-            let _guard = self.runtime.enter();
+            let _guard = self.runtime.as_ref().expect("active runtime").enter();
             self.app.handle_key_event(key_event)
         };
         let status = if matches!(result, EventHandlingResult::Exit(_)) {
-            let _guard = self.runtime.enter();
+            let _guard = self.runtime.as_ref().expect("active runtime").enter();
             self.app.cancel_in_progress_tasks();
             "quit"
         } else {
@@ -69,24 +113,33 @@ impl ScooterEngine {
         };
 
         self.drain_ready_events();
-        status.to_string()
+        self.response(status)
     }
 
-    pub(crate) fn pump(&mut self) -> String {
-        if self.drain_ready_events() {
-            "rerender".to_string()
-        } else {
-            "idle".to_string()
+    pub(crate) fn pump(&mut self) -> EngineResponse {
+        if self.runtime.is_none() {
+            return self.response("idle");
         }
+
+        let status = if self.drain_ready_events() {
+            "rerender"
+        } else {
+            "idle"
+        };
+        self.response(status)
     }
 
     pub(crate) fn busy(&self) -> bool {
+        if self.runtime.is_none() {
+            return false;
+        }
+
         self.app.toast_message().is_some()
             || match &self.app.ui_state.current_screen {
                 Screen::PerformingReplacement(_) => true,
                 Screen::SearchFields(state) => {
                     state.search_debounce_timer.is_some()
-                        || state.preview_update_state.is_some()
+                        || (state.preview_update_state.is_some() && !self.app.is_preview_updated())
                         || state.search_state.as_ref().is_some_and(|search_state| {
                             !matches!(
                                 search_state.phase,
@@ -107,13 +160,24 @@ impl ScooterEngine {
     }
 
     pub(crate) fn reset(&mut self) {
-        let _guard = self.runtime.enter();
-        self.app.reset();
+        if let Some(runtime) = self.runtime.as_ref() {
+            let _guard = runtime.enter();
+            self.app.reset();
+        }
+        // A reset starts a genuinely fresh session, including no deferred
+        // editor launch from the state that was just discarded.
+        self.actions.clear();
     }
 
     pub(crate) fn quit(&mut self) {
-        let _guard = self.runtime.enter();
-        self.app.cancel_in_progress_tasks();
+        if let Some(runtime) = self.runtime.as_ref() {
+            let _guard = runtime.enter();
+            self.app.cancel_in_progress_tasks();
+        }
+
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_background();
+        }
     }
 
     fn should_hide_for_escape(&self) -> bool {
@@ -144,14 +208,12 @@ impl ScooterEngine {
             match event {
                 Event::Rerender => {}
                 Event::Internal(event) => {
-                    let _guard = self.runtime.enter();
+                    let _guard = self.runtime.as_ref().expect("active runtime").enter();
                     let _ = self.app.handle_internal_event(event);
                 }
                 Event::LaunchEditor((path, line)) => {
-                    eprintln!(
-                        "scooter-hx: ignoring LaunchEditor until H3: {}:{line}",
-                        path.display()
-                    );
+                    self.actions
+                        .push_back(EngineAction::OpenFile { path, line });
                 }
                 Event::ExitAndReplace(_) => {
                     eprintln!("scooter-hx: unexpected ExitAndReplace for directory input");
@@ -168,11 +230,21 @@ impl ScooterEngine {
                 break;
             };
             processed = true;
-            let _guard = self.runtime.enter();
+            let _guard = self.runtime.as_ref().expect("active runtime").enter();
             let _ = self.app.handle_background_processing_event(event);
         }
 
         processed
+    }
+
+    fn response(&mut self, status: &'static str) -> EngineResponse {
+        EngineResponse::new(status, mem::take(&mut self.actions).into())
+    }
+}
+
+impl Drop for ScooterEngine {
+    fn drop(&mut self) {
+        self.quit();
     }
 }
 
@@ -190,7 +262,7 @@ mod tests {
     };
 
     use scooter_core::{
-        app::{FocussedSection, Popup, Screen, SearchPhase},
+        app::{Event, FocussedSection, Popup, Screen, SearchPhase},
         line_reader::LineEnding,
         replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
         search::{SearchResult, SearchResultWithReplacement},
@@ -198,7 +270,7 @@ mod tests {
     use tempfile::tempdir;
     use tokio::sync::mpsc;
 
-    use super::ScooterEngine;
+    use super::{DRAIN_LIMIT, EngineAction, ScooterEngine};
 
     #[test]
     fn headless_fields_renderer_reflects_search_checkbox_errors_and_collapse() {
@@ -303,18 +375,24 @@ mod tests {
             .find(|run| run.text == " (1)")
             .expect("first result index is rendered");
         assert_eq!(first_index.tag, "info");
-        assert!(fields_focussed
-            .runs
-            .iter()
-            .any(|run| run.text == "[x] " && run.tag == "info"));
-        assert!(fields_focussed
-            .runs
-            .iter()
-            .any(|run| run.text == "matches.txt" && run.tag == "text"));
-        assert!(fields_focussed
-            .runs
-            .iter()
-            .any(|run| run.text == ":2" && run.tag == "info"));
+        assert!(
+            fields_focussed
+                .runs
+                .iter()
+                .any(|run| run.text == "[x] " && run.tag == "info")
+        );
+        assert!(
+            fields_focussed
+                .runs
+                .iter()
+                .any(|run| run.text == "matches.txt" && run.tag == "text")
+        );
+        assert!(
+            fields_focussed
+                .runs
+                .iter()
+                .any(|run| run.text == ":2" && run.tag == "info")
+        );
         // A 160-column frame has a 144-column content block beginning at x=8;
         // its wide results list is floor((144 - 1) * 2 / 5) = 57 cells.
         assert_eq!(first_index.x + first_index.text.len(), 8 + 57);
@@ -496,6 +574,284 @@ mod tests {
         assert!(joined_runs(&mut engine).contains("Performing replacement..."));
         assert_eq!(engine.handle_key("esc", 0), "rerender");
         assert!(engine.app.popup().is_none());
+    }
+
+    #[test]
+    fn handle_key_surfaces_launch_editor_actions_from_its_post_key_drain() {
+        let fixture = tempdir().expect("fixture directory");
+        let expected_path = fixture.path().join("selected.txt");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        engine
+            .app
+            .event_channels
+            .sender
+            .send(Event::LaunchEditor((expected_path.clone(), 7)))
+            .expect("engine event receiver lives");
+
+        let response = engine.handle_key("left", 0);
+        assert_eq!(response.status, "rerender");
+        assert_eq!(
+            response.actions,
+            vec![EngineAction::OpenFile {
+                path: expected_path,
+                line: 7,
+            }]
+        );
+    }
+
+    #[test]
+    fn actions_queued_while_hidden_are_delivered_by_the_first_resume_pump() {
+        let fixture = tempdir().expect("fixture directory");
+        let expected_path = fixture.path().join("arrived-while-hidden.txt");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        engine
+            .app
+            .event_channels
+            .sender
+            .send(Event::LaunchEditor((expected_path.clone(), 11)))
+            .expect("engine event receiver lives");
+
+        // No pump occurs while the component is hidden.
+        let response = engine.pump();
+        assert_eq!(response.status, "rerender");
+        assert_eq!(
+            response.actions,
+            vec![EngineAction::OpenFile {
+                path: expected_path,
+                line: 11,
+            }]
+        );
+    }
+
+    #[test]
+    fn action_queue_preserves_events_after_the_drain_limit() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        let path = fixture.path().join("selected.txt");
+        for line in 1..=DRAIN_LIMIT + 1 {
+            engine
+                .app
+                .event_channels
+                .sender
+                .send(Event::LaunchEditor((path.clone(), line)))
+                .expect("engine event receiver lives");
+        }
+
+        let first = engine.pump();
+        assert_eq!(first.actions.len(), DRAIN_LIMIT);
+        assert_eq!(
+            first.actions.first(),
+            Some(&EngineAction::OpenFile {
+                path: path.clone(),
+                line: 1,
+            })
+        );
+        let second = engine.pump();
+        assert_eq!(
+            second.actions,
+            vec![EngineAction::OpenFile {
+                path,
+                line: DRAIN_LIMIT + 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn quit_and_drop_do_not_wait_for_a_large_in_flight_search() {
+        let fixture = lifecycle_fixture(5_000, None);
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        start_search_and_wait_until_running(&mut engine, "needle");
+
+        let started = Instant::now();
+        engine.quit();
+        drop(engine);
+        assert!(
+            started.elapsed() < Duration::from_millis(100),
+            "quit/drop took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn hidden_search_completes_and_keeps_results_for_the_resume_pump() {
+        let fixture = lifecycle_fixture(3_000, Some("needle"));
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        start_search_and_wait_until_running(&mut engine, "needle");
+
+        // Simulate a hidden component: background work continues, but no
+        // receiver is drained until the session is resumed.
+        thread::sleep(Duration::from_millis(500));
+        let response = engine.pump();
+        assert_eq!(response.status, "rerender");
+        assert!(search_complete(&engine));
+        assert_eq!(search_state(&engine).results.len(), 1);
+    }
+
+    #[test]
+    fn hidden_toast_dismisses_on_the_resume_pump() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        assert_eq!(engine.handle_key("m", 4), "rerender");
+        assert!(engine.app.toast_message().is_some());
+
+        thread::sleep(Duration::from_millis(1_700));
+        let response = engine.pump();
+        assert_eq!(response.status, "rerender");
+        assert!(engine.app.toast_message().is_none());
+    }
+
+    #[test]
+    fn reset_mid_search_discards_stale_background_events() {
+        let fixture = lifecycle_fixture(3_000, Some("stale"));
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        start_search_and_wait_until_running(&mut engine, "stale");
+
+        engine.reset();
+        for _ in 0..30 {
+            let response = engine.pump();
+            assert!(response.actions.is_empty());
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let Screen::SearchFields(state) = &engine.app.ui_state.current_screen else {
+            panic!("reset left the fields screen");
+        };
+        assert!(engine.app.search_fields.search().text().is_empty());
+        assert!(state.search_state.is_none());
+    }
+
+    #[test]
+    fn busy_is_true_while_a_debounce_timer_is_pending() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        assert_eq!(engine.handle_key("a", 0), "rerender");
+        assert!(engine.busy());
+    }
+
+    #[test]
+    fn busy_is_true_for_pending_and_running_search_phases() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(fixture.path().join("match.txt"), "alpha\nalphabet\n").expect("write fixture");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        start_search_and_wait_until_running(&mut engine, "alpha");
+        assert!(engine.busy());
+
+        assert_eq!(engine.handle_key("b", 0), "rerender");
+        assert!(matches!(search_state(&engine).phase, SearchPhase::Pending));
+        assert!(engine.busy());
+    }
+
+    #[test]
+    fn busy_is_true_only_while_preview_updates_are_in_flight() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(fixture.path().join("match.txt"), "alpha\nalphabet\n").expect("write fixture");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        for character in "alpha".chars() {
+            engine.handle_key(&character.to_string(), 0);
+        }
+        wait_until_complete(&mut engine);
+        assert_eq!(engine.handle_key("tab", 0), "rerender");
+        assert_eq!(engine.handle_key("O", 0), "rerender");
+        assert!(engine.busy());
+
+        wait_until_preview_updated(&mut engine);
+        assert!(!engine.busy());
+    }
+
+    #[test]
+    fn busy_is_true_while_a_replacement_is_performing() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        let (_sender, receiver) = mpsc::unbounded_channel();
+        engine.app.ui_state.current_screen =
+            Screen::PerformingReplacement(PerformingReplacementState::new(
+                receiver,
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicUsize::new(0)),
+                1,
+            ));
+        assert!(engine.busy());
+    }
+
+    #[test]
+    fn busy_is_true_while_a_toast_is_visible() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        assert_eq!(engine.handle_key("m", 4), "rerender");
+        assert!(engine.app.toast_message().is_some());
+        assert!(engine.busy());
+    }
+
+    #[test]
+    fn busy_is_false_for_a_completed_search_without_a_toast() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(fixture.path().join("match.txt"), "alpha\n").expect("write fixture");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        start_search_and_wait_until_running(&mut engine, "alpha");
+        wait_until_complete(&mut engine);
+        assert!(!engine.busy());
+    }
+
+    #[test]
+    fn busy_is_false_for_an_invalid_search_without_a_toast() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        assert_eq!(engine.handle_key("(", 0), "rerender");
+        wait_until_invalid_search(&mut engine);
+        assert!(!engine.busy());
+    }
+
+    #[test]
+    fn busy_is_false_for_replacement_results_without_a_toast() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        engine.app.ui_state.current_screen = Screen::Results(ReplaceState {
+            num_successes: 1,
+            num_ignored: 0,
+            errors: vec![],
+            replacement_errors_pos: 0,
+        });
+        assert!(!engine.busy());
+    }
+
+    fn lifecycle_fixture(file_count: usize, matching_text: Option<&str>) -> tempfile::TempDir {
+        let fixture = tempdir().expect("fixture directory");
+        for index in 0..file_count {
+            let contents = if index == 0 {
+                matching_text.map_or_else(
+                    || format!("ordinary lifecycle fixture {index}\n"),
+                    |text| format!("{text} lifecycle fixture {index}\n"),
+                )
+            } else {
+                format!("ordinary lifecycle fixture {index}\n")
+            };
+            fs::write(fixture.path().join(format!("file-{index}.txt")), contents)
+                .expect("write lifecycle fixture file");
+        }
+        fixture
+    }
+
+    fn start_search_and_wait_until_running(engine: &mut ScooterEngine, query: &str) {
+        for character in query.chars() {
+            assert_eq!(engine.handle_key(&character.to_string(), 0), "rerender");
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let _ = engine.pump();
+            if matches!(
+                &engine.app.ui_state.current_screen,
+                Screen::SearchFields(state)
+                    if matches!(
+                        state.search_state.as_ref().map(|search| search.phase),
+                        Some(SearchPhase::Running { .. })
+                    )
+            ) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("search did not begin running");
     }
 
     fn wait_until_complete(engine: &mut ScooterEngine) {

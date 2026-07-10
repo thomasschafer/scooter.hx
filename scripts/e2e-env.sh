@@ -13,6 +13,7 @@ export HELIX_RUNTIME="$HOME/Development/helix/runtime"
 export FIXTURE_DIR="$REPO/.dev/fixtures/basic"
 export SEARCH_FIXTURE_DIR="$REPO/.dev/fixtures/search"
 export PREVIEW_FIXTURE_DIR="$REPO/.dev/fixtures/preview"
+export LIFECYCLE_FIXTURE_DIR="$REPO/.dev/fixtures/lifecycle"
 export HX_BINARY="$HOME/Development/helix/target/release/hx"
 
 if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
@@ -22,9 +23,12 @@ if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR"
+mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR" "$LIFECYCLE_FIXTURE_DIR"
 
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
+# A themed popup exposes accidental inheritance between the field, popup, and
+# border runs. Plain pane captures below remain independent of this setting.
+printf '%s\n' 'theme = "catppuccin_mocha"' > "$XDG_CONFIG_HOME/helix/config.toml"
 printf '%s\n' 'alpha: first fixture line' 'alpha: second fixture line' > "$FIXTURE_DIR/alpha.txt"
 printf '%s\n' 'bravo: a separate fixture' 'bravo: another fixture line' > "$FIXTURE_DIR/bravo.txt"
 printf '%s\n' '# Scooter S1 fixture' 'static, deterministic content' > "$FIXTURE_DIR/README.md"
@@ -58,14 +62,35 @@ e2e_assert_popup_border_has_uniform_style() {
     my $title = shift;
     while (my $line = <STDIN>) {
       next unless index($line, $title) >= 0;
-      my ($left, $right) = split(/\Q$title\E/, $line, 2);
-      # tmux preserves the terminal character-set controls in -e captures,
-      # so locate the title rather than trying to decode the box glyphs. A
-      # uniform border has one contiguous SGR prefix before the title and one
-      # after it (the latter restores the style outside the right border).
-      my @left_prefixes = ($left =~ /((?:\e\[[0-9;]*m)+)/g);
-      my @right_prefixes = ($right =~ /((?:\e\[[0-9;]*m)+)/g);
-      if (@left_prefixes != 1 || @right_prefixes != 1) {
+      my $title_at = index($line, $title);
+      my $before_title = substr($line, 0, $title_at);
+      # Find this popup top-left corner, rather than every style sequence
+      # from the terminal row. tmux may retain DEC special-graphics controls
+      # in an ANSI capture, hence the fallback for `ESC ( 0 l`.
+      my $corner = rindex($before_title, "\x{250c}");
+      $corner = rindex($before_title, "\e(0l") if $corner < 0;
+      if ($corner < 0) {
+        print STDERR "could not locate popup top-left corner\n";
+        exit 1;
+      }
+      my @style_starts;
+      while ($before_title =~ /(?:\e\[[0-9;]*m)+/g) {
+        push @style_starts, $-[0];
+      }
+      my ($style_start) = reverse grep { $_ <= $corner } @style_starts;
+      if (!defined $style_start) {
+        print STDERR "could not locate popup border style\n";
+        exit 1;
+      }
+      # The title intentionally retains the popup/content style, so drop the
+      # SGR sequence emitted immediately before it. From the popup corner
+      # through the cell before that title style, a uniform border is exactly
+      # one contiguous SGR sequence.
+      my $border_end = $before_title;
+      $border_end =~ s/(?:\e\[[0-9;]*m)+$//;
+      my $span = substr($line, $style_start, length($border_end) - $style_start);
+      my @prefixes = ($span =~ /((?:\e\[[0-9;]*m)+)/g);
+      if (@prefixes != 1) {
         print STDERR "popup border style changed within its span\n";
         exit 1;
       }

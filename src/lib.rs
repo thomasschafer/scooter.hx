@@ -7,7 +7,7 @@ mod view;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use abi_stable::std_types::RVec;
-use engine::ScooterEngine;
+use engine::{EngineAction, EngineResponse, ScooterEngine};
 use steel::{
     declare_module,
     rvals::Custom,
@@ -53,16 +53,30 @@ fn scooter_engine_new(directory: &str) -> Result<ScooterEngine, String> {
     )
 }
 
-fn scooter_handle_key(engine: &mut ScooterEngine, code: &str, modifiers: usize) -> String {
+fn scooter_handle_key(engine: &mut ScooterEngine, code: &str, modifiers: usize) -> FFIValue {
     ffi_guard(
         "Scooter-handle-key",
-        || engine.handle_key(code, modifiers),
-        || "rerender".to_string(),
+        || response_to_ffi(engine.handle_key(code, modifiers)),
+        || {
+            response_to_ffi(EngineResponse {
+                status: "rerender",
+                actions: Vec::new(),
+            })
+        },
     )
 }
 
-fn scooter_pump(engine: &mut ScooterEngine) -> String {
-    ffi_guard("Scooter-pump", || engine.pump(), || "idle".to_string())
+fn scooter_pump(engine: &mut ScooterEngine) -> FFIValue {
+    ffi_guard(
+        "Scooter-pump",
+        || response_to_ffi(engine.pump()),
+        || {
+            response_to_ffi(EngineResponse {
+                status: "idle",
+                actions: Vec::new(),
+            })
+        },
+    )
 }
 
 fn scooter_busy(engine: &ScooterEngine) -> bool {
@@ -109,6 +123,26 @@ fn frame_to_ffi(runs: Vec<Run>) -> FFIValue {
     FFIValue::from(frame)
 }
 
+/// Encode an engine result as `(status action...)`, where each action is its
+/// own simple list. Keep this portable wire format deliberately narrow: Steel
+/// only needs strings and integer line numbers to hand it to Helix in H3.
+fn response_to_ffi(response: EngineResponse) -> FFIValue {
+    let mut values = RVec::with_capacity(response.actions.len() + 1);
+    values.push(FFIValue::from(response.status.to_string()));
+    for action in response.actions {
+        let mut value = RVec::with_capacity(3);
+        match action {
+            EngineAction::OpenFile { path, line } => {
+                value.push(FFIValue::from("open-file".to_string()));
+                value.push(FFIValue::from(path.to_string_lossy().into_owned()));
+                value.push(FFIValue::from(line));
+            }
+        }
+        values.push(FFIValue::from(value));
+    }
+    FFIValue::from(values)
+}
+
 fn position_to_ffi(x: usize, y: usize) -> FFIValue {
     let mut position = RVec::with_capacity(2);
     position.push(FFIValue::from(x));
@@ -118,6 +152,15 @@ fn position_to_ffi(x: usize, y: usize) -> FFIValue {
 
 fn empty_frame() -> FFIValue {
     FFIValue::from(RVec::new())
+}
+
+#[cfg(test)]
+fn scooter_test_panic() -> FFIValue {
+    ffi_guard(
+        "Scooter-test-panic",
+        || panic!("intentional FFI panic for degradation coverage"),
+        empty_frame,
+    )
 }
 
 declare_module!(create_module);
@@ -140,4 +183,72 @@ fn build_module() -> FFIModule {
         .register_fn("Scooter-reset", scooter_reset)
         .register_fn("Scooter-quit", scooter_quit);
     module
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use scooter_core::app::Event;
+
+    use super::*;
+
+    #[test]
+    fn pump_encodes_status_followed_by_open_file_actions() {
+        let fixture = tempdir().expect("fixture directory");
+        let expected_path = fixture.path().join("selected.txt");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        engine
+            .app
+            .event_channels
+            .sender
+            .send(Event::LaunchEditor((expected_path.clone(), 23)))
+            .expect("engine event receiver lives");
+
+        let response = scooter_pump(&mut engine);
+        let FFIValue::Vector(response) = response else {
+            panic!("pump response must be a list");
+        };
+        assert_eq!(response.len(), 2);
+        assert!(matches!(
+            &response[0],
+            FFIValue::StringV(status) if status.as_str() == "rerender"
+        ));
+        let FFIValue::Vector(action) = &response[1] else {
+            panic!("pump action must be a list");
+        };
+        assert_eq!(action.len(), 3);
+        assert!(matches!(
+            &action[0],
+            FFIValue::StringV(name) if name.as_str() == "open-file"
+        ));
+        assert!(matches!(
+            &action[1],
+            FFIValue::StringV(path) if path.as_str() == expected_path.to_string_lossy()
+        ));
+        assert!(matches!(&action[2], FFIValue::IntV(23)));
+    }
+
+    #[test]
+    fn ffi_panic_degrades_and_later_calls_remain_safe_across_the_render_grid() {
+        assert!(matches!(scooter_test_panic(), FFIValue::Vector(values) if values.is_empty()));
+
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        let _ = scooter_handle_key(&mut engine, "h", 2);
+        for (width, height) in [(0, 0), (1, 1), (20, 5), (80, 24), (160, 45)] {
+            let _ = scooter_render(&mut engine, width, height);
+            let _ = scooter_pump(&mut engine);
+            let _ = scooter_busy(&engine);
+        }
+
+        let _ = scooter_handle_key(&mut engine, "esc", 0);
+        let _ = scooter_handle_key(&mut engine, "m", 4);
+        assert!(scooter_busy(&engine));
+        for (width, height) in [(0, 0), (1, 1), (20, 5), (80, 24), (160, 45)] {
+            let _ = scooter_render(&mut engine, width, height);
+            let _ = scooter_pump(&mut engine);
+            let _ = scooter_busy(&engine);
+        }
+    }
 }

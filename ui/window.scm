@@ -17,6 +17,7 @@
          scooter-window-render
          scooter-window-cursor
          scooter-window-event-handler
+         scooter-response-status
          start-scooter-poll-loop!)
 
 (struct ScooterWindowState (engine visible polling))
@@ -71,6 +72,10 @@
           "selection-secondary-excluded" (style-with-dim selection-excluded)
           "active" (safe-theme-scope "ui.text.focus" hint)
           "popup" popup
+          "popup-border" (style-with-explicit-colours
+                           diff-added
+                           foreground
+                           background-colour)
           "toast-border" (style-with-explicit-colours
                            diff-added
                            foreground
@@ -163,6 +168,21 @@
     [(key-event-delete? event) "delete"]
     [else #f]))
 
+;; Pump and key dispatch both return `(status action...)`. H3 will turn
+;; `open-file` into a Helix editor action; until then keep the queue visible in
+;; the Helix log instead of silently dropping it at the FFI boundary.
+(define (consume-scooter-action! action)
+  (when (equal? (car action) "open-file")
+    (log::info!
+     (string-append "scooter-hx: ignoring open-file until H3: "
+                    (list-ref action 1)
+                    ":"
+                    (number->string (list-ref action 2))))))
+
+(define (scooter-response-status response)
+  (for-each consume-scooter-action! (cdr response))
+  (car response))
+
 ;; Polling is owned by the component state: a closed component marks itself
 ;; invisible, so a delayed callback can never pump a hidden stale window.
 (define (start-scooter-poll-loop! state)
@@ -174,17 +194,19 @@
      (lambda ()
        (set-box! (ScooterWindowState-polling state) #f)
        (when (unbox (ScooterWindowState-visible state))
-         (Scooter-pump (ScooterWindowState-engine state))
+         (scooter-response-status
+          (Scooter-pump (ScooterWindowState-engine state)))
          (when (Scooter-busy? (ScooterWindowState-engine state))
            (start-scooter-poll-loop! state)))))))
 
-;; Returns the engine status string so the entry point can own session teardown.
+;; Returns the response status string so the entry point can own session teardown.
 (define (scooter-window-event-handler state event)
   (let ([code (event-code event)])
     (if code
-        (let ([status (Scooter-handle-key (ScooterWindowState-engine state)
-                                          code
-                                          (event-modifiers event))])
+        (let ([status (scooter-response-status
+                       (Scooter-handle-key (ScooterWindowState-engine state)
+                                           code
+                                           (event-modifiers event)))])
           (when (Scooter-busy? (ScooterWindowState-engine state))
             (start-scooter-poll-loop! state))
           status)
