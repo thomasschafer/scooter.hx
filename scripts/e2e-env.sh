@@ -31,6 +31,7 @@ printf '%s\n' '# Scooter S1 fixture' 'static, deterministic content' > "$FIXTURE
 printf '%s\n' 'alpha one' 'alphabet one' > "$SEARCH_FIXTURE_DIR/one.txt"
 printf '%s\n' 'alpha two' 'alphabet two' > "$SEARCH_FIXTURE_DIR/two.txt"
 printf '%s\n' 'alpha three' > "$SEARCH_FIXTURE_DIR/three.txt"
+printf '%s\n' '# Scooter E3 fixture' 'static, deterministic content' > "$SEARCH_FIXTURE_DIR/README.md"
 
 e2e_capture_pane() {
   tmux -L "$TMUX_SOCKET" capture-pane -p -t "$PANE_TARGET" -S - 2>/dev/null || true

@@ -169,18 +169,16 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use scooter_core::app::{Screen, SearchPhase};
+    use scooter_core::app::{FocussedSection, Screen, SearchPhase};
     use tempfile::tempdir;
 
     use super::ScooterEngine;
 
     #[test]
-    fn headless_live_search_renders_results_and_updates_the_active_field() {
+    fn headless_fields_renderer_reflects_search_checkbox_errors_and_collapse() {
         let fixture = tempdir().expect("fixture directory");
-        fs::write(fixture.path().join("one.txt"), "alpha one\nalphabet one\n")
-            .expect("write one");
-        fs::write(fixture.path().join("two.txt"), "alpha two\nalphabet two\n")
-            .expect("write two");
+        fs::write(fixture.path().join("one.txt"), "alpha one\nalphabet one\n").expect("write one");
+        fs::write(fixture.path().join("two.txt"), "alpha two\nalphabet two\n").expect("write two");
         fs::write(fixture.path().join("three.txt"), "alpha three\n").expect("write three");
 
         let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
@@ -205,6 +203,40 @@ mod tests {
             .map(|run| run.text)
             .collect::<String>();
         assert!(active.contains("Replace text"));
+
+        assert_eq!(engine.handle_key("tab", 0), "rerender");
+        assert_eq!(engine.handle_key(" ", 0), "rerender");
+        let checkbox_box = engine.render(100, 36);
+        assert!(checkbox_box.runs.iter().any(|run| run.text == " X "));
+
+        assert_eq!(engine.handle_key("enter", 0), "rerender");
+        assert!(matches!(
+            &engine.app.ui_state.current_screen,
+            Screen::SearchFields(state)
+                if state.focussed_section == FocussedSection::SearchResults
+        ));
+        let collapsed = joined_runs(&mut engine);
+        assert!(collapsed.contains("Search text"));
+        assert!(collapsed.contains("Replace text"));
+        assert!(!collapsed.contains("Fixed strings"));
+
+        let mut invalid_engine =
+            ScooterEngine::new(fixture.path()).expect("invalid engine initialises");
+        assert_eq!(invalid_engine.handle_key("(", 0), "rerender");
+        wait_until_invalid_search(&mut invalid_engine);
+        let invalid_frame = invalid_engine.render(100, 36);
+        assert!(
+            invalid_frame
+                .runs
+                .iter()
+                .any(|run| run.tag == "error" && run.text.contains("(Error: "))
+        );
+        assert!(
+            invalid_frame
+                .runs
+                .iter()
+                .any(|run| run.tag == "error" && run.text.contains("Invalid search"))
+        );
     }
 
     fn wait_until_complete(engine: &mut ScooterEngine) {
@@ -235,6 +267,22 @@ mod tests {
                     Some(SearchPhase::Complete { .. })
                 )
         )
+    }
+
+    fn wait_until_invalid_search(engine: &mut ScooterEngine) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let _ = engine.pump();
+            if matches!(
+                &engine.app.ui_state.current_screen,
+                Screen::SearchFields(_)
+                    if engine.app.search_fields.fields[0].error().is_some()
+            ) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("invalid search was not rendered");
     }
 
     fn joined_runs(engine: &mut ScooterEngine) -> String {
