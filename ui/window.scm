@@ -61,6 +61,7 @@
 ;;
 ;;   tag                             kind
 ;;   popup, popup-border, toast-border overlay: explicit fg + surface bg
+;;   preview                         overlay: explicit fg + editor bg
 ;;   text, dim, active, error, info    content: fg/modifiers; inherits fill
 ;;   diff-added, diff-added-emph       content: fg/modifiers; inherits fill
 ;;   diff-removed, diff-removed-emph   content: fg/modifiers; inherits fill
@@ -111,6 +112,10 @@
                     (safe-theme-style "ui.text.focus" hint)
                     foreground)
           "popup" popup
+          ;; The preview is intentionally editor-native rather than TUI-like:
+          ;; it fills only the preview rectangle with ui.background, while its
+          ;; content styles remain foreground-only patches over that fill.
+          "preview" (style-bg (style-fg text foreground) background-colour)
           "popup-border" (style-with-explicit-colours
                            diff-added
                            foreground

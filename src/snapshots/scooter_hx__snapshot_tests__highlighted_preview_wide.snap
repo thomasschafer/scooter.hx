@@ -7,16 +7,16 @@ canvas: 160x45
 01 |        │alpha                                                                                                                                         │        |
 02 |        └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘        |
 03 |        ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐        |
-04 |        │                                                                                                                                              │        |
+04 |        │OMEGA                                                                                                                                         │        |
 05 |        └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘        |
 06 |                                                                                                                                                                |
-07 |        Results: 4 [Search complete]                                                                                                [Time taken: TIME]        |
+07 |        Results: 1 [Search complete]                                                                                                [Time taken: TIME]        |
 08 |                                                                                                                                                                |
-09 |        [x] fixture.txt:1                                     (1)   alpha 1                                                                                     |
-10 |        [x] fixture.txt:2                                     (2)   alpha 2                                                                                     |
-11 |        [x] fixture.txt:3                                     (3) - alpha 3                                                                                     |
-12 |        [x] fixture.txt:4                                     (4) +  3                                                                                          |
-13 |                                                                    alpha 4                                                                                     |
+09 |        [x] fixture.rs:2                                      (1)   pub fn context_before_with_a_deliberately_long_name() { let value = 1; }                    |
+10 |                                                                  - let alpha = value;                                                                          |
+11 |                                                                  + let OMEGA = value;                                                                          |
+12 |                                                                    pub fn context_after() -> usize { 2 }                                                       |
+13 |                                                                                                                                                                |
 14 |                                                                                                                                                                |
 15 |                                                                                                                                                                |
 16 |                                                                                                                                                                |
@@ -53,14 +53,14 @@ tags:
 01: 8-14 text | 151-152 text
 02: 8-152 text
 03: 8-152 text
-04: 8-9 text | 151-152 text
+04: 8-14 text | 151-152 text
 05: 8-152 text
 07: 8-18 text | 18-36 diff-added | 132-152 diff-added
-09: 8-65 selection-secondary | 66-75 text | 75-152 preview
-10: 8-65 selection-secondary | 66-75 text | 75-152 preview
-11: 8-65 selection | 66-68 diff-removed | 68-73 diff-removed-emph | 73-75 diff-removed | 75-152 preview
-12: 8-12 info | 12-23 text | 23-25 info | 61-65 info | 66-70 diff-added | 70-152 preview
-13: 66-75 text | 75-152 preview
+09: 8-65 selection | 66-68 text | 68-71 s:keyword | 71-72 text | 72-74 s:keyword.function | 74-75 text | 75-119 s:function | 119-121 s:punctuation.bracket | 121-122 text | 122-123 s:punctuation.bracket | 123-124 text | 124-127 s:keyword.storage | 127-128 text | 128-133 s:variable | 133-134 text | 134-135 s:operator | 135-136 text | 136-137 s:constant.numeric.integer | 137-138 s:punctuation.delimiter | 138-139 text | 139-140 s:punctuation.bracket | 140-152 preview
+10: 66-72 diff-removed | 72-77 diff-removed-emph | 77-86 diff-removed | 86-152 preview
+11: 66-72 diff-added | 72-77 diff-added-emph | 77-86 diff-added | 86-152 preview
+12: 66-68 text | 68-71 s:keyword | 71-72 text | 72-74 s:keyword.function | 74-75 text | 75-88 s:function | 88-90 s:punctuation.bracket | 90-91 text | 91-93 s:operator | 93-94 text | 94-99 s:type.builtin | 99-100 text | 100-101 s:punctuation.bracket | 101-102 text | 102-103 s:constant.numeric.integer | 103-104 text | 104-105 s:punctuation.bracket | 105-152 preview
+13: 66-152 preview
 14: 66-152 preview
 15: 66-152 preview
 16: 66-152 preview

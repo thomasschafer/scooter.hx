@@ -18,6 +18,8 @@ pub(crate) enum StyleTag {
     SelectionSecondaryExcluded,
     Active,
     Popup,
+    /// Explicit editor-background fill for the preview pane.
+    Preview,
     PopupBorder,
     ToastBorder,
     Error,
@@ -42,6 +44,7 @@ impl StyleTag {
             Self::SelectionSecondaryExcluded => Cow::Borrowed("selection-secondary-excluded"),
             Self::Active => Cow::Borrowed("active"),
             Self::Popup => Cow::Borrowed("popup"),
+            Self::Preview => Cow::Borrowed("preview"),
             Self::PopupBorder => Cow::Borrowed("popup-border"),
             Self::ToastBorder => Cow::Borrowed("toast-border"),
             Self::Error => Cow::Borrowed("error"),

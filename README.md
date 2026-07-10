@@ -118,6 +118,7 @@ settings until then.
 ```scheme
 (scooter-set! 'multiline #t)
 (scooter-set! 'wrap-text #t)
+(scooter-set! 'syntax-highlighting #f)
 (scooter-set! 'window-size 0.85)
 (scooter-set! 'runtime-dir "/path/to/helix/runtime")
 (scooter-keys! "search.results.move_down" '("j" "down"))
@@ -136,6 +137,7 @@ same setting win.
 | `include-git-folders` | boolean | `#f` | Search Git metadata directories. |
 | `escape-sequences` | boolean | `#f` | Interpret `\\n`, `\\t`, and `\\\\` in replacement text. |
 | `wrap-text` | boolean | `#f` | Wrap long preview lines. |
+| `syntax-highlighting` | boolean | `#t` | Highlight preview context using Helix grammars. |
 | `window-size` | number, `0.5`–`1.0` | `0.9` | Set the window size as a terminal ratio. |
 | `runtime-dir` | string path | Helix runtime discovery | Override the runtime used for preview syntax grammars. |
 
@@ -157,8 +159,7 @@ action's first binding only when it is an unmodified character key.
 
 ## Differences from the Scooter TUI
 
-- Preview syntax highlighting is not implemented yet; previews use plain text
-  with Helix-theme diff styling. See the [planned future work](docs/REWRITE-PLAN.md#future-work-post-v1).
+- Preview context uses Helix grammar highlighting and the editor background rather than the TUI preview surface; diff lines retain Helix-theme diff styling.
 - Scooter's TOML `editor_open` configuration does not apply. scooter.hx
   always opens results in Helix.
 - `esc` hides the plugin window when it would otherwise be unhandled; in the

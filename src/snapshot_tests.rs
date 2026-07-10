@@ -161,8 +161,12 @@ fn assert_frame(engine: &mut ScooterEngine, name: &str, size: (usize, usize)) {
 }
 
 fn engine_with_fixture(contents: &str) -> (TempDir, ScooterEngine) {
+    engine_with_named_fixture("fixture.txt", contents)
+}
+
+fn engine_with_named_fixture(name: &str, contents: &str) -> (TempDir, ScooterEngine) {
     let fixture = tempdir().expect("fixture directory");
-    fs::write(fixture.path().join("fixture.txt"), contents).expect("write fixture");
+    fs::write(fixture.path().join(name), contents).expect("write fixture");
     let engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
     (fixture, engine)
 }
@@ -339,6 +343,30 @@ fn previews_cover_single_line_multiline_and_wrapping() {
     press(&mut engine, "l", 2);
     wait_until_toast_dismissed(&mut engine);
     assert_frame(&mut engine, "preview_wrapping_on", STANDARD_SIZE);
+}
+
+#[test]
+fn highlighted_rust_preview_snapshots_and_cache() {
+    let source = concat!(
+        "pub fn context_before_with_a_deliberately_long_name() { let value = 1; }\n",
+        "let alpha = value;\n",
+        "pub fn context_after() -> usize { 2 }\n",
+    );
+    let (_fixture, mut engine) = engine_with_named_fixture("fixture.rs", source);
+    search_with_replacement(&mut engine, "alpha", "OMEGA");
+
+    let wide = engine.render(WIDE_SIZE.0, WIDE_SIZE.1);
+    assert!(wide.runs.iter().any(|run| run.tag.as_str().starts_with("s:")));
+    let highlight_computations = engine.highlight_computations();
+    let _ = engine.render(WIDE_SIZE.0, WIDE_SIZE.1);
+    assert_eq!(engine.highlight_computations(), highlight_computations);
+    assert_frame(&mut engine, "highlighted_preview_wide", WIDE_SIZE);
+    assert_frame(&mut engine, "highlighted_preview_narrow", STANDARD_SIZE);
+
+    press(&mut engine, "l", 2);
+    wait_until_toast_dismissed(&mut engine);
+    assert_frame(&mut engine, "highlighted_preview_wrapping", STANDARD_SIZE);
+
 }
 
 #[test]

@@ -57,9 +57,9 @@ pub(crate) struct ScooterEngine {
     pub(crate) app: App,
     window_size: f64,
     actions: VecDeque<EngineAction>,
-    // SH2 will consume this while building preview context lines. Keeping it
-    // per session lets the LRU serve repeated preview renders immediately.
-    _highlight_engine: HighlightEngine,
+    // Keeping this per session lets repeated preview renders share the LRU.
+    highlight_engine: HighlightEngine,
+    syntax_highlighting: bool,
 }
 
 impl ScooterEngine {
@@ -91,7 +91,8 @@ impl ScooterEngine {
             app,
             window_size: options.window_size,
             actions: VecDeque::new(),
-            _highlight_engine: highlight_engine,
+            highlight_engine,
+            syntax_highlighting: options.syntax_highlighting,
         })
     }
 
@@ -192,7 +193,18 @@ impl ScooterEngine {
         if self.active_runtime().is_none() {
             return view::Frame::default();
         }
-        view::render(&mut self.app, width, height)
+        view::render(
+            &mut self.app,
+            &self.highlight_engine,
+            self.syntax_highlighting,
+            width,
+            height,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn highlight_computations(&self) -> usize {
+        self.highlight_engine.highlight_computations()
     }
 
     pub(crate) fn cursor(&self, width: usize, height: usize) -> Option<(usize, usize)> {
@@ -1168,6 +1180,9 @@ mod tests {
     fn rendered_rows(engine: &mut ScooterEngine, width: usize, height: usize) -> Vec<String> {
         let mut rows = std::collections::BTreeMap::<usize, Vec<_>>::new();
         for run in engine.render(width, height).runs {
+            if run.tag == StyleTag::Preview {
+                continue;
+            }
             rows.entry(run.y).or_default().push(run);
         }
         rows.into_values()

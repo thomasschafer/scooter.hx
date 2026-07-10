@@ -13,6 +13,7 @@ export HELIX_RUNTIME="$HOME/Development/helix/runtime"
 export FIXTURE_DIR="$REPO/.dev/fixtures/basic"
 export SEARCH_FIXTURE_DIR="$REPO/.dev/fixtures/search"
 export PREVIEW_FIXTURE_DIR="$REPO/.dev/fixtures/preview"
+export RUST_PREVIEW_FIXTURE_DIR="$REPO/.dev/fixtures/preview-rust"
 export LIFECYCLE_FIXTURE_DIR="$REPO/.dev/fixtures/lifecycle"
 export HX_BINARY="$HOME/Development/helix/target/release/hx"
 export E2E_THEME="${E2E_THEME:-catppuccin_mocha}"
@@ -24,7 +25,7 @@ if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR" "$LIFECYCLE_FIXTURE_DIR"
+mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR" "$RUST_PREVIEW_FIXTURE_DIR" "$LIFECYCLE_FIXTURE_DIR"
 
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
 # A themed popup exposes accidental inheritance between the field, popup, and
@@ -46,6 +47,12 @@ printf '%s\n' \
   'preview context between results' \
   'alpha second result' \
   'preview context after second result' > "$PREVIEW_FIXTURE_DIR/preview.txt"
+rm -f "$PREVIEW_FIXTURE_DIR/preview.rs"
+printf '%s\n' \
+  'pub fn preview_context_before() { let number = 42; }' \
+  'let alpha = number;' \
+  'pub fn preview_context_after() -> usize { 7 }' > "$RUST_PREVIEW_FIXTURE_DIR/preview.rs"
+rm -f "$RUST_PREVIEW_FIXTURE_DIR/large.rs"
 
 e2e_capture_pane() {
   tmux -L "$TMUX_SOCKET" capture-pane -p -t "$PANE_TARGET" -S - 2>/dev/null || true

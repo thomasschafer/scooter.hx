@@ -25,7 +25,9 @@ use tree_house::{
 };
 use tree_house_bindings::Grammar;
 
-const MAX_CONTENT_BYTES: usize = 512 * 1024;
+/// The largest file preview rendering reads in full for syntax highlighting.
+/// Larger files retain the inexpensive windowed preview path.
+pub(crate) const MAX_CONTENT_BYTES: usize = 512 * 1024;
 const PARSE_TIMEOUT: Duration = Duration::from_millis(100);
 const CACHE_CAPACITY: usize = 16;
 
@@ -44,6 +46,8 @@ pub struct HighlightEngine {
     loader: Option<RuntimeLoader>,
     cache: Mutex<LruCache<CacheKey, Arc<[HighlightSpan]>>>,
     timeout_paths: Mutex<HashSet<PathBuf>>,
+    #[cfg(test)]
+    highlight_computations: std::sync::atomic::AtomicUsize,
 }
 
 impl HighlightEngine {
@@ -58,6 +62,8 @@ impl HighlightEngine {
                 NonZeroUsize::new(CACHE_CAPACITY).expect("non-zero cache capacity"),
             )),
             timeout_paths: Mutex::new(HashSet::new()),
+            #[cfg(test)]
+            highlight_computations: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -78,6 +84,9 @@ impl HighlightEngine {
         }
 
         let source = Rope::from_str(content);
+        #[cfg(test)]
+        self.highlight_computations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let syntax = match Syntax::new(source.slice(..), language, PARSE_TIMEOUT, loader) {
             Ok(syntax) => syntax,
             Err(TreeHouseError::Timeout) => {
@@ -118,6 +127,12 @@ impl HighlightEngine {
     #[cfg(test)]
     fn with_runtime(runtime: PathBuf) -> Self {
         Self::new(Some(runtime))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn highlight_computations(&self) -> usize {
+        self.highlight_computations
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn log_timeout_once(&self, path: &Path) {

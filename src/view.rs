@@ -1,6 +1,8 @@
 //! Native frame model for Scooter's search-fields screen.
 
-use std::{cmp::min, path::Path, sync::atomic::Ordering};
+use std::{cmp::min, fs, path::Path, sync::{Arc, atomic::Ordering}};
+
+use crate::highlight::{HighlightEngine, HighlightSpan, MAX_CONTENT_BYTES};
 
 use scooter_core::{
     app::{App, FocussedSection, InputSource, Popup, Screen, SearchPhase, SearchState},
@@ -55,11 +57,27 @@ struct PreviewSections {
     after: Vec<PreviewLine>,
 }
 
-type IndexedLine = (usize, String);
+#[derive(Debug, Clone)]
+struct IndexedLine {
+    number: usize,
+    text: String,
+    byte_offset: Option<usize>,
+}
 type ContextLines = Vec<IndexedLine>;
 
+struct PreviewRead {
+    lines: ContextLines,
+    spans: Option<Arc<[HighlightSpan]>>,
+}
+
 /// Render Scooter's active screen plus its footer and transient overlays.
-pub(crate) fn render(app: &mut App, width: usize, height: usize) -> Frame {
+pub(crate) fn render(
+    app: &mut App,
+    highlight_engine: &HighlightEngine,
+    syntax_highlighting: bool,
+    width: usize,
+    height: usize,
+) -> Frame {
     let mut frame = Frame::default();
     if width == 0 || height == 0 {
         return frame;
@@ -111,6 +129,8 @@ pub(crate) fn render(app: &mut App, width: usize, height: usize) -> Frame {
                         &mut frame.runs,
                         input_source,
                         wrap_preview_text,
+                        highlight_engine,
+                        syntax_highlighting,
                         search_fields_state.focussed_section == FocussedSection::SearchResults,
                         search_state,
                         replacements_in_progress,
@@ -977,6 +997,8 @@ fn render_results(
     runs: &mut Vec<Run>,
     input_source: &InputSource,
     wrap_preview_text: bool,
+    highlight_engine: &HighlightEngine,
+    syntax_highlighting: bool,
     results_focussed: bool,
     search_state: &mut SearchState,
     replacements_in_progress: Option<(usize, usize)>,
@@ -1084,6 +1106,19 @@ fn render_results(
     if preview_width == 0 || preview_height == 0 {
         return;
     }
+    // This deliberately uses the editor background rather than the popup
+    // surface. Context, scopes, and diff text inherit this fill.
+    for row in 0..preview_height {
+        add_run(
+            runs,
+            preview_x,
+            preview_y + row,
+            &" ".repeat(preview_width),
+            StyleTag::Preview,
+            preview_x + preview_width,
+            height,
+        );
+    }
     if let Some(selected) = search_state
         .results
         .get(search_state.primary_selected_pos())
@@ -1093,6 +1128,8 @@ fn render_results(
             input_source,
             selected,
             wrap_preview_text,
+            highlight_engine,
+            syntax_highlighting,
             preview_x,
             preview_y,
             preview_width,
@@ -1245,6 +1282,8 @@ fn render_preview(
     input_source: &InputSource,
     result: &SearchResultWithReplacement,
     wrap_text: bool,
+    highlight_engine: &HighlightEngine,
+    syntax_highlighting: bool,
     x: usize,
     y: usize,
     width: usize,
@@ -1264,7 +1303,13 @@ fn render_preview(
         return;
     }
 
-    let preview = match build_preview_sections(input_source, result, height) {
+    let preview = match build_preview_sections(
+        input_source,
+        result,
+        height,
+        highlight_engine,
+        syntax_highlighting,
+    ) {
         Ok(preview) => preview,
         Err(error) => {
             add_run(
@@ -1300,34 +1345,43 @@ fn build_preview_sections(
     input_source: &InputSource,
     result: &SearchResultWithReplacement,
     preview_height: usize,
+    highlight_engine: &HighlightEngine,
+    syntax_highlighting: bool,
 ) -> Result<PreviewSections, String> {
     let diff = diff_lines(result);
     let context_height = preview_height
         .saturating_sub(diff.len().saturating_sub(1))
         .max(1);
     let line_index = result.search_result.start_line_number().saturating_sub(1);
-    let indexed_lines = read_preview_window(input_source, result, line_index, preview_height)?;
-    let selected_position = indexed_lines
+    let preview_read = read_preview_window(
+        input_source,
+        result,
+        line_index,
+        preview_height,
+        highlight_engine,
+        syntax_highlighting,
+    )?;
+    let selected_position = preview_read.lines
         .iter()
-        .position(|(index, _)| *index == line_index)
+        .position(|line| line.number == line_index)
         .ok_or_else(|| "File content has changed".to_string())?;
     let expected = expected_first_line_content(result);
-    if indexed_lines[selected_position].1 != expected {
+    if preview_read.lines[selected_position].text != expected {
         return Err("File content has changed".to_string());
     }
 
-    let (before, after) = centered_context_lines(indexed_lines, selected_position, context_height);
+    let (before, after) = centered_context_lines(preview_read.lines, selected_position, context_height);
     let end_line_index = result.search_result.end_line_number().saturating_sub(1);
     Ok(PreviewSections {
         before: before
             .into_iter()
-            .map(|(number, text)| context_preview_line(number, &text))
+            .map(|line| context_preview_line(&line, preview_read.spans.as_deref()))
             .collect(),
         diff,
         after: after
             .into_iter()
-            .filter(|(number, _)| *number > end_line_index)
-            .map(|(number, text)| context_preview_line(number, &text))
+            .filter(|line| line.number > end_line_index)
+            .map(|line| context_preview_line(&line, preview_read.spans.as_deref()))
             .collect(),
     })
 }
@@ -1337,7 +1391,9 @@ fn read_preview_window(
     result: &SearchResultWithReplacement,
     line_index: usize,
     preview_height: usize,
-) -> Result<Vec<(usize, String)>, String> {
+    highlight_engine: &HighlightEngine,
+    syntax_highlighting: bool,
+) -> Result<PreviewRead, String> {
     let start = line_index.saturating_sub(preview_height);
     let end = line_index.saturating_add(preview_height);
     match input_source {
@@ -1347,17 +1403,58 @@ fn read_preview_window(
                 .path
                 .as_deref()
                 .ok_or_else(|| "Missing file path for preview".to_string())?;
-            let lines = read_lines_range(path, start, end).map_err(|error| error.to_string())?;
-            Ok(lines.collect())
+            if syntax_highlighting
+                && fs::metadata(path)
+                    .map(|metadata| metadata.len() <= MAX_CONTENT_BYTES as u64)
+                    .unwrap_or(false)
+            {
+                // Read once: this supplies both the visible context and the
+                // complete source Tree-sitter needs for correct parsing.
+                let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+                let spans = highlight_engine.highlight(path, &content);
+                let lines = indexed_full_lines(&content)
+                    .into_iter()
+                    .skip(start)
+                    .take(end.saturating_sub(start).saturating_add(1))
+                    .collect();
+                return Ok(PreviewRead { lines, spans });
+            }
+            let lines = read_lines_range(path, start, end)
+                .map_err(|error| error.to_string())?
+                .map(|(number, text)| IndexedLine {
+                    number,
+                    text,
+                    byte_offset: None,
+                })
+                .collect();
+            Ok(PreviewRead { lines, spans: None })
         }
-        InputSource::Stdin(stdin) => Ok(stdin
-            .lines()
-            .enumerate()
-            .skip(start)
-            .take(end.saturating_sub(start).saturating_add(1))
-            .map(|(number, text)| (number, text.to_string()))
-            .collect()),
+        InputSource::Stdin(stdin) => Ok(PreviewRead {
+            lines: stdin.lines().enumerate().skip(start)
+                .take(end.saturating_sub(start).saturating_add(1))
+                .map(|(number, text)| IndexedLine {
+                    number,
+                    text: text.to_string(),
+                    byte_offset: None,
+                })
+                .collect(),
+            spans: None,
+        }),
     }
+}
+
+fn indexed_full_lines(content: &str) -> ContextLines {
+    content.split_inclusive('\n').scan(0usize, |byte_offset, raw_line| {
+        let offset = *byte_offset;
+        *byte_offset = byte_offset.saturating_add(raw_line.len());
+        let without_newline = raw_line.strip_suffix('\n').unwrap_or(raw_line);
+        let text = without_newline.strip_suffix('\r').unwrap_or(without_newline);
+        Some((offset, text.to_string()))
+    }).enumerate().map(|(number, (byte_offset, text))| IndexedLine {
+        number,
+        text,
+        byte_offset: Some(byte_offset),
+    }).collect()
 }
 
 fn centered_context_lines(
@@ -1397,11 +1494,43 @@ fn expected_first_line_content(result: &SearchResultWithReplacement) -> &str {
     }
 }
 
-fn context_preview_line(_number: usize, text: &str) -> PreviewLine {
-    let mut line = PreviewLine::default();
-    push_preview_segment(&mut line, "  ", StyleTag::Text);
-    push_preview_segment(&mut line, text, StyleTag::Text);
-    line
+fn context_preview_line(source: &IndexedLine, spans: Option<&[HighlightSpan]>) -> PreviewLine {
+    let mut preview_line = PreviewLine::default();
+    push_preview_segment(&mut preview_line, "  ", StyleTag::Text);
+    let Some(byte_offset) = source.byte_offset else {
+        push_preview_segment(&mut preview_line, &source.text, StyleTag::Text);
+        return preview_line;
+    };
+    let Some(spans) = spans else {
+        push_preview_segment(&mut preview_line, &source.text, StyleTag::Text);
+        return preview_line;
+    };
+    let line_end = byte_offset.saturating_add(source.text.len());
+    let mut position = byte_offset;
+    for span in spans {
+        let start = span.byte_range.start.max(byte_offset);
+        let end = span.byte_range.end.min(line_end);
+        if start >= end || start < position {
+            continue;
+        }
+        push_preview_segment(
+            &mut preview_line,
+            &source.text[position.saturating_sub(byte_offset)..start.saturating_sub(byte_offset)],
+            StyleTag::Text,
+        );
+        push_preview_segment(
+            &mut preview_line,
+            &source.text[start.saturating_sub(byte_offset)..end.saturating_sub(byte_offset)],
+            StyleTag::Scope(Arc::clone(&span.scope)),
+        );
+        position = end;
+    }
+    push_preview_segment(
+        &mut preview_line,
+        &source.text[position.saturating_sub(byte_offset)..],
+        StyleTag::Text,
+    );
+    preview_line
 }
 
 fn diff_lines(result: &SearchResultWithReplacement) -> Vec<PreviewLine> {
@@ -1718,7 +1847,7 @@ mod tests {
     use crate::engine::ScooterEngine;
 
     use super::{
-        Frame, PopupLine, StyleTag, context_preview_line, diff_lines, display_width,
+        Frame, IndexedLine, PopupLine, StyleTag, context_preview_line, diff_lines, display_width,
         render_paragraph_popup, render_results_tallies, truncate,
     };
 
@@ -1807,7 +1936,14 @@ mod tests {
 
     #[test]
     fn context_preview_lines_use_a_two_space_prefix_without_line_numbers() {
-        let line = context_preview_line(41, "context text");
+        let line = context_preview_line(
+            &IndexedLine {
+                number: 41,
+                text: "context text".to_string(),
+                byte_offset: None,
+            },
+            None,
+        );
         assert_eq!(
             line.segments
                 .iter()

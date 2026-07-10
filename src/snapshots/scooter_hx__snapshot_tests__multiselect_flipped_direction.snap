@@ -56,9 +56,39 @@ tags:
 04: 8-9 text | 151-152 text
 05: 8-152 text
 07: 8-18 text | 18-36 diff-added | 132-152 diff-added
-09: 8-65 selection | 66-68 diff-removed | 68-73 diff-removed-emph | 73-75 diff-removed
-10: 8-65 selection-secondary | 66-70 diff-added
-11: 8-65 selection-secondary | 66-75 text
-12: 8-12 info | 12-23 text | 23-25 info | 61-65 info | 66-75 text
-13: 66-75 text
+09: 8-65 selection | 66-68 diff-removed | 68-73 diff-removed-emph | 73-75 diff-removed | 75-152 preview
+10: 8-65 selection-secondary | 66-70 diff-added | 70-152 preview
+11: 8-65 selection-secondary | 66-75 text | 75-152 preview
+12: 8-12 info | 12-23 text | 23-25 info | 61-65 info | 66-75 text | 75-152 preview
+13: 66-75 text | 75-152 preview
+14: 66-152 preview
+15: 66-152 preview
+16: 66-152 preview
+17: 66-152 preview
+18: 66-152 preview
+19: 66-152 preview
+20: 66-152 preview
+21: 66-152 preview
+22: 66-152 preview
+23: 66-152 preview
+24: 66-152 preview
+25: 66-152 preview
+26: 66-152 preview
+27: 66-152 preview
+28: 66-152 preview
+29: 66-152 preview
+30: 66-152 preview
+31: 66-152 preview
+32: 66-152 preview
+33: 66-152 preview
+34: 66-152 preview
+35: 66-152 preview
+36: 66-152 preview
+37: 66-152 preview
+38: 66-152 preview
+39: 66-152 preview
+40: 66-152 preview
+41: 66-152 preview
+42: 66-152 preview
+43: 66-152 preview
 44: 31-128 info

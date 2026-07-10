@@ -69,9 +69,14 @@ tags:
 24: 6-10 info | 10-21 text | 21-23 info | 110-114 info
 25: 6-10 info | 10-21 text | 21-23 info | 110-114 info
 26: 6-10 info | 10-21 text | 21-23 info | 110-114 info
-30: 6-8 diff-removed | 8-13 diff-removed-emph | 13-17 diff-removed
-31: 6-12 diff-added
-32: 6-17 text
-33: 6-19 text
+30: 6-8 diff-removed | 8-13 diff-removed-emph | 13-17 diff-removed | 17-114 preview
+31: 6-12 diff-added | 12-114 preview
+32: 6-17 text | 17-114 preview
+33: 6-19 text | 19-114 preview
+34: 6-114 preview
+35: 6-114 preview
+36: 6-114 preview
+37: 6-114 preview
+38: 6-114 preview
 39: 19-101 info
 cursor: 12,1

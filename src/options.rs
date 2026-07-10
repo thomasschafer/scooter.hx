@@ -67,6 +67,7 @@ pub(crate) struct EngineOptions {
     pub(crate) config: Config,
     pub(crate) window_size: f64,
     pub(crate) runtime_dir: Option<PathBuf>,
+    pub(crate) syntax_highlighting: bool,
 }
 
 impl Default for EngineOptions {
@@ -76,6 +77,7 @@ impl Default for EngineOptions {
             config: Config::default(),
             window_size: DEFAULT_WINDOW_SIZE,
             runtime_dir: None,
+            syntax_highlighting: true,
         }
     }
 }
@@ -105,6 +107,7 @@ impl EngineOptions {
                 self.run_config.interpret_escape_sequences = boolean(&key, &value)?;
             }
             "preview.wrap-text" => self.config.preview.wrap_text = boolean(&key, &value)?,
+            "preview.syntax-highlighting" => self.syntax_highlighting = boolean(&key, &value)?,
             "window.size" => self.window_size = window_size(&key, &value)?,
             "highlight.runtime-dir" => self.runtime_dir = Some(runtime_dir(&key, value)?),
             _ if key.starts_with("keys.") => self.apply_key_binding(&key, value)?,
@@ -255,6 +258,7 @@ mod tests {
         assert!(!options.run_config.multiline);
         assert!(!options.run_config.include_hidden);
         assert!(!options.config.preview.wrap_text);
+        assert!(options.syntax_highlighting);
         assert!((options.window_size - DEFAULT_WINDOW_SIZE).abs() < f64::EPSILON);
         assert!(
             options
@@ -277,6 +281,7 @@ mod tests {
             OptionEntry::boolean("search.include-git-folders", true),
             OptionEntry::boolean("search.escape-sequences", true),
             OptionEntry::boolean("preview.wrap-text", true),
+            OptionEntry::boolean("preview.syntax-highlighting", false),
             OptionEntry::number("window.size", 0.75),
             OptionEntry::string("highlight.runtime-dir", "/tmp/helix-runtime"),
         ])
@@ -288,6 +293,7 @@ mod tests {
         assert!(options.run_config.include_git_folders);
         assert!(options.run_config.interpret_escape_sequences);
         assert!(options.config.preview.wrap_text);
+        assert!(!options.syntax_highlighting);
         assert_eq!(
             options.runtime_dir.as_deref(),
             Some(std::path::Path::new("/tmp/helix-runtime"))
