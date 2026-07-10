@@ -54,20 +54,17 @@ Statuses: todo / in progress / in review / done. Each chunk has a spec in `docs/
 | S1 | Toolchain spike: dylib skeleton on steel-core 0.8.2 rev, static styled runs blitted in a popup with theme-scope styles, key round-trip, e2e tmux harness script | done |
 | S2 | App embedded: tokio runtime, handle-key/pump/busy?, minimal fields view, live search visible in hx (milestone: Tom tries it) | done |
 | U1 | Upstream scooter branch: try_recv, esc introspection, misc pub accessors | todo |
-| E1 | Config bridge: Steel config API -> core Config/AppRunConfig, keymap parsing + conflict surfacing | todo |
-| E2 | Key decode/dispatch: full Steel event -> KeyCode/Modifiers mapping, esc/hide/quit semantics | todo |
 | E3 | Renderer: search fields screen (fields, errors, cursor, collapse behaviour, TUI-style checkboxes, size responsiveness) | done |
 | E4 | Renderer: results list + preview (context lines, single/multiline diffs, wrapping, preview errors) | done |
 | E5 | Renderer: footer hints, popups (error/help/text), toasts, performing-replacement + results screens | done |
 | F1 | TUI parity fixes from milestone review: no preview line numbers (2-space context prefix), right-aligned (n) result indices in list rows, red/blue selection split for excluded/included rows, selection only when results focussed, " Scooter " window border title, plus popup colour-bleed fix (explicit fg/bg on overlay styles) | done |
 | E6 | Pump/session lifecycle: busy?, action queue, reset/cancel-all, hide/resume correctness, green popup borders, themed border e2e | done |
-| E7 | Headless test suite: key-sequence-driven insta snapshots of rendered runs against fixture dirs, ported scenarios from scooter's tests | todo |
-| H1 | Steel shim: component/window, blit, poll loop, cursor | todo |
-| H2 | Steel commands + session + config surface (`:scooter`, `:scooter-new`, `scooter-keys!`, `scooter-set!`) | todo |
+| E7 | Headless frame snapshot suite (insta) over engine render output | in progress |
+| C1 | Steel config surface (`scooter-set!`, `scooter-keys!`) + full key decode table (absorbs old E1/E2/H2; H1 was absorbed by S1-F1) | todo |
 | H3 | Helix behaviours: open in editor (fg/bg), reload non-dirty docs after replace | todo |
 | P | Polish: README, cog.scm, CI (test + release workflows), delete dead code, swap path deps for released scooter-core | todo |
 
-Sequencing: S1 -> S2 are strictly first. U1 can start once S2 confirms the exact upstream surface needed. E1-E7 depend on S2; H1-H3 depend on E-chunks landing; P last. E3/E4/E5 are parallelisable in principle but run sequentially to keep review load sane.
+Sequencing (updated): remaining order is E7 -> C1 -> H3 -> P. The original E1/E2/H1/H2 rows were absorbed: H1 (Steel shim) landed incrementally across S1-F1; E1+E2+H2 merged into C1. U1 so far needs only try_recv (already on the scooter branch).
 
 ## Validation
 
