@@ -3,3 +3,5 @@
 target/
 
 libscooter_hx.dylib
+
+.dev/
