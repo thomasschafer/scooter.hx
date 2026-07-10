@@ -56,8 +56,8 @@ Statuses: todo / in progress / in review / done. Each chunk has a spec in `docs/
 | U1 | Upstream scooter branch: try_recv, esc introspection, misc pub accessors | todo |
 | E1 | Config bridge: Steel config API -> core Config/AppRunConfig, keymap parsing + conflict surfacing | todo |
 | E2 | Key decode/dispatch: full Steel event -> KeyCode/Modifiers mapping, esc/hide/quit semantics | todo |
-| E3 | Renderer: search fields screen (fields, errors, cursor, collapse behaviour, TUI-style checkboxes, size responsiveness) | in progress |
-| E4 | Renderer: results list + preview (context lines, single/multiline diffs, wrapping, preview errors) | todo |
+| E3 | Renderer: search fields screen (fields, errors, cursor, collapse behaviour, TUI-style checkboxes, size responsiveness) | done |
+| E4 | Renderer: results list + preview (context lines, single/multiline diffs, wrapping, preview errors) | in progress |
 | E5 | Renderer: banner, footer hints, popups (error/help/text), toasts, performing-replacement + results screens | todo |
 | E6 | Pump/session lifecycle: busy?, action queue, reset/cancel-all, hide/resume correctness | todo |
 | E7 | Headless test suite: key-sequence-driven insta snapshots of rendered runs against fixture dirs, ported scenarios from scooter's tests | todo |
