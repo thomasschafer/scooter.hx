@@ -30,7 +30,7 @@ run() {
   "$TCBIN/cargo" "$@"
 }
 
-run build --all-targets
-run clippy --all-targets -- -D warnings
-run test
+run build --workspace --all-targets
+run clippy --workspace --all-targets -- -D warnings
+run test --workspace
 echo "All checks passed ($("$RUSTC" --version))"

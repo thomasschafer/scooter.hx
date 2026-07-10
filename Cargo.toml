@@ -6,7 +6,11 @@ rust-version = "1.89"
 
 [lib]
 name = "scooter_hx"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[workspace]
+members = ["xtask"]
+resolver = "3"
 
 [dependencies]
 abi_stable = "0.11.1"

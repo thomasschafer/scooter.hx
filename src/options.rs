@@ -10,6 +10,128 @@ use scooter_core::{
 
 pub(crate) const DEFAULT_WINDOW_SIZE: f64 = 0.9;
 
+/// A `scooter-set!` option. This table is the single source of truth for the
+/// public symbol, its FFI wire path, validation, defaults, and README docs.
+#[derive(Debug, Clone, Copy)]
+pub struct OptionSpec {
+    /// Symbol accepted by `scooter-set!`, without its leading quote.
+    pub symbol: &'static str,
+    /// Internal `(key value)` path sent from Steel to Rust.
+    pub wire_path: &'static str,
+    /// Human-readable value type for the generated README.
+    pub value_type: &'static str,
+    /// Human-readable default for the generated README.
+    pub default: &'static str,
+    /// Concise user-facing description for the generated README.
+    pub description: &'static str,
+    default_value: DefaultValue,
+    apply: fn(&mut EngineOptions, &str, &OptionValue) -> Result<(), String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DefaultValue {
+    Bool(bool),
+    Number(f64),
+    RuntimeDiscovery,
+}
+
+const OPTION_SPECS: &[OptionSpec] = &[
+    OptionSpec {
+        symbol: "multiline",
+        wire_path: "search.multiline",
+        value_type: "boolean",
+        default: "`#f`",
+        description: "Allow search patterns to match across line boundaries.",
+        default_value: DefaultValue::Bool(false),
+        apply: set_multiline,
+    },
+    OptionSpec {
+        symbol: "hidden",
+        wire_path: "search.hidden",
+        value_type: "boolean",
+        default: "`#f`",
+        description: "Include hidden files and directories.",
+        default_value: DefaultValue::Bool(false),
+        apply: set_hidden,
+    },
+    OptionSpec {
+        symbol: "advanced-regex",
+        wire_path: "search.advanced-regex",
+        value_type: "boolean",
+        default: "`#f`",
+        description: "Enable Scooter's advanced regular-expression engine.",
+        default_value: DefaultValue::Bool(false),
+        apply: set_advanced_regex,
+    },
+    OptionSpec {
+        symbol: "include-git-folders",
+        wire_path: "search.include-git-folders",
+        value_type: "boolean",
+        default: "`#f`",
+        description: "Search Git metadata directories as well as normal files.",
+        default_value: DefaultValue::Bool(false),
+        apply: set_include_git_folders,
+    },
+    OptionSpec {
+        symbol: "escape-sequences",
+        wire_path: "search.escape-sequences",
+        value_type: "boolean",
+        default: "`#f`",
+        description: "Interpret `\\n`, `\\t`, and `\\\\` in replacement text.",
+        default_value: DefaultValue::Bool(false),
+        apply: set_escape_sequences,
+    },
+    OptionSpec {
+        symbol: "wrap-text",
+        wire_path: "preview.wrap-text",
+        value_type: "boolean",
+        default: "`#f`",
+        description: "Wrap long preview lines.",
+        default_value: DefaultValue::Bool(false),
+        apply: set_wrap_text,
+    },
+    OptionSpec {
+        symbol: "syntax-highlighting",
+        wire_path: "preview.syntax-highlighting",
+        value_type: "boolean",
+        default: "`#t`",
+        description: "Highlight preview context with Helix grammars.",
+        default_value: DefaultValue::Bool(true),
+        apply: set_syntax_highlighting,
+    },
+    OptionSpec {
+        symbol: "window-size",
+        wire_path: "window.size",
+        value_type: "number, `0.5`–`1.0`",
+        default: "`0.9`",
+        description: "Set the window size as a terminal ratio.",
+        default_value: DefaultValue::Number(DEFAULT_WINDOW_SIZE),
+        apply: set_window_size,
+    },
+    OptionSpec {
+        symbol: "runtime-dir",
+        wire_path: "highlight.runtime-dir",
+        value_type: "string path",
+        default: "Helix runtime discovery",
+        description: "Override the runtime used to load preview syntax grammars.",
+        default_value: DefaultValue::RuntimeDiscovery,
+        apply: set_runtime_dir,
+    },
+];
+
+/// Return the shared, declarative `scooter-set!` option table.
+pub fn option_specs() -> &'static [OptionSpec] {
+    OPTION_SPECS
+}
+
+/// Return the parser wire path for a public `scooter-set!` symbol.
+pub(crate) fn setting_path(symbol: &str) -> Option<&'static str> {
+    OPTION_SPECS
+        .iter()
+        .find(|spec| spec.symbol == symbol)
+        .map(|spec| spec.wire_path)
+}
+
 /// One already-decoded `(key value)` entry from Steel.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct OptionEntry {
@@ -72,13 +194,17 @@ pub(crate) struct EngineOptions {
 
 impl Default for EngineOptions {
     fn default() -> Self {
-        Self {
+        let mut options = Self {
             run_config: AppRunConfig::default(),
             config: Config::default(),
-            window_size: DEFAULT_WINDOW_SIZE,
+            window_size: 0.0,
             runtime_dir: None,
-            syntax_highlighting: true,
+            syntax_highlighting: false,
+        };
+        for spec in OPTION_SPECS {
+            spec.apply_default(&mut options);
         }
+        options
     }
 }
 
@@ -96,22 +222,13 @@ impl EngineOptions {
 
     fn apply(&mut self, entry: OptionEntry) -> Result<(), String> {
         let OptionEntry { key, value } = entry;
-        match key.as_str() {
-            "search.multiline" => self.run_config.multiline = boolean(&key, &value)?,
-            "search.hidden" => self.run_config.include_hidden = boolean(&key, &value)?,
-            "search.advanced-regex" => self.run_config.advanced_regex = boolean(&key, &value)?,
-            "search.include-git-folders" => {
-                self.run_config.include_git_folders = boolean(&key, &value)?;
-            }
-            "search.escape-sequences" => {
-                self.run_config.interpret_escape_sequences = boolean(&key, &value)?;
-            }
-            "preview.wrap-text" => self.config.preview.wrap_text = boolean(&key, &value)?,
-            "preview.syntax-highlighting" => self.syntax_highlighting = boolean(&key, &value)?,
-            "window.size" => self.window_size = window_size(&key, &value)?,
-            "highlight.runtime-dir" => self.runtime_dir = Some(runtime_dir(&key, value)?),
-            _ if key.starts_with("keys.") => self.apply_key_binding(&key, value)?,
-            _ => return Err(format!("Unknown Scooter option '{key}'")),
+        if let Some(spec) = OPTION_SPECS.iter().find(|spec| spec.wire_path == key) {
+            return (spec.apply)(self, &key, &value);
+        }
+        if key.starts_with("keys.") {
+            self.apply_key_binding(&key, value)?;
+        } else {
+            return Err(format!("Unknown Scooter option '{key}'"));
         }
         Ok(())
     }
@@ -195,6 +312,99 @@ impl EngineOptions {
     }
 }
 
+impl OptionSpec {
+    fn apply_default(self, options: &mut EngineOptions) {
+        match self.default_value {
+            DefaultValue::Bool(value) => {
+                (self.apply)(options, self.wire_path, &OptionValue::Bool(value))
+                    .expect("option table boolean default must be valid");
+            }
+            DefaultValue::Number(value) => {
+                (self.apply)(options, self.wire_path, &OptionValue::Number(value))
+                    .expect("option table number default must be valid");
+            }
+            DefaultValue::RuntimeDiscovery => {}
+        }
+    }
+}
+
+fn set_multiline(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.run_config.multiline = boolean(path, value)?;
+    Ok(())
+}
+
+fn set_hidden(options: &mut EngineOptions, path: &str, value: &OptionValue) -> Result<(), String> {
+    options.run_config.include_hidden = boolean(path, value)?;
+    Ok(())
+}
+
+fn set_advanced_regex(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.run_config.advanced_regex = boolean(path, value)?;
+    Ok(())
+}
+
+fn set_include_git_folders(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.run_config.include_git_folders = boolean(path, value)?;
+    Ok(())
+}
+
+fn set_escape_sequences(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.run_config.interpret_escape_sequences = boolean(path, value)?;
+    Ok(())
+}
+
+fn set_wrap_text(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.config.preview.wrap_text = boolean(path, value)?;
+    Ok(())
+}
+
+fn set_syntax_highlighting(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.syntax_highlighting = boolean(path, value)?;
+    Ok(())
+}
+
+fn set_window_size(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.window_size = window_size(path, value)?;
+    Ok(())
+}
+
+fn set_runtime_dir(
+    options: &mut EngineOptions,
+    path: &str,
+    value: &OptionValue,
+) -> Result<(), String> {
+    options.runtime_dir = Some(runtime_dir(path, value.clone())?);
+    Ok(())
+}
+
 fn boolean(path: &str, value: &OptionValue) -> Result<bool, String> {
     match value {
         OptionValue::Bool(value) => Ok(*value),
@@ -250,7 +460,18 @@ fn key_bindings(path: &str, value: OptionValue) -> Result<Keys, String> {
 mod tests {
     use scooter_core::keyboard::{KeyCode, KeyModifiers};
 
-    use super::{DEFAULT_WINDOW_SIZE, EngineOptions, OptionEntry};
+    use super::{DEFAULT_WINDOW_SIZE, EngineOptions, OptionEntry, option_specs, setting_path};
+
+    #[test]
+    fn setting_symbols_and_wire_paths_share_one_table() {
+        for specification in option_specs() {
+            assert_eq!(
+                setting_path(specification.symbol),
+                Some(specification.wire_path)
+            );
+        }
+        assert_eq!(setting_path("not-a-setting"), None);
+    }
 
     #[test]
     fn defaults_leave_core_configuration_unchanged() {

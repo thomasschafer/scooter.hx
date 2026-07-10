@@ -27,7 +27,10 @@ jobs:
       # The tmux/Helix e2e harness needs a locally built Helix from the
       # steel-event-system branch, so it deliberately remains local-only.
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --workspace
+
+      - name: Check generated README
+        run: cargo xtask readme --check

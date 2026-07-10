@@ -7,6 +7,14 @@ mod logging;
 mod options;
 mod view;
 
+/// Stable documentation data consumed by the repository's README generator.
+///
+/// Keeping this narrow avoids making the engine's FFI internals public while
+/// letting `xtask` use the same options table as the runtime parser.
+pub mod docs {
+    pub use crate::options::{OptionSpec, option_specs};
+}
+
 #[cfg(test)]
 mod snapshot_tests;
 
@@ -73,6 +81,17 @@ fn scooter_window_size(engine: &ScooterEngine) -> f64 {
         "Scooter-window-size",
         || engine.window_size(),
         || options::DEFAULT_WINDOW_SIZE,
+    )
+}
+
+/// Resolve a public Steel setting symbol to the parser's wire path.
+///
+/// The Scheme shim uses this instead of maintaining a second list of accepted
+/// symbols. `#f` means the symbol is unknown.
+fn scooter_setting_path(setting: &str) -> FFIValue {
+    options::setting_path(setting).map_or_else(
+        || FFIValue::from(false),
+        |path| FFIValue::from(path.to_string()),
     )
 }
 
@@ -269,6 +288,7 @@ fn build_module() -> FFIModule {
     module
         .register_fn("Scooter-engine-new", scooter_engine_new)
         .register_fn("Scooter-window-size", scooter_window_size)
+        .register_fn("Scooter-setting-path", scooter_setting_path)
         .register_fn("Scooter-handle-key", scooter_handle_key)
         .register_fn("Scooter-pump", scooter_pump)
         .register_fn("Scooter-busy?", scooter_busy)

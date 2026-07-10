@@ -7,7 +7,8 @@
                  (only-in Scooter-engine-new
                           Scooter-pump
                           Scooter-busy?
-                          Scooter-quit))
+                          Scooter-quit
+                          Scooter-setting-path))
 
 (require "ui/window.scm")
 
@@ -32,23 +33,15 @@
             (append (unbox *scooter-options*) (list (list key value)))))
 
 (define (scooter-setting-path setting)
-  (cond
-    [(eq? setting 'multiline) "search.multiline"]
-    [(eq? setting 'hidden) "search.hidden"]
-    [(eq? setting 'advanced-regex) "search.advanced-regex"]
-    [(eq? setting 'include-git-folders) "search.include-git-folders"]
-    [(eq? setting 'escape-sequences) "search.escape-sequences"]
-    [(eq? setting 'wrap-text) "preview.wrap-text"]
-    [(eq? setting 'syntax-highlighting) "preview.syntax-highlighting"]
-    [(eq? setting 'window-size) "window.size"]
-    [(eq? setting 'runtime-dir) "highlight.runtime-dir"]
-    [else (error (string-append "Unknown Scooter setting: " (to-string setting)))]))
+  (let ([path (Scooter-setting-path (to-string setting))])
+    (if path
+        path
+        (error (string-append "Unknown Scooter setting: " (to-string setting))))))
 
 ;;@doc
-;; Set a Scooter behaviour option. Accepted symbols are `multiline`, `hidden`,
-;; `advanced-regex`, `include-git-folders`, `escape-sequences`, `wrap-text`,
-;; `syntax-highlighting`, `window-size`, and `runtime-dir`. Settings affect newly created sessions only: the next
-;; `:scooter-new`, or the first `:scooter` when no session is active.
+;; Set a Scooter behaviour option documented in the generated README reference.
+;; Settings affect newly created sessions only: the next `:scooter-new`, or
+;; the first `:scooter` when no session is active.
 (define (scooter-set! setting value)
   (remember-scooter-option! (scooter-setting-path setting) value))
 

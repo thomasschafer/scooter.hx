@@ -1,0 +1,14 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+cargo_metadata = "0.19"
+clap = { version = "4.6", features = ["derive"] }
+scooter-core = { git = "https://github.com/thomasschafer/scooter", rev = "9387c36c6a6b8004d091b8f32e107b91ff530b0b", package = "scooter-core" }
+scooter-hx-engine = { path = ".." }
+syn = { version = "2.0", features = ["full", "parsing"] }
+toml = "1.1"

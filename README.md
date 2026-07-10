@@ -12,6 +12,17 @@ and all of its styling are rendered natively by Helix, using your Helix theme.
 > intentionally not embedded here. They need to be regenerated or removed
 > before release.
 
+## Contents
+
+<!-- TOC START -->
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Differences from the Scooter TUI](#differences-from-the-scooter-tui)
+- [Development and local validation](#development-and-local-validation)
+<!-- TOC END -->
+
 ## Requirements
 
 scooter.hx requires Helix built from its
@@ -76,37 +87,39 @@ This table is generated from `scooter_core::config::KeysConfig::default()` at
 revision `9387c36`; it is the same default map as the Scooter TUI. Bindings
 are written in Scooter's key syntax.
 
-| Context | Action | Default binding(s) |
+<!-- KEYS START -->
+| Binding path | Default key(s) | Description |
 | --- | --- | --- |
-| All screens | Quit session | `C-c` |
-| All screens | Reset fields and cancel work | `C-r` |
-| All screens | Show help | `C-h` |
-| Search screen | Toggle preview wrapping | `C-l` |
-| Search screen | Toggle hidden files | `C-t` |
-| Search screen | Toggle multiline search | `A-m` |
-| Search screen | Toggle replacement escape sequences | `A-e` |
-| Fields focused | Unlock prepopulated fields | `A-u` |
-| Fields focused | Search / advance | `enter` |
-| Fields focused | Next field | `tab` |
-| Fields focused | Previous field | `S-tab` |
-| Results focused | Replace included results | `enter` |
-| Results focused | Return to fields | `esc`, `C-o` |
-| Results focused | Open selected result | `e` |
-| Results focused | Move down | `j`, `down`, `C-n` |
-| Results focused | Move up | `k`, `up`, `C-p` |
-| Results focused | Move down half a page | `C-d` |
-| Results focused | Move up half a page | `C-u` |
-| Results focused | Move down a page | `C-f`, `pagedown` |
-| Results focused | Move up a page | `C-b`, `pageup` |
-| Results focused | First result | `g` |
-| Results focused | Last result | `G` |
-| Results focused | Toggle selected result | `space` |
-| Results focused | Toggle all results | `a` |
-| Results focused | Toggle multiselect | `v` |
-| Results focused | Reverse multiselect direction | `A-;` |
-| Replacement results | Next error | `j`, `down`, `C-n` |
-| Replacement results | Previous error | `k`, `up`, `C-p` |
-| Replacement results | Close results | `enter`, `q` |
+| `general.quit` | `C-c` | Exit scooter |
+| `general.reset` | `C-r` | Cancel in-progress operations, reset fields to default values and return to search screen |
+| `general.show_help_menu` | `C-h` | Show the help menu containing keymaps |
+| `results.quit` | `enter`, `q` | Exit scooter. This is in addition to the `quit` command in the `general` section. |
+| `results.scroll_errors_down` | `j`, `down`, `C-n` | Navigate to the error below |
+| `results.scroll_errors_up` | `k`, `up`, `C-p` | Navigate to the error above |
+| `search.fields.focus_next_field` | `tab` | Focus on the next field |
+| `search.fields.focus_previous_field` | `S-tab` | Focus on the previous field |
+| `search.fields.trigger_search` | `enter` | Trigger a search |
+| `search.fields.unlock_prepopulated_fields` | `A-u` | Allow editing of fields that were populated using CLI args, such as `--search_text foo`. (Note that you can use the `disable_prepopulated_fields` config option to change the default behaviour.) |
+| `search.results.back_to_fields` | `esc`, `C-o` | Move focus back to the search fields |
+| `search.results.flip_multiselect_direction` | `A-;` | Flip the direction of the multiselect selection |
+| `search.results.move_bottom` | `G` | Navigate to the last search result |
+| `search.results.move_down` | `j`, `down`, `C-n` | Navigate to the search result below |
+| `search.results.move_down_full_page` | `C-f`, `pagedown` | Navigate to the search result a page below |
+| `search.results.move_down_half_page` | `C-d` | Navigate to the search result half a page below |
+| `search.results.move_top` | `g` | Navigate to the first search result |
+| `search.results.move_up` | `k`, `up`, `C-p` | Navigate to the search result above |
+| `search.results.move_up_full_page` | `C-b`, `pageup` | Navigate to the search result a page above |
+| `search.results.move_up_half_page` | `C-u` | Navigate to the search result half a page above |
+| `search.results.open_in_editor` | `e` | Open the currently selected search result in your editor. The editor command can be overriden using the `editor_open` section of your config. |
+| `search.results.toggle_all_selected` | `a` | Toggle whether all results will be replaced or ignored |
+| `search.results.toggle_multiselect_mode` | `v` | Toggle whether multiselect mode is enabled |
+| `search.results.toggle_selected_inclusion` | `space` | Toggle whether the currently highlighted result will be replaced or ignored |
+| `search.results.trigger_replacement` | `enter` | Trigger a replacement |
+| `search.toggle_hidden_files` | `C-t` | Toggle inclusion of hidden files and directories, such as those whose name starts with a dot (.) |
+| `search.toggle_interpret_escape_sequences` | `A-e` | Toggle interpretation of escape sequences in replacement text (\n becomes newline, \t becomes tab, \\ becomes backslash) |
+| `search.toggle_multiline` | `A-m` | Toggle multiline search mode, which allows patterns to match across line boundaries |
+| `search.toggle_preview_wrapping` | `C-l` | Toggle wrapping of lines that don't fit within the width of the preview |
+<!-- KEYS END -->
 
 ## Configuration
 
@@ -124,32 +137,27 @@ settings until then.
 (scooter-keys! "search.results.move_down" '("j" "down"))
 ```
 
-### `scooter-set!`
-
-`(scooter-set! 'setting value)` accepts these settings. Later calls to the
-same setting win.
-
+<!-- CONFIG START -->
 | Setting | Value | Default | Effect |
 | --- | --- | --- | --- |
-| `multiline` | boolean | `#f` | Allow searches to span line boundaries. |
+| `multiline` | boolean | `#f` | Allow search patterns to match across line boundaries. |
 | `hidden` | boolean | `#f` | Include hidden files and directories. |
-| `advanced-regex` | boolean | `#f` | Enable the advanced regex engine. |
-| `include-git-folders` | boolean | `#f` | Search Git metadata directories. |
-| `escape-sequences` | boolean | `#f` | Interpret `\\n`, `\\t`, and `\\\\` in replacement text. |
+| `advanced-regex` | boolean | `#f` | Enable Scooter's advanced regular-expression engine. |
+| `include-git-folders` | boolean | `#f` | Search Git metadata directories as well as normal files. |
+| `escape-sequences` | boolean | `#f` | Interpret `\n`, `\t`, and `\\` in replacement text. |
 | `wrap-text` | boolean | `#f` | Wrap long preview lines. |
-| `syntax-highlighting` | boolean | `#t` | Highlight preview context using Helix grammars. |
+| `syntax-highlighting` | boolean | `#t` | Highlight preview context with Helix grammars. |
 | `window-size` | number, `0.5`–`1.0` | `0.9` | Set the window size as a terminal ratio. |
-| `runtime-dir` | string path | Helix runtime discovery | Override the runtime used for preview syntax grammars. |
+| `runtime-dir` | string path | Helix runtime discovery | Override the runtime used to load preview syntax grammars. |
 
 ### `scooter-keys!`
 
-`(scooter-keys! "path" bindings)` replaces one action's bindings. `bindings`
-may be one string or a list of strings, using Scooter's syntax: modifiers are
-`S-`, `C-`, and `A-`, so examples include `"C-o"`, `"A-m"`, and `"S-tab"`.
-The path omits the leading `keys.`; for example,
-`"general.quit"`, `"search.fields.trigger_search"`,
-`"search.results.move_down"`, and `"results.quit"` are valid. Any binding
-path shown in the default keymap can be used.
+`(scooter-keys! "path" bindings)` replaces one action's bindings. `bindings` may be one string or a list of strings, using Scooter's syntax: modifiers are `S-`, `C-`, and `A-`. The path omits the leading `keys.`.
+
+```scheme
+(scooter-keys! "search.results.move_down" '("j" "down"))
+```
+<!-- CONFIG END -->
 
 Scooter validates the complete map when creating a session. An invalid key or
 a conflicting binding is reported in Helix's error area and the window does
@@ -170,6 +178,9 @@ action's first binding only when it is an unmodified character key.
 `scripts/check.sh` is the portable Rust check used during development: it
 builds all targets, runs Clippy with warnings denied, and runs the test suite
 (including frame snapshots) against one pinned local toolchain.
+
+Regenerate README reference sections with `cargo xtask readme`; CI verifies
+them with `cargo xtask readme --check`.
 
 The tmux e2e harness is deliberately local-only because it requires a local
 Helix binary from `steel-event-system`, its runtime, Steel cogs, and tmux. It
