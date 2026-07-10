@@ -45,6 +45,39 @@ e2e_capture_pane() {
   tmux -L "$TMUX_SOCKET" capture-pane -p -t "$PANE_TARGET" -S - 2>/dev/null || true
 }
 
+e2e_capture_pane_with_style() {
+  tmux -L "$TMUX_SOCKET" capture-pane -e -p -t "$PANE_TARGET" -S - 2>/dev/null || true
+}
+
+e2e_assert_popup_border_has_uniform_style() {
+  local title="$1"
+  local capture
+  capture="$(e2e_capture_pane_with_style)"
+
+  if ! printf '%s\n' "$capture" | perl -CS -e '
+    my $title = shift;
+    while (my $line = <STDIN>) {
+      next unless index($line, $title) >= 0;
+      my ($left, $right) = split(/\Q$title\E/, $line, 2);
+      # tmux preserves the terminal character-set controls in -e captures,
+      # so locate the title rather than trying to decode the box glyphs. A
+      # uniform border has one contiguous SGR prefix before the title and one
+      # after it (the latter restores the style outside the right border).
+      my @left_prefixes = ($left =~ /((?:\e\[[0-9;]*m)+)/g);
+      my @right_prefixes = ($right =~ /((?:\e\[[0-9;]*m)+)/g);
+      if (@left_prefixes != 1 || @right_prefixes != 1) {
+        print STDERR "popup border style changed within its span\n";
+        exit 1;
+      }
+      exit 0;
+    }
+    print STDERR "could not locate popup title $title\n";
+    exit 1;
+  ' "$title"; then
+    e2e_fail "popup '$title' top border does not have one uniform SGR style"
+  fi
+}
+
 e2e_print_diagnostics() {
   printf '%s\n' '--- tmux pane ---' >&2
   e2e_capture_pane >&2

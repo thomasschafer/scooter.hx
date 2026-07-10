@@ -32,6 +32,7 @@ e2e_wait_for_helix
 e2e_wait_for_present 'alpha: first fixture line'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
 e2e_wait_for_present 'Search text'
+e2e_wait_for_present 'Scooter'
 
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Escape
 e2e_wait_for_absent 'Search text'

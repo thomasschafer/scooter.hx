@@ -30,18 +30,54 @@
   (with-handler (lambda (_) fallback)
     (theme-scope scope)))
 
+(define (colour-or colour fallback)
+  (if colour colour fallback))
+
+;; `frame-set-string!` patches cells instead of replacing their complete style.
+;; Overlay runs therefore need both colours set even when a theme scope leaves
+;; one of them unspecified; otherwise they inherit a colour from the content
+;; beneath them. Keep the scope's own colours where present and complete the
+;; rest from the theme's base foreground/background.
+(define (style-with-explicit-colours style foreground background)
+  (style-bg
+   (style-fg style (colour-or (style->fg style) foreground))
+   (colour-or (style->bg style) background)))
+
 (define (style-table)
   (let* ([text (safe-theme-scope "ui.text" (style))]
-         [hint (safe-theme-scope "hint" text)])
+         [background (safe-theme-scope "ui.background" (theme->bg *helix.cx*))]
+         [foreground (colour-or (style->fg (theme->fg *helix.cx*)) (style->fg text))]
+         [background-colour
+          (colour-or (style->bg (theme->bg *helix.cx*)) (style->bg background))]
+         [hint (safe-theme-scope "hint" text)]
+         [selection (style-with-explicit-colours
+                     (safe-theme-scope "ui.selection" text)
+                     foreground
+                     background-colour)]
+         [error (safe-theme-scope "error" text)]
+         [error-background (colour-or (style->fg error) background-colour)]
+         [selection-excluded
+          (style-bg (style-fg (style) foreground) error-background)]
+         [popup (style-with-explicit-colours
+                 (safe-theme-scope "ui.popup" text)
+                 foreground
+                 background-colour)]
+         [diff-added (safe-theme-scope "diff.plus" text)])
     (hash "text" text
           "dim" (safe-theme-scope "ui.text.inactive" text)
-          "selection" (safe-theme-scope "ui.selection" text)
-          "selection-secondary" (style-with-dim (safe-theme-scope "ui.selection" text))
+          "selection" selection
+          "selection-secondary" (style-with-dim selection)
+          "selection-excluded" selection-excluded
+          "selection-secondary-excluded" (style-with-dim selection-excluded)
           "active" (safe-theme-scope "ui.text.focus" hint)
-          "popup" (safe-theme-scope "ui.popup" text)
-          "error" (safe-theme-scope "error" text)
+          "popup" popup
+          "toast-border" (style-with-explicit-colours
+                           diff-added
+                           foreground
+                           background-colour)
+          "error" error
           "info" (safe-theme-scope "info" text)
-          "diff-added" (safe-theme-scope "diff.plus" text)
+          "diff-added" diff-added
           "diff-added-emph" (style-with-reversed (safe-theme-scope "diff.plus" text))
           "diff-removed" (safe-theme-scope "diff.minus" text)
           "diff-removed-emph" (style-with-reversed (safe-theme-scope "diff.minus" text)))))
@@ -79,10 +115,16 @@
   (let* ([window-area (centered-window rect)]
          [content-area (window-content-area window-area)]
          [styles (style-table)]
-         [popup-style (safe-theme-scope "ui.popup" (hash-ref styles "text"))]
+         [popup-style (hash-ref styles "popup")]
          [engine (ScooterWindowState-engine state)])
     (buffer/clear frame window-area)
     (block/render frame window-area (make-block popup-style popup-style "all" "plain"))
+    (when (> (area-width window-area) 2)
+      (frame-set-string! frame
+                         (+ (area-x window-area) 2)
+                         (area-y window-area)
+                         " Scooter "
+                         popup-style))
     (for-each (lambda (run) (blit-run! frame content-area styles run))
               (Scooter-render engine
                               (area-width content-area)

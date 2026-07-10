@@ -53,6 +53,12 @@ struct PopupArea {
     height: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum TitleAlignment {
+    Center,
+    Left,
+}
+
 #[derive(Debug, Clone)]
 struct PopupLine {
     text: String,
@@ -133,6 +139,7 @@ pub(crate) fn render(app: &mut App, width: usize, height: usize) -> Frame {
                         &mut frame.runs,
                         input_source,
                         wrap_preview_text,
+                        search_fields_state.focussed_section == FocussedSection::SearchResults,
                         search_state,
                         replacements_in_progress,
                         layout,
@@ -378,13 +385,22 @@ fn draw_popup_box(
             frame_height,
         );
     }
-    draw_box_border(runs, area, Some(title), "popup", frame_width, frame_height);
+    draw_box_border(
+        runs,
+        area,
+        Some(title),
+        TitleAlignment::Center,
+        "popup",
+        frame_width,
+        frame_height,
+    );
 }
 
 fn draw_box_border(
     runs: &mut Vec<Run>,
     area: PopupArea,
     title: Option<&str>,
+    title_alignment: TitleAlignment,
     tag: &str,
     frame_width: usize,
     frame_height: usize,
@@ -417,16 +433,27 @@ fn draw_box_border(
         frame_height,
     );
     if let Some(title) = title.filter(|_| area.width > 2) {
-        add_centered_run(
-            runs,
-            area.y,
-            title,
-            tag,
-            area.x + 1,
-            area.width.saturating_sub(2),
-            frame_width,
-            frame_height,
-        );
+        match title_alignment {
+            TitleAlignment::Center => add_centered_run(
+                runs,
+                area.y,
+                title,
+                tag,
+                area.x + 1,
+                area.width.saturating_sub(2),
+                frame_width,
+                frame_height,
+            ),
+            TitleAlignment::Left => add_run(
+                runs,
+                area.x + 1,
+                area.y,
+                title,
+                tag,
+                area.x + area.width.saturating_sub(1),
+                frame_height,
+            ),
+        }
     }
     for row in 1..area.height.saturating_sub(1) {
         add_run(
@@ -485,7 +512,15 @@ fn render_toast(runs: &mut Vec<Run>, message: &str, width: usize, height: usize)
             height,
         );
     }
-    draw_box_border(runs, area, None, "diff-added", width, height);
+    draw_box_border(
+        runs,
+        area,
+        None,
+        TitleAlignment::Center,
+        "toast-border",
+        width,
+        height,
+    );
     if area.height > 1 {
         add_centered_run(
             runs,
@@ -603,7 +638,15 @@ fn render_results_tallies(
             width,
             height: 3,
         };
-        draw_box_border(runs, area, Some(title), "text", frame_width, frame_height);
+        draw_box_border(
+            runs,
+            area,
+            Some(title),
+            TitleAlignment::Left,
+            "text",
+            frame_width,
+            frame_height,
+        );
         add_run(
             runs,
             x + 1,
@@ -983,6 +1026,7 @@ fn render_results(
     runs: &mut Vec<Run>,
     input_source: &InputSource,
     wrap_preview_text: bool,
+    results_focussed: bool,
     search_state: &mut SearchState,
     replacements_in_progress: Option<(usize, usize)>,
     layout: FieldsLayout,
@@ -1075,6 +1119,8 @@ fn render_results(
             runs,
             result,
             base_path,
+            index,
+            results_focussed,
             search_state.is_selected(index),
             search_state.is_primary_selected(index),
             list_x,
@@ -1113,6 +1159,8 @@ fn render_result_row(
     runs: &mut Vec<Run>,
     result: &SearchResultWithReplacement,
     base_path: &Path,
+    index: usize,
+    results_focussed: bool,
     selected: bool,
     primary_selected: bool,
     x: usize,
@@ -1120,13 +1168,7 @@ fn render_result_row(
     row_width: usize,
     frame_height: usize,
 ) {
-    let row_tag = if primary_selected {
-        "selection"
-    } else if selected {
-        "selection-secondary"
-    } else {
-        "text"
-    };
+    let row_tag = result_selection_tag(result, results_focussed, selected, primary_selected);
     let marker = if result.search_result.included {
         "[x] "
     } else {
@@ -1137,21 +1179,88 @@ fn render_result_row(
         |path| relative_path(base_path, path),
     );
     let line_number = format!(":{}", result.search_result.start_line_number());
-    let path_space = row_width.saturating_sub(display_width(marker) + display_width(&line_number));
+    let index_text = format!(" ({})", index + 1);
+    let index_width = display_width(&index_text);
+    let row_end_x = x + row_width;
+    let left_end_x = row_end_x.saturating_sub(index_width);
+    let path_space =
+        left_end_x.saturating_sub(x + display_width(marker) + display_width(&line_number));
     let path = truncate_path_from_start(&path, path_space);
-    let end_x = x + row_width;
     let mut row_x = x;
-    add_segment(runs, &mut row_x, y, marker, row_tag, end_x, frame_height);
-    add_segment(runs, &mut row_x, y, &path, row_tag, end_x, frame_height);
+    let (marker_tag, path_tag, accessory_tag) = row_tag
+        .map_or(("info", "text", "info"), |selection_tag| {
+            (selection_tag, selection_tag, selection_tag)
+        });
+
+    if let Some(selection_tag) = row_tag {
+        // The TUI paints the selected row's background from edge to edge.
+        // Render this first so the following text segments remain readable
+        // while the empty spacer keeps the selection visually continuous.
+        add_run(
+            runs,
+            x,
+            y,
+            &" ".repeat(row_width),
+            selection_tag,
+            row_end_x,
+            frame_height,
+        );
+    }
+
+    add_segment(
+        runs,
+        &mut row_x,
+        y,
+        marker,
+        marker_tag,
+        left_end_x,
+        frame_height,
+    );
+    add_segment(
+        runs,
+        &mut row_x,
+        y,
+        &path,
+        path_tag,
+        left_end_x,
+        frame_height,
+    );
     add_segment(
         runs,
         &mut row_x,
         y,
         &line_number,
-        if selected { row_tag } else { "info" },
-        end_x,
+        accessory_tag,
+        left_end_x,
         frame_height,
     );
+    add_run(
+        runs,
+        row_end_x.saturating_sub(index_width),
+        y,
+        &index_text,
+        accessory_tag,
+        row_end_x,
+        frame_height,
+    );
+}
+
+fn result_selection_tag(
+    result: &SearchResultWithReplacement,
+    results_focussed: bool,
+    selected: bool,
+    primary_selected: bool,
+) -> Option<&'static str> {
+    if !results_focussed || !selected {
+        return None;
+    }
+
+    Some(match (primary_selected, result.search_result.included) {
+        (true, true) => "selection",
+        (false, true) => "selection-secondary",
+        (true, false) => "selection-excluded",
+        (false, false) => "selection-secondary-excluded",
+    })
 }
 
 fn truncate_path_from_start(path: &str, max_width: usize) -> String {
@@ -1337,9 +1446,9 @@ fn expected_first_line_content(result: &SearchResultWithReplacement) -> &str {
     }
 }
 
-fn context_preview_line(number: usize, text: &str) -> PreviewLine {
+fn context_preview_line(_number: usize, text: &str) -> PreviewLine {
     let mut line = PreviewLine::default();
-    push_preview_segment(&mut line, &format!("({}) ", number + 1), "dim");
+    push_preview_segment(&mut line, "  ", "text");
     push_preview_segment(&mut line, text, "text");
     line
 }
@@ -1816,7 +1925,10 @@ mod tests {
 
     use crate::engine::ScooterEngine;
 
-    use super::{Frame, diff_lines, display_width, truncate};
+    use super::{
+        Frame, PopupLine, context_preview_line, diff_lines, display_width, render_paragraph_popup,
+        render_results_tallies, truncate,
+    };
 
     #[test]
     fn truncates_by_display_width() {
@@ -1891,6 +2003,63 @@ mod tests {
                 .iter()
                 .any(|segment| segment.tag == "diff-added-emph" && segment.text == "new")
         }));
+    }
+
+    #[test]
+    fn context_preview_lines_use_a_two_space_prefix_without_line_numbers() {
+        let line = context_preview_line(41, "context text");
+        assert_eq!(
+            line.segments
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect::<String>(),
+            "  context text"
+        );
+        assert!(line.segments.iter().all(|segment| segment.tag == "text"));
+    }
+
+    #[test]
+    fn popup_titles_are_centred_and_content_keeps_one_cell_horizontal_padding() {
+        let mut runs = Vec::new();
+        render_paragraph_popup(
+            &mut runs,
+            "Notice",
+            &[PopupLine {
+                text: "body".to_string(),
+                tag: "text",
+            }],
+            100,
+            40,
+        );
+
+        let title = runs
+            .iter()
+            .find(|run| run.text == "Notice")
+            .expect("popup title");
+        assert_eq!((title.x, title.y), (46, 18));
+        let body = runs
+            .iter()
+            .find(|run| run.text == "body")
+            .expect("popup body");
+        assert_eq!((body.x, body.y), (9, 19));
+    }
+
+    #[test]
+    fn replacement_tally_titles_are_left_aligned_inside_their_borders() {
+        let state = ReplaceState {
+            num_successes: 3,
+            num_ignored: 1,
+            errors: vec![],
+            replacement_errors_pos: 0,
+        };
+        let mut runs = Vec::new();
+        render_results_tallies(&mut runs, &state, 5, 4, 50, 60, 20);
+
+        let title = runs
+            .iter()
+            .find(|run| run.text == "Successful replacements (lines):")
+            .expect("success tally title");
+        assert_eq!((title.x, title.y), (6, 4));
     }
 
     #[test]

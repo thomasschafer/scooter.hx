@@ -51,6 +51,18 @@ tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Escape
 e2e_wait_for_absent 'Help'
 e2e_wait_for_present 'Search text'
 
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" '('
+e2e_wait_for_present 'Invalid search'
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter
+e2e_wait_for_present 'Errors'
+e2e_assert_popup_border_has_uniform_style 'Errors'
+e2e_capture_pane > "$CAPTURE_DIR/f1-error-popup.txt"
+e2e_capture_pane_with_style > "$CAPTURE_DIR/f1-error-popup.ansi"
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Escape
+e2e_wait_for_absent 'Errors'
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" C-r
+e2e_wait_for_present 'Results: 0 [Search is empty]'
+
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" M-m
 e2e_wait_for_present 'Multiline: ON'
 e2e_wait_for_absent 'Multiline: ON'

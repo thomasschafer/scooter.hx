@@ -48,6 +48,10 @@ run_size() {
   tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Tab
   tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" 'OMEGA'
   tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter
+  e2e_wait_for_present '(1)'
+  if [[ "$(e2e_capture_pane)" == *'(1) preview context'* ]]; then
+    e2e_fail 'preview context unexpectedly contains a line number'
+  fi
   e2e_wait_for_present 'preview context before first result'
   e2e_wait_for_present '- alpha first result'
   e2e_wait_for_present '+ OMEGA first result'

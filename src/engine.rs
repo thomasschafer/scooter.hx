@@ -266,6 +266,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn headless_results_preview_tracks_selection_markers_multiselect_and_wrapping() {
         let fixture = tempdir().expect("fixture directory");
         fs::write(
@@ -282,6 +283,42 @@ mod tests {
             engine.handle_key(&character.to_string(), 0);
         }
         wait_until_complete(&mut engine);
+
+        let fields_focussed = engine.render(160, 45);
+        assert!(
+            !fields_focussed.runs.iter().any(|run| {
+                matches!(
+                    run.tag.as_str(),
+                    "selection"
+                        | "selection-secondary"
+                        | "selection-excluded"
+                        | "selection-secondary-excluded"
+                )
+            }),
+            "result rows must not be highlighted while fields are focussed"
+        );
+        let first_index = fields_focussed
+            .runs
+            .iter()
+            .find(|run| run.text == " (1)")
+            .expect("first result index is rendered");
+        assert_eq!(first_index.tag, "info");
+        assert!(fields_focussed
+            .runs
+            .iter()
+            .any(|run| run.text == "[x] " && run.tag == "info"));
+        assert!(fields_focussed
+            .runs
+            .iter()
+            .any(|run| run.text == "matches.txt" && run.tag == "text"));
+        assert!(fields_focussed
+            .runs
+            .iter()
+            .any(|run| run.text == ":2" && run.tag == "info"));
+        // A 160-column frame has a 144-column content block beginning at x=8;
+        // its wide results list is floor((144 - 1) * 2 / 5) = 57 cells.
+        assert_eq!(first_index.x + first_index.text.len(), 8 + 57);
+
         assert_eq!(engine.handle_key("tab", 0), "rerender");
         for character in "OMEGA".chars() {
             engine.handle_key(&character.to_string(), 0);
@@ -290,9 +327,23 @@ mod tests {
         assert_eq!(engine.handle_key("enter", 0), "rerender");
 
         let initial = rendered_rows(&mut engine, 160, 45).join("\n");
-        assert!(initial.contains("(1) before one"));
+        assert!(initial.contains("  before one"));
+        assert!(!initial.contains("(1) before one"));
         assert!(initial.contains("- alpha first"));
         assert!(initial.contains("+ OMEGA first"));
+        let focussed = engine.render(160, 45);
+        assert!(
+            focussed
+                .runs
+                .iter()
+                .any(|run| { run.tag == "selection" && run.x == 8 && run.text == " ".repeat(57) })
+        );
+        assert!(
+            focussed
+                .runs
+                .iter()
+                .any(|run| run.tag == "selection" && run.text == " (1)")
+        );
 
         engine.handle_key("j", 0);
         let second = rendered_rows(&mut engine, 160, 45).join("\n");
@@ -309,6 +360,25 @@ mod tests {
                 .lines()
                 .any(|line| line.contains("matches.txt:4") && line.contains("[ ]"))
         );
+        let excluded_primary = engine.render(160, 45);
+        assert!(
+            excluded_primary
+                .runs
+                .iter()
+                .any(|run| run.tag == "selection-excluded" && run.text == "[ ] ")
+        );
+
+        engine.handle_key("v", 0);
+        engine.handle_key("k", 0);
+        let excluded_range = engine.render(160, 45);
+        assert!(
+            excluded_range
+                .runs
+                .iter()
+                .any(|run| { run.tag == "selection-secondary-excluded" && run.text == "[ ] " })
+        );
+        engine.handle_key("esc", 0);
+
         engine.handle_key("a", 0);
         let after_toggle_all = rendered_rows(&mut engine, 160, 45).join("\n");
         assert!(
@@ -318,7 +388,6 @@ mod tests {
                 .all(|line| line.contains("[x]"))
         );
 
-        engine.handle_key("k", 0);
         engine.handle_key("v", 0);
         engine.handle_key("j", 0);
         let multiselect = engine.render(160, 45);
