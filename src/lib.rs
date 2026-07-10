@@ -1,6 +1,7 @@
 //! Steel FFI boundary for the native Scooter rewrite.
 
 mod engine;
+pub mod highlight;
 mod key;
 mod logging;
 mod options;
@@ -110,6 +111,8 @@ fn ffi_option_value(value: FFIArg<'_>, key: &str) -> Result<OptionValue, String>
     match value {
         FFIArg::BoolV(value) => Ok(OptionValue::Bool(value)),
         FFIArg::NumV(value) => Ok(OptionValue::Number(value)),
+        FFIArg::StringV(value) => Ok(OptionValue::String(value.into_string())),
+        FFIArg::StringRef(value) => Ok(OptionValue::String(value.to_string())),
         FFIArg::Vector(values) => values
             .into_iter()
             .map(|value| ffi_string(value, "key binding"))
@@ -193,7 +196,7 @@ fn frame_to_ffi(runs: Vec<Run>) -> FFIValue {
         run.push(FFIValue::from(x));
         run.push(FFIValue::from(y));
         run.push(FFIValue::from(text));
-        run.push(FFIValue::from(tag.as_str().to_string()));
+        run.push(FFIValue::from(tag.as_str().into_owned()));
         frame.push(FFIValue::from(run));
     }
     FFIValue::from(frame)
@@ -278,6 +281,8 @@ fn build_module() -> FFIModule {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use tempfile::tempdir;
 
     use scooter_core::{app::Event, keyboard::KeyCode};
@@ -332,11 +337,7 @@ mod tests {
         let options = FFIArg::Vector(
             vec![ffi_option(
                 "keys.general.quit",
-                FFIArg::Vector(
-                    vec![FFIArg::StringV("C-r".into())]
-                        .into_iter()
-                        .collect(),
-                ),
+                FFIArg::Vector(vec![FFIArg::StringV("C-r".into())].into_iter().collect()),
             )]
             .into_iter()
             .collect(),
@@ -387,6 +388,26 @@ mod tests {
     }
 
     #[test]
+    fn scope_style_tag_round_trips_over_the_ffi_wire_format() {
+        let frame = frame_to_ffi(vec![Run {
+            x: 1,
+            y: 2,
+            text: "fn".to_string(),
+            tag: view::StyleTag::Scope(Arc::from("keyword.function")),
+        }]);
+        let FFIValue::Vector(runs) = frame else {
+            panic!("frame must be a list");
+        };
+        let FFIValue::Vector(run) = &runs[0] else {
+            panic!("run must be a list");
+        };
+        assert!(matches!(
+            &run[3],
+            FFIValue::StringV(tag) if tag.as_str() == "s:keyword.function"
+        ));
+    }
+
+    #[test]
     fn ffi_panic_degrades_and_later_calls_remain_safe_across_the_render_grid() {
         assert!(matches!(scooter_test_panic(), FFIValue::Vector(values) if values.is_empty()));
 
@@ -429,8 +450,13 @@ mod tests {
             &pump[0],
             FFIValue::StringV(status) if status.as_str() == "idle"
         ));
-        assert!(matches!(scooter_render(&mut engine, 120, 40), FFIValue::Vector(frame) if frame.is_empty()));
+        assert!(
+            matches!(scooter_render(&mut engine, 120, 40), FFIValue::Vector(frame) if frame.is_empty())
+        );
         assert!(!scooter_busy(&engine));
-        assert!(matches!(scooter_cursor(&engine, 120, 40), FFIValue::BoolV(false)));
+        assert!(matches!(
+            scooter_cursor(&engine, 120, 40),
+            FFIValue::BoolV(false)
+        ));
     }
 }

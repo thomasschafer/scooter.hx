@@ -1,6 +1,6 @@
 //! Steel-facing configuration translated into scooter-core's native types.
 
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
 use scooter_core::{
     app::AppRunConfig,
@@ -41,6 +41,14 @@ impl OptionEntry {
             value: OptionValue::Strings(value.iter().map(ToString::to_string).collect()),
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn string(key: &str, value: &str) -> Self {
+        Self {
+            key: key.to_string(),
+            value: OptionValue::String(value.to_string()),
+        }
+    }
 }
 
 /// Values supported by Scooter's deliberately narrow FFI configuration wire format.
@@ -48,6 +56,7 @@ impl OptionEntry {
 pub(crate) enum OptionValue {
     Bool(bool),
     Number(f64),
+    String(String),
     Strings(Vec<String>),
 }
 
@@ -57,6 +66,7 @@ pub(crate) struct EngineOptions {
     pub(crate) run_config: AppRunConfig,
     pub(crate) config: Config,
     pub(crate) window_size: f64,
+    pub(crate) runtime_dir: Option<PathBuf>,
 }
 
 impl Default for EngineOptions {
@@ -65,6 +75,7 @@ impl Default for EngineOptions {
             run_config: AppRunConfig::default(),
             config: Config::default(),
             window_size: DEFAULT_WINDOW_SIZE,
+            runtime_dir: None,
         }
     }
 }
@@ -95,6 +106,7 @@ impl EngineOptions {
             }
             "preview.wrap-text" => self.config.preview.wrap_text = boolean(&key, &value)?,
             "window.size" => self.window_size = window_size(&key, &value)?,
+            "highlight.runtime-dir" => self.runtime_dir = Some(runtime_dir(&key, value)?),
             _ if key.starts_with("keys.") => self.apply_key_binding(&key, value)?,
             _ => return Err(format!("Unknown Scooter option '{key}'")),
         }
@@ -201,6 +213,20 @@ fn window_size(path: &str, value: &OptionValue) -> Result<f64, String> {
     Ok(*value)
 }
 
+fn runtime_dir(path: &str, value: OptionValue) -> Result<PathBuf, String> {
+    let OptionValue::String(value) = value else {
+        return Err(format!(
+            "Invalid value for '{path}': expected a string path"
+        ));
+    };
+    if value.is_empty() {
+        return Err(format!(
+            "Invalid value for '{path}': expected a non-empty string path"
+        ));
+    }
+    Ok(PathBuf::from(value))
+}
+
 fn key_bindings(path: &str, value: OptionValue) -> Result<Keys, String> {
     let OptionValue::Strings(bindings) = value else {
         return Err(format!(
@@ -252,6 +278,7 @@ mod tests {
             OptionEntry::boolean("search.escape-sequences", true),
             OptionEntry::boolean("preview.wrap-text", true),
             OptionEntry::number("window.size", 0.75),
+            OptionEntry::string("highlight.runtime-dir", "/tmp/helix-runtime"),
         ])
         .expect("options parse");
 
@@ -261,6 +288,10 @@ mod tests {
         assert!(options.run_config.include_git_folders);
         assert!(options.run_config.interpret_escape_sequences);
         assert!(options.config.preview.wrap_text);
+        assert_eq!(
+            options.runtime_dir.as_deref(),
+            Some(std::path::Path::new("/tmp/helix-runtime"))
+        );
         assert!((options.window_size - 0.75).abs() < f64::EPSILON);
     }
 

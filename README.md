@@ -119,6 +119,7 @@ settings until then.
 (scooter-set! 'multiline #t)
 (scooter-set! 'wrap-text #t)
 (scooter-set! 'window-size 0.85)
+(scooter-set! 'runtime-dir "/path/to/helix/runtime")
 (scooter-keys! "search.results.move_down" '("j" "down"))
 ```
 
@@ -136,6 +137,7 @@ same setting win.
 | `escape-sequences` | boolean | `#f` | Interpret `\\n`, `\\t`, and `\\\\` in replacement text. |
 | `wrap-text` | boolean | `#f` | Wrap long preview lines. |
 | `window-size` | number, `0.5`–`1.0` | `0.9` | Set the window size as a terminal ratio. |
+| `runtime-dir` | string path | Helix runtime discovery | Override the runtime used for preview syntax grammars. |
 
 ### `scooter-keys!`
 

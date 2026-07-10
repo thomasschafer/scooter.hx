@@ -64,6 +64,7 @@
 ;;   text, dim, active, error, info    content: fg/modifiers; inherits fill
 ;;   diff-added, diff-added-emph       content: fg/modifiers; inherits fill
 ;;   diff-removed, diff-removed-emph   content: fg/modifiers; inherits fill
+;;   s:<scope>                         content: fg-patch; inherits fill
 ;;   selection, selection-secondary    selected-row fill: explicit selection bg
 ;;   selection-excluded,
 ;;   selection-secondary-excluded       selected-row fill: explicit error bg
@@ -154,17 +155,37 @@
 ;; Rust's tag enum makes this path exceptional, but do not allow a future
 ;; engine/style-table mismatch to take down Helix's render callback.  Warn only
 ;; once for each tag; a stale dylib can otherwise redraw thousands of frames.
-(define (style-for-run styles tag)
+(define (scope-tag? tag)
+  (and (>= (string-length tag) 2)
+       (equal? (substring tag 0 2) "s:")))
+
+;; Scope tags are intentionally resolved per render. A theme can change while
+;; Helix is live, and a render-local cache avoids a repeated theme-scope call
+;; for every token while retaining that behaviour.
+(define (scope-style-for-run styles scope-cache tag)
+  (let ([scope (substring tag 2 (string-length tag))]
+        [text-style (hash-ref styles "text")])
+    (if (hash-contains? (unbox scope-cache) scope)
+        (hash-ref (unbox scope-cache) scope)
+        (let ([resolved (style-with-foreground
+                         (safe-theme-style scope text-style)
+                         (style->fg text-style))])
+          (set-box! scope-cache (hash-insert (unbox scope-cache) scope resolved))
+          resolved))))
+
+(define (style-for-run styles scope-cache tag)
   (if (hash-contains? styles tag)
       (hash-ref styles tag)
-      (begin
+      (if (scope-tag? tag)
+          (scope-style-for-run styles scope-cache tag)
+          (begin
         (unless (member tag (unbox *unknown-scooter-style-tags*))
           (set-box! *unknown-scooter-style-tags*
                     (cons tag (unbox *unknown-scooter-style-tags*)))
           (log::warn! (string-append "scooter-hx: unknown style tag: " tag)))
-        (hash-ref styles "text"))))
+        (hash-ref styles "text")))))
 
-(define (blit-run! frame content-area styles run)
+(define (blit-run! frame content-area styles scope-cache run)
   (let ([x (list-ref run 0)]
         [y (list-ref run 1)]
         [text (list-ref run 2)]
@@ -175,13 +196,14 @@
                          (+ (area-x content-area) x)
                          (+ (area-y content-area) y)
                          text
-                         (style-for-run styles tag)))))
+                         (style-for-run styles scope-cache tag)))))
 
 (define (scooter-window-render state rect frame)
   (let* ([engine (ScooterWindowState-engine state)]
          [window-area (centered-window rect (Scooter-window-size engine))]
          [content-area (window-content-area window-area)]
          [styles (style-table)]
+         [scope-cache (box (hash))]
          [popup-style (hash-ref styles "popup")])
     (buffer/clear frame window-area)
     (block/render frame window-area (make-block popup-style popup-style "all" "plain"))
@@ -191,7 +213,7 @@
                          (area-y window-area)
                          " Scooter "
                          popup-style))
-    (for-each (lambda (run) (blit-run! frame content-area styles run))
+    (for-each (lambda (run) (blit-run! frame content-area styles scope-cache run))
               (Scooter-render engine
                               (area-width content-area)
                               (area-height content-area)))))

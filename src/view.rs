@@ -11,17 +11,17 @@ use scooter_core::{
     utils::{read_lines_range, relative_path, strip_control_chars},
 };
 use unicode_width::UnicodeWidthChar;
-mod canvas;
 mod banner;
+mod canvas;
 mod layout;
 
 use banner::{format_duration, render_banner, render_footer, status};
+pub(crate) use canvas::{Frame, Run, StyleTag};
 use canvas::{add_centered_run, add_run, add_segment, display_width, truncate};
 use layout::{
     FieldsLayout, PopupArea, TitleAlignment, default_content_width, fields_layout, popup_area,
     popup_inner,
 };
-pub(crate) use canvas::{Frame, Run, StyleTag};
 
 const FIELD_HEIGHT: usize = 3;
 const FIELD_COUNT_WHEN_RESULTS_FOCUSSED: usize = 2;
@@ -242,7 +242,7 @@ fn render_paragraph_popup(
             x,
             y + offset,
             &line.text,
-            line.tag,
+            line.tag.clone(),
             x + content_width,
             height,
         );
@@ -323,7 +323,7 @@ fn draw_popup_box(
         area,
         Some(title),
         TitleAlignment::Center,
-        (StyleTag::PopupBorder, StyleTag::Popup),
+        &(StyleTag::PopupBorder, StyleTag::Popup),
         frame_width,
         frame_height,
     );
@@ -334,7 +334,7 @@ fn draw_box_border(
     area: PopupArea,
     title: Option<&str>,
     title_alignment: TitleAlignment,
-    tags: (StyleTag, StyleTag),
+    tags: &(StyleTag, StyleTag),
     frame_width: usize,
     frame_height: usize,
 ) {
@@ -348,7 +348,7 @@ fn draw_box_border(
                 area.x,
                 area.y + row,
                 "│",
-                tags.0,
+                tags.0.clone(),
                 frame_width,
                 frame_height,
             );
@@ -361,7 +361,7 @@ fn draw_box_border(
         area.x,
         area.y,
         &format!("┌{}┐", "─".repeat(area.width.saturating_sub(2))),
-        tags.0,
+        tags.0.clone(),
         frame_width,
         frame_height,
     );
@@ -371,7 +371,7 @@ fn draw_box_border(
                 runs,
                 area.y,
                 title,
-                tags.1,
+                tags.1.clone(),
                 area.x + 1,
                 area.width.saturating_sub(2),
                 frame_width,
@@ -382,7 +382,7 @@ fn draw_box_border(
                 area.x + 1,
                 area.y,
                 title,
-                tags.1,
+                tags.1.clone(),
                 area.x + area.width.saturating_sub(1),
                 frame_height,
             ),
@@ -394,7 +394,7 @@ fn draw_box_border(
             area.x,
             area.y + row,
             "│",
-            tags.0,
+            tags.0.clone(),
             frame_width,
             frame_height,
         );
@@ -403,7 +403,7 @@ fn draw_box_border(
             area.x + area.width - 1,
             area.y + row,
             "│",
-            tags.0,
+            tags.0.clone(),
             frame_width,
             frame_height,
         );
@@ -414,7 +414,7 @@ fn draw_box_border(
             area.x,
             area.y + area.height - 1,
             &format!("└{}┘", "─".repeat(area.width.saturating_sub(2))),
-            tags.0,
+            tags.0.clone(),
             frame_width,
             frame_height,
         );
@@ -450,7 +450,7 @@ fn render_toast(runs: &mut Vec<Run>, message: &str, width: usize, height: usize)
         area,
         None,
         TitleAlignment::Center,
-        (StyleTag::ToastBorder, StyleTag::ToastBorder),
+        &(StyleTag::ToastBorder, StyleTag::ToastBorder),
         width,
         height,
     );
@@ -497,7 +497,16 @@ fn render_performing_replacement(
     ];
     let start_y = height.saturating_sub(lines.len()) / 2;
     for (offset, (text, tag)) in lines.iter().enumerate() {
-        add_centered_run(runs, start_y + offset, text, *tag, 0, width, width, height);
+        add_centered_run(
+            runs,
+            start_y + offset,
+            text,
+            tag.clone(),
+            0,
+            width,
+            width,
+            height,
+        );
     }
 }
 
@@ -542,8 +551,24 @@ fn render_replacement_results(
             break;
         }
         let (path, error) = result.display_error();
-        add_run(runs, x, y + 1, &path, StyleTag::Text, x + content_width, height);
-        add_run(runs, x, y + 2, error, StyleTag::Error, x + content_width, height);
+        add_run(
+            runs,
+            x,
+            y + 1,
+            &path,
+            StyleTag::Text,
+            x + content_width,
+            height,
+        );
+        add_run(
+            runs,
+            x,
+            y + 2,
+            error,
+            StyleTag::Error,
+            x + content_width,
+            height,
+        );
         y += 3;
     }
 }
@@ -576,7 +601,7 @@ fn render_results_tallies(
             area,
             Some(title),
             TitleAlignment::Left,
-            (StyleTag::Text, StyleTag::Text),
+            &(StyleTag::Text, StyleTag::Text),
             frame_width,
             frame_height,
         );
@@ -683,7 +708,7 @@ fn render_text_field(
             x,
             y,
             field_width,
-            border_tag,
+            &border_tag,
             frame_width,
             frame_height,
         );
@@ -705,13 +730,21 @@ fn render_text_field(
 
     let end_x = x + field_width;
     let mut title_x = x;
-    add_segment(runs, &mut title_x, y, "┌─", border_tag, end_x, frame_height);
+    add_segment(
+        runs,
+        &mut title_x,
+        y,
+        "┌─",
+        border_tag.clone(),
+        end_x,
+        frame_height,
+    );
     add_title_segments(
         runs,
         &mut title_x,
         y,
         field,
-        border_tag,
+        border_tag.clone(),
         end_x.saturating_sub(1),
         frame_height,
     );
@@ -721,12 +754,20 @@ fn render_text_field(
         &mut title_x,
         y,
         &trailing_border,
-        border_tag,
+        border_tag.clone(),
         end_x,
         frame_height,
     );
 
-    add_run(runs, x, y + 1, "│", border_tag, frame_width, frame_height);
+    add_run(
+        runs,
+        x,
+        y + 1,
+        "│",
+        border_tag.clone(),
+        frame_width,
+        frame_height,
+    );
     let value = truncate(value, field_width.saturating_sub(2));
     add_run(
         runs,
@@ -742,7 +783,7 @@ fn render_text_field(
         end_x - 1,
         y + 1,
         "│",
-        border_tag,
+        border_tag.clone(),
         frame_width,
         frame_height,
     );
@@ -783,7 +824,7 @@ fn render_checkbox_field(
         y,
         checkbox_width,
         if checked { " X " } else { "" },
-        border_tag,
+        border_tag.clone(),
         frame_width,
         frame_height,
     );
@@ -816,7 +857,15 @@ fn render_plain_box(
         return;
     }
     if box_width == 1 {
-        render_narrow_box(runs, x, y, box_width, border_tag, frame_width, frame_height);
+        render_narrow_box(
+            runs,
+            x,
+            y,
+            box_width,
+            &border_tag,
+            frame_width,
+            frame_height,
+        );
         return;
     }
 
@@ -826,11 +875,19 @@ fn render_plain_box(
         x,
         y,
         &format!("┌{}┐", "─".repeat(box_width.saturating_sub(2))),
-        border_tag,
+        border_tag.clone(),
         frame_width,
         frame_height,
     );
-    add_run(runs, x, y + 1, "│", border_tag, frame_width, frame_height);
+    add_run(
+        runs,
+        x,
+        y + 1,
+        "│",
+        border_tag.clone(),
+        frame_width,
+        frame_height,
+    );
     add_run(
         runs,
         x + 1,
@@ -845,7 +902,7 @@ fn render_plain_box(
         end_x - 1,
         y + 1,
         "│",
-        border_tag,
+        border_tag.clone(),
         frame_width,
         frame_height,
     );
@@ -865,13 +922,21 @@ fn render_narrow_box(
     x: usize,
     y: usize,
     box_width: usize,
-    border_tag: StyleTag,
+    border_tag: &StyleTag,
     frame_width: usize,
     frame_height: usize,
 ) {
     if box_width == 1 {
         for row in 0..FIELD_HEIGHT {
-            add_run(runs, x, y + row, "│", border_tag, frame_width, frame_height);
+            add_run(
+                runs,
+                x,
+                y + row,
+                "│",
+                border_tag.clone(),
+                frame_width,
+                frame_height,
+            );
         }
     }
 }
@@ -1073,10 +1138,10 @@ fn render_result_row(
         left_end_x.saturating_sub(x + display_width(marker) + display_width(&line_number));
     let path = truncate_path_from_start(&path, path_space);
     let mut row_x = x;
-    let (marker_tag, path_tag, accessory_tag) = row_tag
-        .map_or((StyleTag::Info, StyleTag::Text, StyleTag::Info), |selection_tag| {
-            (selection_tag, selection_tag, selection_tag)
-        });
+    let (marker_tag, path_tag, accessory_tag) = row_tag.clone().map_or(
+        (StyleTag::Info, StyleTag::Text, StyleTag::Info),
+        |selection_tag| (selection_tag.clone(), selection_tag.clone(), selection_tag),
+    );
 
     if let Some(selection_tag) = row_tag {
         // The TUI paints the selected row's background from edge to edge.
@@ -1116,7 +1181,7 @@ fn render_result_row(
         &mut row_x,
         y,
         &line_number,
-        accessory_tag,
+        accessory_tag.clone(),
         left_end_x,
         frame_height,
     );
@@ -1369,9 +1434,9 @@ fn diff_lines(result: &SearchResultWithReplacement) -> Vec<PreviewLine> {
                     )
                 })
                 .collect();
-            diff_lines_from_segments("- ", StyleTag::DiffRemoved, old)
+            diff_lines_from_segments("- ", &StyleTag::DiffRemoved, old)
                 .into_iter()
-                .chain(diff_lines_from_segments("+ ", StyleTag::DiffAdded, new))
+                .chain(diff_lines_from_segments("+ ", &StyleTag::DiffAdded, new))
                 .collect()
         }
         MatchContent::ByteRange {
@@ -1422,7 +1487,7 @@ fn detailed_multiline_diff(
         };
         result.extend(diff_lines_from_segments(
             "- ",
-            StyleTag::DiffRemoved,
+            &StyleTag::DiffRemoved,
             vec![
                 (&line.content[..start], StyleTag::DiffRemoved),
                 (&line.content[start..end], StyleTag::DiffRemovedEmph),
@@ -1435,7 +1500,7 @@ fn detailed_multiline_diff(
     let last = &lines[lines.len() - 1].1.content;
     result.extend(diff_lines_from_segments(
         "+ ",
-        StyleTag::DiffAdded,
+        &StyleTag::DiffAdded,
         vec![
             (&first[..match_start_in_first_line], StyleTag::DiffAdded),
             (replacement, StyleTag::DiffAddedEmph),
@@ -1456,7 +1521,7 @@ fn simple_multiline_diff(
         .flat_map(|(_, line)| {
             diff_lines_from_segments(
                 "- ",
-                StyleTag::DiffRemoved,
+                &StyleTag::DiffRemoved,
                 vec![(&line.content, StyleTag::DiffRemoved)],
             )
         })
@@ -1465,7 +1530,7 @@ fn simple_multiline_diff(
     let last = &lines[lines.len() - 1].1.content;
     result.extend(diff_lines_from_segments(
         "+ ",
-        StyleTag::DiffAdded,
+        &StyleTag::DiffAdded,
         vec![
             (&first[..match_start_in_first_line], StyleTag::DiffAdded),
             (replacement, StyleTag::DiffAdded),
@@ -1477,21 +1542,21 @@ fn simple_multiline_diff(
 
 fn diff_lines_from_segments(
     prefix: &str,
-    prefix_tag: StyleTag,
+    prefix_tag: &StyleTag,
     segments: Vec<(&str, StyleTag)>,
 ) -> Vec<PreviewLine> {
     let mut lines = Vec::new();
     let mut current = PreviewLine::default();
-    push_preview_segment(&mut current, prefix, prefix_tag);
+    push_preview_segment(&mut current, prefix, prefix_tag.clone());
     for (text, tag) in segments {
         for part in text.split_inclusive('\n') {
             let ends_line = part.ends_with('\n');
             let part = part.strip_suffix('\n').unwrap_or(part);
-            push_preview_segment(&mut current, part, tag);
+            push_preview_segment(&mut current, part, tag.clone());
             if ends_line {
                 lines.push(current);
                 current = PreviewLine::default();
-                push_preview_segment(&mut current, prefix, prefix_tag);
+                push_preview_segment(&mut current, prefix, prefix_tag.clone());
             }
         }
     }
@@ -1568,7 +1633,7 @@ fn truncate_preview_line(line: &PreviewLine, width: usize) -> PreviewLine {
             used += character_width;
             text.push(character);
         }
-        push_preview_segment(&mut truncated, &text, segment.tag);
+        push_preview_segment(&mut truncated, &text, segment.tag.clone());
         if used >= width {
             break;
         }
@@ -1594,7 +1659,7 @@ fn wrap_preview_line(line: &PreviewLine, width: usize) -> Vec<PreviewLine> {
             if used + character_width > width {
                 continue;
             }
-            push_preview_segment(&mut current, &character.to_string(), segment.tag);
+            push_preview_segment(&mut current, &character.to_string(), segment.tag.clone());
             used += character_width;
         }
     }
@@ -1626,7 +1691,6 @@ fn clamp_result_offset(search_state: &mut SearchState, num_to_render: usize) {
         );
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1751,7 +1815,11 @@ mod tests {
                 .collect::<String>(),
             "  context text"
         );
-        assert!(line.segments.iter().all(|segment| segment.tag == StyleTag::Text));
+        assert!(
+            line.segments
+                .iter()
+                .all(|segment| segment.tag == StyleTag::Text)
+        );
     }
 
     #[test]
@@ -1816,14 +1884,18 @@ mod tests {
         wait_until_complete(&mut engine);
 
         let preview = engine.render(160, 45);
-        assert!(preview
-            .runs
-            .iter()
-            .any(|run| run.tag == StyleTag::DiffRemoved));
-        assert!(preview
-            .runs
-            .iter()
-            .any(|run| run.tag == StyleTag::DiffAdded));
+        assert!(
+            preview
+                .runs
+                .iter()
+                .any(|run| run.tag == StyleTag::DiffRemoved)
+        );
+        assert!(
+            preview
+                .runs
+                .iter()
+                .any(|run| run.tag == StyleTag::DiffAdded)
+        );
 
         assert_all_sizes_are_well_formed(&mut engine);
     }

@@ -1,12 +1,14 @@
 //! Frame primitives and semantic style tags.
 
+use std::{borrow::Cow, sync::Arc};
+
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Semantic styles shared with the Steel layer's style table.
 ///
 /// Keep the textual wire values in one place: adding a renderer style now
 /// requires an intentional corresponding Steel mapping or its safe fallback.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StyleTag {
     Text,
     Dim,
@@ -24,27 +26,31 @@ pub(crate) enum StyleTag {
     DiffAddedEmph,
     DiffRemoved,
     DiffRemovedEmph,
+    /// A Tree-sitter scope encoded for Steel as `s:<scope>`.
+    #[allow(dead_code)] // SH2 is the first preview renderer consumer.
+    Scope(Arc<str>),
 }
 
 impl StyleTag {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(&self) -> Cow<'_, str> {
         match self {
-            Self::Text => "text",
-            Self::Dim => "dim",
-            Self::Selection => "selection",
-            Self::SelectionSecondary => "selection-secondary",
-            Self::SelectionExcluded => "selection-excluded",
-            Self::SelectionSecondaryExcluded => "selection-secondary-excluded",
-            Self::Active => "active",
-            Self::Popup => "popup",
-            Self::PopupBorder => "popup-border",
-            Self::ToastBorder => "toast-border",
-            Self::Error => "error",
-            Self::Info => "info",
-            Self::DiffAdded => "diff-added",
-            Self::DiffAddedEmph => "diff-added-emph",
-            Self::DiffRemoved => "diff-removed",
-            Self::DiffRemovedEmph => "diff-removed-emph",
+            Self::Text => Cow::Borrowed("text"),
+            Self::Dim => Cow::Borrowed("dim"),
+            Self::Selection => Cow::Borrowed("selection"),
+            Self::SelectionSecondary => Cow::Borrowed("selection-secondary"),
+            Self::SelectionExcluded => Cow::Borrowed("selection-excluded"),
+            Self::SelectionSecondaryExcluded => Cow::Borrowed("selection-secondary-excluded"),
+            Self::Active => Cow::Borrowed("active"),
+            Self::Popup => Cow::Borrowed("popup"),
+            Self::PopupBorder => Cow::Borrowed("popup-border"),
+            Self::ToastBorder => Cow::Borrowed("toast-border"),
+            Self::Error => Cow::Borrowed("error"),
+            Self::Info => Cow::Borrowed("info"),
+            Self::DiffAdded => Cow::Borrowed("diff-added"),
+            Self::DiffAddedEmph => Cow::Borrowed("diff-added-emph"),
+            Self::DiffRemoved => Cow::Borrowed("diff-removed"),
+            Self::DiffRemovedEmph => Cow::Borrowed("diff-removed-emph"),
+            Self::Scope(scope) => Cow::Owned(format!("s:{scope}")),
         }
     }
 }

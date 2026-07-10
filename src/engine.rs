@@ -4,15 +4,15 @@ use std::{collections::VecDeque, mem, path::PathBuf};
 
 use scooter_core::{
     app::{
-        App, BackgroundProcessingEvent, Event, EventHandlingResult, FocussedSection,
-        InputSource, InternalEvent, Screen, SearchPhase,
+        App, BackgroundProcessingEvent, Event, EventHandlingResult, FocussedSection, InputSource,
+        InternalEvent, Screen, SearchPhase,
     },
     fields::SearchFieldValues,
     keyboard::{KeyCode, KeyEvent, KeyModifiers},
 };
 use tokio::runtime::{Builder, Runtime};
 
-use crate::{key, options::EngineOptions, view};
+use crate::{highlight::HighlightEngine, key, options::EngineOptions, view};
 
 const DRAIN_LIMIT: usize = 1_000;
 
@@ -57,6 +57,9 @@ pub(crate) struct ScooterEngine {
     pub(crate) app: App,
     window_size: f64,
     actions: VecDeque<EngineAction>,
+    // SH2 will consume this while building preview context lines. Keeping it
+    // per session lets the LRU serve repeated preview renders immediately.
+    _highlight_engine: HighlightEngine,
 }
 
 impl ScooterEngine {
@@ -75,6 +78,7 @@ impl ScooterEngine {
             .build()
             .map_err(|error| error.to_string())?;
         let _guard = runtime.enter();
+        let highlight_engine = HighlightEngine::new(options.runtime_dir.clone());
         let app = App::new(
             InputSource::Directory(directory.into()),
             &SearchFieldValues::default(),
@@ -87,6 +91,7 @@ impl ScooterEngine {
             app,
             window_size: options.window_size,
             actions: VecDeque::new(),
+            _highlight_engine: highlight_engine,
         })
     }
 
@@ -297,13 +302,14 @@ impl ScooterEngine {
                 Event::Internal(event) => {
                     let replacement_completed = matches!(
                         &event,
-                        InternalEvent::Background(BackgroundProcessingEvent::ReplacementCompleted(_))
+                        InternalEvent::Background(BackgroundProcessingEvent::ReplacementCompleted(
+                            _
+                        ))
                     );
                     if let Some(runtime) = self.runtime.as_ref() {
                         let _guard = runtime.enter();
                         let result = self.app.handle_internal_event(event);
-                        if replacement_completed
-                            && matches!(result, EventHandlingResult::Rerender)
+                        if replacement_completed && matches!(result, EventHandlingResult::Rerender)
                         {
                             self.actions.push_back(EngineAction::ReloadDocuments);
                         }
@@ -545,14 +551,9 @@ mod tests {
         assert!(initial.contains("- alpha first"));
         assert!(initial.contains("+ OMEGA first"));
         let focussed = engine.render(160, 45);
-        assert!(
-            focussed
-                .runs
-                .iter()
-                .any(|run| {
-                    run.tag == StyleTag::Selection && run.x == 8 && run.text == " ".repeat(57)
-                })
-        );
+        assert!(focussed.runs.iter().any(|run| {
+            run.tag == StyleTag::Selection && run.x == 8 && run.text == " ".repeat(57)
+        }));
         assert!(
             focussed
                 .runs
@@ -587,12 +588,9 @@ mod tests {
         engine.handle_key("k", 0);
         let excluded_range = engine.render(160, 45);
         assert!(
-            excluded_range
-                .runs
-                .iter()
-                .any(|run| {
-                    run.tag == StyleTag::SelectionSecondaryExcluded && run.text == "[ ] "
-                })
+            excluded_range.runs.iter().any(|run| {
+                run.tag == StyleTag::SelectionSecondaryExcluded && run.text == "[ ] "
+            })
         );
         engine.handle_key("esc", 0);
 
@@ -608,11 +606,9 @@ mod tests {
         engine.handle_key("v", 0);
         engine.handle_key("j", 0);
         let multiselect = engine.render(160, 45);
-        assert!(
-            multiselect.runs.iter().any(|run| {
-                run.tag == StyleTag::SelectionSecondary && run.text.contains("matches.txt")
-            })
-        );
+        assert!(multiselect.runs.iter().any(|run| {
+            run.tag == StyleTag::SelectionSecondary && run.text.contains("matches.txt")
+        }));
         engine.handle_key("esc", 0);
         engine.handle_key("k", 0);
 
@@ -803,18 +799,23 @@ mod tests {
                 1,
             ));
         sender
-            .send(BackgroundProcessingEvent::ReplacementCompleted(ReplaceState {
-                num_successes: 1,
-                num_ignored: 0,
-                errors: vec![],
-                replacement_errors_pos: 0,
-            }))
+            .send(BackgroundProcessingEvent::ReplacementCompleted(
+                ReplaceState {
+                    num_successes: 1,
+                    num_ignored: 0,
+                    errors: vec![],
+                    replacement_errors_pos: 0,
+                },
+            ))
             .expect("replacement receiver lives");
 
         // A hidden session does not pump. Once resumed, the queued completion
         // both reaches core's results screen and emits its deferred reload.
         let response = engine.pump();
-        assert!(matches!(engine.app.ui_state.current_screen, Screen::Results(_)));
+        assert!(matches!(
+            engine.app.ui_state.current_screen,
+            Screen::Results(_)
+        ));
         assert_eq!(response.actions, vec![EngineAction::ReloadDocuments]);
     }
 

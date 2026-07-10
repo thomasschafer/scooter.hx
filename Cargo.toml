@@ -12,20 +12,23 @@ crate-type = ["cdylib"]
 abi_stable = "0.11.1"
 etcetera = "0.11.0"
 log = "0.4.30"
+lru = "0.18.1"
 # TODO: replace this pinned revision with scooter-core 0.4 from crates.io when it is published.
 scooter-core = { git = "https://github.com/thomasschafer/scooter", rev = "9387c36c6a6b8004d091b8f32e107b91ff530b0b", package = "scooter-core" }
 simple-log = "2.4.0"
 steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a", features = ["dylibs", "sync"] }
 steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a" }
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
+ropey = "=1.6.1"
+regex = "1.12.3"
+toml = "1.1.0"
+tree-house = { version = "=0.4.0", default-features = false }
+tree-house-bindings = "=0.3.2"
 unicode-width = "0.2.0"
 
 [dev-dependencies]
 insta = { version = "1.47.2", features = ["filters"] }
-ropey = "=1.6.1"
 tempfile = "3.27.0"
-tree-house = { version = "=0.4.0", default-features = false }
-tree-house-bindings = "=0.3.2"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
