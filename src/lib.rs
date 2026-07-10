@@ -3,6 +3,7 @@
 mod engine;
 mod key;
 mod logging;
+mod options;
 mod view;
 
 #[cfg(test)]
@@ -12,10 +13,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use abi_stable::std_types::RVec;
 use engine::{EngineAction, EngineResponse, ScooterEngine};
+use options::{EngineOptions, OptionEntry, OptionValue};
 use steel::{
     declare_module,
     rvals::Custom,
-    steel_vm::ffi::{FFIModule, FFIValue, RegisterFFIFn},
+    steel_vm::ffi::{FFIArg, FFIModule, FFIValue, RegisterFFIFn},
 };
 use view::Run;
 
@@ -49,12 +51,82 @@ fn ffi_guard<T>(
     }
 }
 
-fn scooter_engine_new(directory: &str) -> Result<ScooterEngine, String> {
+/// Return either a custom engine handle or a human-readable error string.
+///
+/// A string result, rather than a Steel FFI exception, lets the Scheme layer
+/// present core's key-conflict message in Helix and leave its window closed.
+fn scooter_engine_new(directory: &str, options: FFIArg<'static>) -> FFIValue {
     ffi_guard(
         "Scooter-engine-new",
-        || ScooterEngine::new(directory).map_err(|error| error.to_string()),
-        || Err("Scooter engine creation panicked".to_string()),
+        || match parse_engine_options(options) {
+            Ok(options) => ScooterEngine::new_with_options(directory, options)
+                .map_or_else(FFIValue::from, FFIValue::from),
+            Err(error) => FFIValue::from(error),
+        },
+        || FFIValue::from("Scooter engine creation panicked".to_string()),
     )
+}
+
+fn scooter_window_size(engine: &ScooterEngine) -> f64 {
+    ffi_guard(
+        "Scooter-window-size",
+        || engine.window_size(),
+        || options::DEFAULT_WINDOW_SIZE,
+    )
+}
+
+fn parse_engine_options(options: FFIArg<'_>) -> Result<EngineOptions, String> {
+    let FFIArg::Vector(entries) = options else {
+        return Err("Invalid Scooter options: expected a list of (key value) pairs".to_string());
+    };
+
+    let entries = entries
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry)| parse_option_entry(index, entry))
+        .collect::<Result<Vec<_>, _>>()?;
+    EngineOptions::from_entries(entries)
+}
+
+fn parse_option_entry(index: usize, entry: FFIArg<'_>) -> Result<OptionEntry, String> {
+    let FFIArg::Vector(pair) = entry else {
+        return Err(format!(
+            "Invalid Scooter option at position {index}: expected a (key value) pair"
+        ));
+    };
+    if pair.len() != 2 {
+        return Err(format!(
+            "Invalid Scooter option at position {index}: expected a (key value) pair"
+        ));
+    }
+
+    let mut pair = pair.into_iter();
+    let key = ffi_string(pair.next().expect("length checked"), "option key")?;
+    let value = ffi_option_value(pair.next().expect("length checked"), &key)?;
+    Ok(OptionEntry { key, value })
+}
+
+fn ffi_option_value(value: FFIArg<'_>, key: &str) -> Result<OptionValue, String> {
+    match value {
+        FFIArg::BoolV(value) => Ok(OptionValue::Bool(value)),
+        FFIArg::NumV(value) => Ok(OptionValue::Number(value)),
+        FFIArg::Vector(values) => values
+            .into_iter()
+            .map(|value| ffi_string(value, "key binding"))
+            .collect::<Result<Vec<_>, _>>()
+            .map(OptionValue::Strings),
+        _ => Err(format!(
+            "Invalid value for '{key}': expected a boolean, number, or list of strings"
+        )),
+    }
+}
+
+fn ffi_string(value: FFIArg<'_>, kind: &str) -> Result<String, String> {
+    match value {
+        FFIArg::StringV(value) => Ok(value.into_string()),
+        FFIArg::StringRef(value) => Ok(value.to_string()),
+        _ => Err(format!("Invalid Scooter {kind}: expected a string")),
+    }
 }
 
 fn scooter_handle_key(engine: &mut ScooterEngine, code: &str, modifiers: usize) -> FFIValue {
@@ -180,6 +252,7 @@ fn build_module() -> FFIModule {
     let mut module = FFIModule::new("steel/scooter");
     module
         .register_fn("Scooter-engine-new", scooter_engine_new)
+        .register_fn("Scooter-window-size", scooter_window_size)
         .register_fn("Scooter-handle-key", scooter_handle_key)
         .register_fn("Scooter-pump", scooter_pump)
         .register_fn("Scooter-busy?", scooter_busy)
@@ -194,9 +267,75 @@ fn build_module() -> FFIModule {
 mod tests {
     use tempfile::tempdir;
 
-    use scooter_core::app::Event;
+    use scooter_core::{app::Event, keyboard::KeyCode};
 
     use super::*;
+
+    fn ffi_option(key: &str, value: FFIArg<'static>) -> FFIArg<'static> {
+        FFIArg::Vector(
+            vec![FFIArg::StringV(key.into()), value]
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn ffi_options_decode_pairs_and_preserve_core_key_strings() {
+        let options = parse_engine_options(FFIArg::Vector(
+            vec![
+                ffi_option("search.multiline", FFIArg::BoolV(true)),
+                ffi_option("preview.wrap-text", FFIArg::BoolV(true)),
+                ffi_option("window.size", FFIArg::NumV(0.7)),
+                ffi_option(
+                    "keys.search.results.move_down",
+                    FFIArg::Vector(
+                        vec![FFIArg::StringV("n".into()), FFIArg::StringV("down".into())]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ))
+        .expect("options decode");
+
+        assert!(options.run_config.multiline);
+        assert!(options.config.preview.wrap_text);
+        assert!((options.window_size - 0.7).abs() < f64::EPSILON);
+        assert_eq!(
+            options.config.keys.search.results.move_down[0].code,
+            KeyCode::Char('n')
+        );
+        assert_eq!(
+            options.config.keys.search.results.move_down[1].code,
+            KeyCode::Down
+        );
+    }
+
+    #[test]
+    fn ffi_constructor_returns_core_conflicts_as_displayable_strings() {
+        let fixture = tempdir().expect("fixture directory");
+        let options = FFIArg::Vector(
+            vec![ffi_option(
+                "keys.general.quit",
+                FFIArg::Vector(
+                    vec![FFIArg::StringV("C-r".into())]
+                        .into_iter()
+                        .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        let result = scooter_engine_new(fixture.path().to_str().expect("UTF-8 path"), options);
+        let FFIValue::StringV(error) = result else {
+            panic!("conflicting options must return a Steel string");
+        };
+        assert!(error.contains("Key binding conflict detected!"), "{error}");
+        assert!(error.contains("C-r"), "{error}");
+    }
 
     #[test]
     fn pump_encodes_status_followed_by_open_file_actions() {

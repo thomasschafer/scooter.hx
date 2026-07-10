@@ -5,7 +5,8 @@
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-render
                           Scooter-cursor
-                          Scooter-handle-key
+                 Scooter-handle-key
+                          Scooter-window-size
                           Scooter-pump
                           Scooter-busy?))
 
@@ -57,7 +58,7 @@
 ;;
 ;;   tag                             kind
 ;;   popup, popup-border, toast-border overlay: explicit fg + surface bg
-;;   text, active, error, info         content: fg/modifiers; inherits fill
+;;   text, dim, active, error, info    content: fg/modifiers; inherits fill
 ;;   diff-added, diff-added-emph       content: fg/modifiers; inherits fill
 ;;   diff-removed, diff-removed-emph   content: fg/modifiers; inherits fill
 ;;   selection, selection-secondary    selected-row fill: explicit selection bg
@@ -95,6 +96,9 @@
                       (safe-theme-style "diff.plus" text)
                       foreground)])
     (hash "text" (style-with-foreground text foreground)
+          "dim" (style-with-foreground
+                 (safe-theme-style "ui.text.inactive" text)
+                 foreground)
           "selection" selection
           "selection-secondary" (style-with-dim selection)
           "selection-excluded" selection-excluded
@@ -123,11 +127,14 @@
                                  (safe-theme-style "diff.minus" text)
                                  foreground)))))
 
-(define (centered-window rect)
+(define (scaled-window-dimension dimension ratio)
+  (max 1 (exact (floor (* dimension ratio)))))
+
+(define (centered-window rect ratio)
   (let* ([screen-width (area-width rect)]
          [screen-height (area-height rect)]
-         [width (max 1 (quotient (* screen-width 9) 10))]
-         [height (max 1 (quotient (* screen-height 9) 10))])
+         [width (scaled-window-dimension screen-width ratio)]
+         [height (scaled-window-dimension screen-height ratio)])
     (area (+ (area-x rect) (quotient (- screen-width width) 2))
           (+ (area-y rect) (quotient (- screen-height height) 2))
           width
@@ -168,11 +175,11 @@
                          (style-for-run styles tag)))))
 
 (define (scooter-window-render state rect frame)
-  (let* ([window-area (centered-window rect)]
+  (let* ([engine (ScooterWindowState-engine state)]
+         [window-area (centered-window rect (Scooter-window-size engine))]
          [content-area (window-content-area window-area)]
          [styles (style-table)]
-         [popup-style (hash-ref styles "popup")]
-         [engine (ScooterWindowState-engine state)])
+         [popup-style (hash-ref styles "popup")])
     (buffer/clear frame window-area)
     (block/render frame window-area (make-block popup-style popup-style "all" "plain"))
     (when (> (area-width window-area) 2)
@@ -187,9 +194,10 @@
                               (area-height content-area)))))
 
 (define (scooter-window-cursor state rect)
-  (let* ([window-area (centered-window rect)]
+  (let* ([engine (ScooterWindowState-engine state)]
+         [window-area (centered-window rect (Scooter-window-size engine))]
          [content-area (window-content-area window-area)]
-         [cursor (Scooter-cursor (ScooterWindowState-engine state)
+         [cursor (Scooter-cursor engine
                                  (area-width content-area)
                                  (area-height content-area))])
     (and cursor
@@ -217,6 +225,39 @@
     [(key-event-page-up? event) "pageup"]
     [(key-event-page-down? event) "pagedown"]
     [(key-event-delete? event) "delete"]
+    [(key-event-insert? event) "insert"]
+    [(key-event-null? event) "null"]
+    [(key-event-caps-lock? event) "capslock"]
+    [(key-event-scroll-lock? event) "scrolllock"]
+    [(key-event-num-lock? event) "numlock"]
+    [(key-event-print-screen? event) "printscreen"]
+    [(key-event-pause? event) "pause"]
+    [(key-event-menu? event) "menu"]
+    [(key-event-keypad-begin? event) "keypadbegin"]
+    [(key-event-F? event 1) "f1"]
+    [(key-event-F? event 2) "f2"]
+    [(key-event-F? event 3) "f3"]
+    [(key-event-F? event 4) "f4"]
+    [(key-event-F? event 5) "f5"]
+    [(key-event-F? event 6) "f6"]
+    [(key-event-F? event 7) "f7"]
+    [(key-event-F? event 8) "f8"]
+    [(key-event-F? event 9) "f9"]
+    [(key-event-F? event 10) "f10"]
+    [(key-event-F? event 11) "f11"]
+    [(key-event-F? event 12) "f12"]
+    [(key-event-F? event 13) "f13"]
+    [(key-event-F? event 14) "f14"]
+    [(key-event-F? event 15) "f15"]
+    [(key-event-F? event 16) "f16"]
+    [(key-event-F? event 17) "f17"]
+    [(key-event-F? event 18) "f18"]
+    [(key-event-F? event 19) "f19"]
+    [(key-event-F? event 20) "f20"]
+    [(key-event-F? event 21) "f21"]
+    [(key-event-F? event 22) "f22"]
+    [(key-event-F? event 23) "f23"]
+    [(key-event-F? event 24) "f24"]
     [else #f]))
 
 ;; Pump and key dispatch both return `(status action...)`. H3 will turn

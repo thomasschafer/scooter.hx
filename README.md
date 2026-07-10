@@ -18,6 +18,19 @@ Once open, you can hit `escape` to hide the window (and open it again with `:sco
 
 When viewing the search results, you can hit `e` to open up one of the results (keeping the existing session running). You can also use `<alt>-e` to open a search result in the background, without hiding the window. 
 
+## Configuration
+
+Configure Scooter in `init.scm`, after requiring the plugin. Settings apply when a session is created: use `:scooter-new` to apply a change to an existing session.
+
+```scheme
+(scooter-set! 'multiline #t)
+(scooter-set! 'wrap-text #t)
+(scooter-set! 'window-size 0.85)
+(scooter-keys! "search.results.move_down" '("j" "down"))
+```
+
+`scooter-set!` accepts `multiline`, `hidden`, `advanced-regex`, `include-git-folders`, `escape-sequences`, `wrap-text`, and `window-size` (a number from `0.5` to `1.0`). `scooter-keys!` accepts a single key string or a list, using Scooter's normal key syntax such as `"C-o"`, `"A-m"`, and `"S-tab"`. Its first argument is a core key path without the `keys.` prefix, for example `general.quit`, `search.fields.trigger_search`, `search.results.move_down`, or `results.quit`.
+
 ## Installation
 
 Follow the instructions [here](https://github.com/mattwparas/helix/blob/steel-event-system/STEEL.md) to install Helix on the plugin branch.

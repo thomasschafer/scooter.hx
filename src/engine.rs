@@ -4,16 +4,15 @@ use std::{collections::VecDeque, mem, path::PathBuf};
 
 use scooter_core::{
     app::{
-        App, AppRunConfig, Event, EventHandlingResult, FocussedSection, InputSource, Screen,
+        App, Event, EventHandlingResult, FocussedSection, InputSource, Screen,
         SearchPhase,
     },
-    config::Config,
     fields::SearchFieldValues,
     keyboard::KeyCode,
 };
 use tokio::runtime::{Builder, Runtime};
 
-use crate::{key, view};
+use crate::{key, options::EngineOptions, view};
 
 const DRAIN_LIMIT: usize = 1_000;
 
@@ -54,11 +53,20 @@ pub(crate) struct ScooterEngine {
     // Runtime's blocking Drop implementation on Helix's UI thread.
     runtime: Option<Runtime>,
     pub(crate) app: App,
+    window_size: f64,
     actions: VecDeque<EngineAction>,
 }
 
 impl ScooterEngine {
+    #[cfg(test)]
     pub(crate) fn new(directory: impl Into<PathBuf>) -> Result<Self, String> {
+        Self::new_with_options(directory, EngineOptions::default())
+    }
+
+    pub(crate) fn new_with_options(
+        directory: impl Into<PathBuf>,
+        options: EngineOptions,
+    ) -> Result<Self, String> {
         let runtime = Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -68,15 +76,20 @@ impl ScooterEngine {
         let app = App::new(
             InputSource::Directory(directory.into()),
             &SearchFieldValues::default(),
-            AppRunConfig::default(),
-            Config::default(),
+            options.run_config,
+            options.config,
         )
         .map_err(|error| error.to_string())?;
         Ok(Self {
             runtime: Some(runtime),
             app,
+            window_size: options.window_size,
             actions: VecDeque::new(),
         })
+    }
+
+    pub(crate) const fn window_size(&self) -> f64 {
+        self.window_size
     }
 
     pub(crate) fn handle_key(&mut self, code: &str, modifiers: usize) -> EngineResponse {
@@ -281,17 +294,43 @@ mod tests {
         time::{Duration, Instant},
     };
 
+    use crate::view::StyleTag;
     use scooter_core::{
         app::{Event, FocussedSection, Popup, Screen, SearchPhase},
         line_reader::LineEnding,
         replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
         search::{SearchResult, SearchResultWithReplacement},
     };
-    use crate::view::StyleTag;
     use tempfile::tempdir;
     use tokio::sync::mpsc;
 
+    use crate::options::{EngineOptions, OptionEntry};
+
     use super::{DRAIN_LIMIT, EngineAction, ScooterEngine};
+
+    #[test]
+    fn engine_creation_returns_core_key_conflict_errors() {
+        let fixture = tempdir().expect("fixture directory");
+        let options =
+            EngineOptions::from_entries([OptionEntry::keys("keys.general.quit", &["C-r"])])
+                .expect("options parse");
+
+        let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
+            panic!("conflicting bindings must reject engine creation");
+        };
+        assert!(error.contains("C-r"), "{error}");
+        assert!(error.to_lowercase().contains("conflict"), "{error}");
+    }
+
+    #[test]
+    fn engine_exposes_its_configured_window_size() {
+        let fixture = tempdir().expect("fixture directory");
+        let options = EngineOptions::from_entries([OptionEntry::number("window.size", 0.7)])
+            .expect("options parse");
+        let engine =
+            ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
+        assert!((engine.window_size() - 0.7).abs() < f64::EPSILON);
+    }
 
     #[test]
     fn headless_fields_renderer_reflects_search_checkbox_errors_and_collapse() {
@@ -506,7 +545,14 @@ mod tests {
         assert!(!unwrapped.contains("↪ "));
         engine.handle_key("l", 2);
         let wrapped = rendered_rows(&mut engine, 160, 45).join("\n");
-        assert!(!wrapped.contains("↪ "));
+        assert!(wrapped.contains("  ↪ "));
+        assert!(
+            engine
+                .render(160, 45)
+                .runs
+                .iter()
+                .any(|run| run.tag == StyleTag::Dim && run.text == "  ↪ ")
+        );
         assert!(wrapped.lines().count() > unwrapped.lines().count());
     }
 

@@ -29,6 +29,7 @@ const BANNER_HEIGHT: usize = 2;
 const NARROW_RESULTS_WIDTH: usize = 110;
 const NARROW_LIST_HEIGHT: usize = 5;
 const MULTILINE_DETAILED_DIFF_MAX_BYTES: usize = 20_000;
+const WRAPPED_LINE_PREFIX: &str = "  ↪ ";
 
 #[derive(Debug, Clone)]
 struct PopupLine {
@@ -1576,7 +1577,7 @@ fn truncate_preview_line(line: &PreviewLine, width: usize) -> PreviewLine {
 }
 
 fn wrap_preview_line(line: &PreviewLine, width: usize) -> Vec<PreviewLine> {
-    if width == 0 {
+    if width <= display_width(WRAPPED_LINE_PREFIX) {
         return Vec::new();
     }
 
@@ -1588,8 +1589,7 @@ fn wrap_preview_line(line: &PreviewLine, width: usize) -> Vec<PreviewLine> {
             let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
             if used + character_width > width && used > 0 {
                 wrapped.push(current);
-                current = PreviewLine::default();
-                used = 0;
+                (current, used) = wrapped_preview_continuation();
             }
             if used + character_width > width {
                 continue;
@@ -1602,6 +1602,14 @@ fn wrap_preview_line(line: &PreviewLine, width: usize) -> Vec<PreviewLine> {
         wrapped.push(current);
     }
     wrapped
+}
+
+fn wrapped_preview_continuation() -> (PreviewLine, usize) {
+    let mut line = PreviewLine::default();
+    let prefix_width = display_width(WRAPPED_LINE_PREFIX);
+
+    push_preview_segment(&mut line, WRAPPED_LINE_PREFIX, StyleTag::Dim);
+    (line, prefix_width)
 }
 
 fn clamp_result_offset(search_state: &mut SearchState, num_to_render: usize) {

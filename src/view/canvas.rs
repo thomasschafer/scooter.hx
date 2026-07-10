@@ -9,6 +9,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StyleTag {
     Text,
+    Dim,
     Selection,
     SelectionSecondary,
     SelectionExcluded,
@@ -29,6 +30,7 @@ impl StyleTag {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Text => "text",
+            Self::Dim => "dim",
             Self::Selection => "selection",
             Self::SelectionSecondary => "selection-secondary",
             Self::SelectionExcluded => "selection-excluded",
