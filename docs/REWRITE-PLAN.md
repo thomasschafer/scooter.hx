@@ -74,6 +74,7 @@ Phase 2 (post-rewrite, agreed 2026-07-10): syntax highlighting + docs automation
 | SH2 | Preview integration: highlighted context lines, preview pane background = editor background (deliberate Helix-native deviation from TUI), snapshots + themed SGR e2e, perf guard | done |
 | D1 | Docs automation like scooter's xtask: declarative options table as single source of truth, xtask readme generator (TOC/CONFIG/KEYS markers, core keys.rs doc parsing via cargo metadata), CI --check job | done |
 | A2 | Deep review sweep: languages.toml shadowing fix, preview I/O caching, pump-delivered hide handling, non-UTF8 fallback, span scan perf, quality sweep | done |
+| PAR1 | TUI parity sweep: A-e collision fix (bg-open becomes configurable plugin.open_in_editor_bg, default A-o), paste support, META/SUPER modifiers, help-row injection, interception contract test, config-matrix e2e | in progress |
 | END | Endgame: merge scooter PR, publish scooter-core, repoint dep, Tom regenerates gif, prune docs/specs, final PRs | todo |
 
 Sequencing (updated): SH0 -> SH1 -> SH2 -> D1 -> END. Original phase-1 sequencing was E7 -> C1 -> H3 -> P. The original E1/E2/H1/H2 rows were absorbed: H1 (Steel shim) landed incrementally across S1-F1; E1+E2+H2 merged into C1. U1 so far needs only try_recv (already on the scooter branch).
