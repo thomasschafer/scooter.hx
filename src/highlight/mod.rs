@@ -11,7 +11,7 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use lru::LruCache;
@@ -30,6 +30,7 @@ use tree_house_bindings::Grammar;
 pub(crate) const MAX_CONTENT_BYTES: usize = 512 * 1024;
 const PARSE_TIMEOUT: Duration = Duration::from_millis(100);
 const CACHE_CAPACITY: usize = 16;
+const CONTENT_CACHE_CAPACITY: usize = 8;
 
 /// A semantic Tree-sitter scope over UTF-8 byte offsets in the input text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,9 +46,20 @@ pub struct HighlightSpan {
 pub struct HighlightEngine {
     loader: Option<RuntimeLoader>,
     cache: Mutex<LruCache<CacheKey, Arc<[HighlightSpan]>>>,
+    content_cache: Mutex<LruCache<PathBuf, CachedContent>>,
     timeout_paths: Mutex<HashSet<PathBuf>>,
     #[cfg(test)]
     highlight_computations: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    file_reads: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    content_hashes: std::sync::atomic::AtomicUsize,
+}
+
+struct CachedContent {
+    modified: SystemTime,
+    len: u64,
+    content: Arc<str>,
 }
 
 impl HighlightEngine {
@@ -61,22 +73,82 @@ impl HighlightEngine {
             cache: Mutex::new(LruCache::new(
                 NonZeroUsize::new(CACHE_CAPACITY).expect("non-zero cache capacity"),
             )),
+            content_cache: Mutex::new(LruCache::new(
+                NonZeroUsize::new(CONTENT_CACHE_CAPACITY).expect("non-zero cache capacity"),
+            )),
             timeout_paths: Mutex::new(HashSet::new()),
             #[cfg(test)]
             highlight_computations: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            file_reads: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            content_hashes: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
     /// Return semantic scopes for `content`, or `None` when the runtime,
     /// language, grammar, query, size, or parse deadline cannot support it.
     pub fn highlight(&self, path: &Path, content: &str) -> Option<Arc<[HighlightSpan]>> {
+        #[cfg(test)]
+        self.content_hashes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.highlight_with_key(path, content, CacheKey::from_content(path, content))
+    }
+
+    /// Read a small preview file, validating cached content with metadata on
+    /// every render. The stat keeps the replacement freshness guard correct
+    /// while avoiding repeat reads and hashes during poll-loop rerenders.
+    pub(crate) fn read_preview_content(&self, path: &Path) -> std::io::Result<Option<Arc<str>>> {
+        let metadata = fs::metadata(path)?;
+        if metadata.len() > MAX_CONTENT_BYTES as u64 {
+            return Ok(None);
+        }
+        let modified = metadata.modified()?;
+        if let Ok(mut cache) = self.content_cache.lock()
+            && let Some(cached) = cache.get(path)
+            && cached.len == metadata.len()
+            && cached.modified == modified
+        {
+            return Ok(Some(Arc::clone(&cached.content)));
+        }
+
+        #[cfg(test)]
+        self.file_reads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let content: Arc<str> = fs::read_to_string(path)?.into();
+        if let Ok(mut cache) = self.content_cache.lock() {
+            cache.put(
+                path.to_path_buf(),
+                CachedContent {
+                    modified,
+                    len: metadata.len(),
+                    content: Arc::clone(&content),
+                },
+            );
+        }
+        Ok(Some(content))
+    }
+
+    pub(crate) fn highlight_preview_content(
+        &self,
+        path: &Path,
+        content: &Arc<str>,
+    ) -> Option<Arc<[HighlightSpan]>> {
+        self.highlight_with_key(path, content, CacheKey::from_arc(path, content))
+    }
+
+    fn highlight_with_key(
+        &self,
+        path: &Path,
+        content: &str,
+        key: CacheKey,
+    ) -> Option<Arc<[HighlightSpan]>> {
         if content.len() > MAX_CONTENT_BYTES {
             return None;
         }
 
         let loader = self.loader.as_ref()?;
         let language = loader.registry.language_for_path(path)?;
-        let key = CacheKey::new(path, content);
         if let Ok(mut cache) = self.cache.lock()
             && let Some(spans) = cache.get(&key)
         {
@@ -135,6 +207,17 @@ impl HighlightEngine {
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    #[cfg(test)]
+    pub(crate) fn file_reads(&self) -> usize {
+        self.file_reads.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn content_hashes(&self) -> usize {
+        self.content_hashes
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     fn log_timeout_once(&self, path: &Path) {
         let path = path.to_path_buf();
         if let Ok(mut paths) = self.timeout_paths.lock()
@@ -151,16 +234,29 @@ impl HighlightEngine {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CacheKey {
     path: PathBuf,
-    content_hash: u64,
+    content: ContentKey,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+enum ContentKey {
+    Hash(u64),
+    ArcPointer(usize),
 }
 
 impl CacheKey {
-    fn new(path: &Path, content: &str) -> Self {
+    fn from_content(path: &Path, content: &str) -> Self {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         content.hash(&mut hasher);
         Self {
             path: path.to_path_buf(),
-            content_hash: hasher.finish(),
+            content: ContentKey::Hash(hasher.finish()),
+        }
+    }
+
+    fn from_arc(path: &Path, content: &Arc<str>) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            content: ContentKey::ArcPointer(Arc::as_ptr(content).cast::<()>() as usize),
         }
     }
 }
@@ -176,6 +272,9 @@ fn discover_runtime(runtime_override: Option<PathBuf>) -> Option<PathBuf> {
     if let Some(home) = env::var_os("HOME") {
         let home = PathBuf::from(home);
         candidates.push(home.join(".config/helix/runtime"));
+        // Development-only fallback for this repository's conventional local
+        // Helix checkout. Supported installs use the explicit option,
+        // HELIX_RUNTIME, or the Helix config-directory runtime above.
         candidates.push(home.join("Development/helix/runtime"));
     }
     candidates
@@ -188,8 +287,14 @@ struct RuntimeLoader {
     runtime: PathBuf,
     registry: LanguageRegistry,
     configs: Vec<OnceLock<Option<LanguageConfig>>>,
-    scopes: Mutex<Vec<Arc<str>>>,
+    scopes: Mutex<ScopeRegistry>,
     failures: Mutex<HashSet<usize>>,
+}
+
+#[derive(Debug, Default)]
+struct ScopeRegistry {
+    values: Vec<Arc<str>>,
+    indexes: HashMap<String, Highlight>,
 }
 
 impl RuntimeLoader {
@@ -202,13 +307,13 @@ impl RuntimeLoader {
             runtime,
             registry,
             configs,
-            scopes: Mutex::new(Vec::new()),
+            scopes: Mutex::new(ScopeRegistry::default()),
             failures: Mutex::new(HashSet::new()),
         }
     }
 
     fn scope(&self, highlight: Highlight) -> Option<Arc<str>> {
-        self.scopes.lock().ok()?.get(highlight.idx()).cloned()
+        self.scopes.lock().ok()?.values.get(highlight.idx()).cloned()
     }
 
     fn config_for(&self, language: Language) -> Option<&LanguageConfig> {
@@ -267,14 +372,14 @@ impl RuntimeLoader {
 
     fn intern_scope(&self, scope: &str) -> Option<Highlight> {
         let mut scopes = self.scopes.lock().ok()?;
-        let index = scopes
-            .iter()
-            .position(|known| known.as_ref() == scope)
-            .unwrap_or_else(|| {
-                scopes.push(Arc::from(scope));
-                scopes.len() - 1
-            });
-        u32::try_from(index).ok().map(Highlight::new)
+        if let Some(highlight) = scopes.indexes.get(scope) {
+            return Some(*highlight);
+        }
+        let index = u32::try_from(scopes.values.len()).ok()?;
+        let highlight = Highlight::new(index);
+        scopes.values.push(Arc::from(scope));
+        scopes.indexes.insert(scope.to_owned(), highlight);
+        Some(highlight)
     }
 
     fn log_language_failure_once(&self, language: Language, message: &str) {
@@ -334,6 +439,9 @@ fn runtime_query(runtime: &Path, language: &str, query: &str) -> Option<String> 
 struct LanguageRegistry {
     languages: Vec<LanguageDefinition>,
     names: HashMap<String, Language>,
+    extensions: HashMap<String, Language>,
+    filenames: HashMap<String, Language>,
+    globs: Vec<(Language, String)>,
 }
 
 #[derive(Debug)]
@@ -357,11 +465,31 @@ impl LanguageRegistry {
             .as_deref()
             .and_then(parse_languages_toml)
             .filter(|languages| !languages.is_empty())
-            .map_or_else(Self::fallback, Self::from_definitions)
+            .map_or_else(Self::fallback, Self::from_user_definitions)
+    }
+
+    /// User `languages.toml` files deliberately contain only overrides.  Keep
+    /// those entries first (both so they win and so path matching preserves
+    /// Helix's first-match semantics), then fill every unmentioned language
+    /// from the built-in registry.
+    fn from_user_definitions(mut user_languages: Vec<LanguageDefinition>) -> Self {
+        let user_names = user_languages
+            .iter()
+            .map(|language| language.name.to_ascii_lowercase())
+            .collect::<HashSet<_>>();
+        user_languages.extend(
+            fallback_languages()
+                .into_iter()
+                .filter(|language| !user_names.contains(&language.name.to_ascii_lowercase())),
+        );
+        Self::from_definitions(user_languages)
     }
 
     fn from_definitions(languages: Vec<LanguageDefinition>) -> Self {
         let mut names = HashMap::new();
+        let mut extensions = HashMap::new();
+        let mut filenames = HashMap::new();
+        let mut globs = Vec::new();
         for (index, language) in languages.iter().enumerate() {
             let language_id = Language::new(u32::try_from(index).expect("language index fits u32"));
             // A language's own name is authoritative. Several Helix entries
@@ -373,8 +501,20 @@ impl LanguageRegistry {
             names
                 .entry(language.grammar.to_ascii_lowercase())
                 .or_insert(language_id);
+            for file_type in &language.file_types {
+                match file_type {
+                    FileType::NameOrExtension(value) => {
+                        // A value may be either kind (for example `Makefile`
+                        // or `rs`), so retain both candidates and select the
+                        // earliest language below to preserve old ordering.
+                        extensions.entry(value.clone()).or_insert(language_id);
+                        filenames.entry(value.clone()).or_insert(language_id);
+                    }
+                    FileType::Glob(pattern) => globs.push((language_id, pattern.clone())),
+                }
+            }
         }
-        Self { languages, names }
+        Self { languages, names, extensions, filenames, globs }
     }
 
     fn language_for_path(&self, path: &Path) -> Option<Language> {
@@ -382,21 +522,27 @@ impl LanguageRegistry {
         let extension = path
             .extension()
             .map(|extension| extension.to_string_lossy());
-        self.languages
+        let named = [
+            self.filenames.get(file_name.as_ref()).copied(),
+            extension
+                .as_deref()
+                .and_then(|extension| self.extensions.get(extension).copied()),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|language| language.idx());
+        let glob = self
+            .globs
             .iter()
-            .enumerate()
-            .find_map(|(index, language)| {
-                language
-                    .file_types
-                    .iter()
-                    .any(|file_type| match file_type {
-                        FileType::NameOrExtension(value) => {
-                            value == &file_name || extension.as_deref() == Some(value)
-                        }
-                        FileType::Glob(pattern) => glob_matches(pattern, &file_name, path),
-                    })
-                    .then(|| Language::new(u32::try_from(index).expect("language index fits u32")))
-            })
+            .find_map(|(language, pattern)| {
+                glob_matches(pattern, &file_name, path).then_some(*language)
+            });
+        match (named, glob) {
+            (Some(named), Some(glob)) if named.idx() < glob.idx() => Some(named),
+            (_, Some(glob)) => Some(glob),
+            (Some(named), None) => Some(named),
+            (None, None) => None,
+        }
     }
 
     fn language_for_injection(&self, marker: &str) -> Option<Language> {
@@ -656,6 +802,39 @@ file-types = [{ glob = ".demo.in" }]
         assert_eq!(registry.languages[rust.idx()].name, "rust");
         let docker = registry.language_for_path(Path::new("Dockerfile")).unwrap();
         assert_eq!(registry.languages[docker.idx()].name, "dockerfile");
+    }
+
+    #[test]
+    fn user_manifest_overrides_are_merged_ahead_of_fallback_languages() {
+        let directory = tempdir().unwrap();
+        let runtime = directory.path().join("runtime");
+        fs::create_dir(&runtime).unwrap();
+        fs::write(
+            directory.path().join("languages.toml"),
+            r#"
+[[language]]
+name = "rust"
+grammar = "custom-rust"
+file-types = ["rs"]
+
+[[language]]
+name = "demo"
+file-types = ["demo"]
+injection-regex = "demo-alias"
+"#,
+        )
+        .unwrap();
+
+        let registry = LanguageRegistry::from_runtime(&runtime);
+        let rust = registry.language_for_path(Path::new("lib.rs")).unwrap();
+        assert_eq!(registry.languages[rust.idx()].grammar, "custom-rust");
+        let python = registry.language_for_path(Path::new("main.py")).unwrap();
+        assert_eq!(registry.languages[python.idx()].name, "python");
+        let alias = registry.language_for_injection("python").unwrap();
+        assert_eq!(registry.languages[alias.idx()].name, "python");
+        let demo = registry.language_for_path(Path::new("input.demo")).unwrap();
+        assert_eq!(registry.languages[demo.idx()].name, "demo");
+        assert_eq!(registry.languages[registry.language_for_injection("demo-alias").unwrap().idx()].name, "demo");
     }
 
     #[test]

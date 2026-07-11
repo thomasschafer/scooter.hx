@@ -8,7 +8,7 @@
 (#%require-dylib "libscooter_hx"
                  (only-in Scooter-render
                           Scooter-cursor
-                 Scooter-handle-key
+                          Scooter-handle-key
                           Scooter-window-size
                           Scooter-pump
                           Scooter-busy?))
@@ -184,11 +184,11 @@
       (if (scope-tag? tag)
           (scope-style-for-run styles scope-cache tag)
           (begin
-        (unless (member tag (unbox *unknown-scooter-style-tags*))
-          (set-box! *unknown-scooter-style-tags*
-                    (cons tag (unbox *unknown-scooter-style-tags*)))
-          (log::warn! (string-append "scooter-hx: unknown style tag: " tag)))
-        (hash-ref styles "text")))))
+            (unless (member tag (unbox *unknown-scooter-style-tags*))
+              (set-box! *unknown-scooter-style-tags*
+                        (cons tag (unbox *unknown-scooter-style-tags*)))
+              (log::warn! (string-append "scooter-hx: unknown style tag: " tag)))
+            (hash-ref styles "text")))))
 
 (define (blit-run! frame content-area styles scope-cache run)
   (let ([x (list-ref run 0)]
@@ -335,6 +335,10 @@
               (cdr response))
     (if should-hide "hide" (car response))))
 
+(define (hide-scooter-window! state)
+  (set-box! (ScooterWindowState-visible state) #f)
+  (pop-last-component-by-name! "scooter-window"))
+
 ;; Polling is owned by the component state: a closed component marks itself
 ;; invisible, so a delayed callback can never pump a hidden stale window.
 (define (start-scooter-poll-loop! state)
@@ -346,10 +350,13 @@
      (lambda ()
        (set-box! (ScooterWindowState-polling state) #f)
        (when (unbox (ScooterWindowState-visible state))
-         (consume-scooter-response!
-          (Scooter-pump (ScooterWindowState-engine state)))
-         (when (Scooter-busy? (ScooterWindowState-engine state))
-           (start-scooter-poll-loop! state)))))))
+         (let ([status (consume-scooter-response!
+                        (Scooter-pump (ScooterWindowState-engine state)))])
+           (when (equal? status "hide")
+             (hide-scooter-window! state))
+           (when (and (unbox (ScooterWindowState-visible state))
+                      (Scooter-busy? (ScooterWindowState-engine state)))
+             (start-scooter-poll-loop! state))))))))
 
 ;; Returns the response status string so the entry point can own session teardown.
 (define (scooter-window-event-handler state event)

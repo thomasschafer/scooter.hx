@@ -248,6 +248,25 @@ e2e_wait_for_absent() {
   e2e_fail "timed out waiting for '$needle' to disappear"
 }
 
+# Some core transitions deliberately reject an early key while an async
+# preview update is pending. Retrying the key against an observable screen is
+# deterministic without baking a machine-specific delay into an e2e script.
+e2e_press_until_present() {
+  local key="$1"
+  local needle="$2"
+  local deadline=$((SECONDS + 15))
+
+  while (( SECONDS < deadline )); do
+    if [[ "$(e2e_capture_pane)" == *"$needle"* ]]; then
+      return 0
+    fi
+    tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" "$key"
+    sleep 0.2
+  done
+
+  e2e_fail "timed out waiting for '$needle' after pressing '$key'"
+}
+
 e2e_wait_for_helix() {
   local deadline=$((SECONDS + 15))
 

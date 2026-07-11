@@ -159,6 +159,10 @@ settings until then.
 ```
 <!-- CONFIG END -->
 
+For syntax highlighting, runtime discovery checks `runtime-dir` first, then
+`HELIX_RUNTIME`, then Helix's config-directory runtime
+(`~/.config/helix/runtime`).
+
 Scooter validates the complete map when creating a session. An invalid key or
 a conflicting binding is reported in Helix's error area and the window does
 not open. The foreground open action follows a remapped

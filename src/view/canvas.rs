@@ -29,7 +29,6 @@ pub(crate) enum StyleTag {
     DiffRemoved,
     DiffRemovedEmph,
     /// A Tree-sitter scope encoded for Steel as `s:<scope>`.
-    #[allow(dead_code)] // SH2 is the first preview renderer consumer.
     Scope(Arc<str>),
 }
 

@@ -207,6 +207,16 @@ impl ScooterEngine {
         self.highlight_engine.highlight_computations()
     }
 
+    #[cfg(test)]
+    pub(crate) fn preview_file_reads(&self) -> usize {
+        self.highlight_engine.file_reads()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn preview_content_hashes(&self) -> usize {
+        self.highlight_engine.content_hashes()
+    }
+
     pub(crate) fn cursor(&self, width: usize, height: usize) -> Option<(usize, usize)> {
         self.active_runtime()?;
         view::cursor(&self.app, width, height)

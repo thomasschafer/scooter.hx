@@ -63,8 +63,6 @@
 
 (define (resume-session!)
   (let ([window (make-scooter-window *scooter-session*)])
-    ;; Results may have arrived while the window was hidden.
-    (consume-scooter-response! (Scooter-pump *scooter-session*))
     (push-component!
      (new-component!
       "scooter-window"
@@ -83,7 +81,15 @@
                    event-result/close]
                   [else event-result/consume])))
             "cursor" scooter-window-cursor)))
-    (start-scooter-poll-loop! window)))
+    ;; Results (including a foreground editor open) may have arrived while
+    ;; hidden. Consume them after pushing so a hide outcome can close this
+    ;; exact component instead of being silently discarded.
+    (let ([status (consume-scooter-response! (Scooter-pump *scooter-session*))])
+      (if (equal? status "hide")
+          (begin
+            (set-box! (ScooterWindowState-visible window) #f)
+            (pop-last-component-by-name! "scooter-window"))
+          (start-scooter-poll-loop! window)))))
 
 (define (create-session!)
   (let ([engine (Scooter-engine-new (get-helix-cwd) (unbox *scooter-options*))])

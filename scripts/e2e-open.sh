@@ -95,9 +95,7 @@ tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" alpha
 e2e_wait_for_present 'Results: 2 [Search complete]'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Tab
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" OMEGA
-sleep 1
-tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter Enter
-e2e_wait_for_present 'Successful replacements'
+e2e_press_until_present Enter 'Successful replacements'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter
 e2e_wait_for_absent 'Successful replacements'
 e2e_wait_for_present 'OMEGA '

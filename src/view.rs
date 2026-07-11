@@ -1,8 +1,8 @@
 //! Native frame model for Scooter's search-fields screen.
 
-use std::{cmp::min, fs, path::Path, sync::{Arc, atomic::Ordering}};
+use std::{cmp::min, path::Path, sync::{Arc, atomic::Ordering}};
 
-use crate::highlight::{HighlightEngine, HighlightSpan, MAX_CONTENT_BYTES};
+use crate::highlight::{HighlightEngine, HighlightSpan};
 
 use scooter_core::{
     app::{App, FocussedSection, InputSource, Popup, Screen, SearchPhase, SearchState},
@@ -1373,16 +1373,15 @@ fn build_preview_sections(
     let (before, after) = centered_context_lines(preview_read.lines, selected_position, context_height);
     let end_line_index = result.search_result.end_line_number().saturating_sub(1);
     Ok(PreviewSections {
-        before: before
-            .into_iter()
-            .map(|line| context_preview_line(&line, preview_read.spans.as_deref()))
-            .collect(),
+        before: context_preview_lines(&before, preview_read.spans.as_deref()),
         diff,
-        after: after
-            .into_iter()
-            .filter(|line| line.number > end_line_index)
-            .map(|line| context_preview_line(&line, preview_read.spans.as_deref()))
-            .collect(),
+        after: context_preview_lines(
+            &after
+                .into_iter()
+                .filter(|line| line.number > end_line_index)
+                .collect::<ContextLines>(),
+            preview_read.spans.as_deref(),
+        ),
     })
 }
 
@@ -1403,21 +1402,16 @@ fn read_preview_window(
                 .path
                 .as_deref()
                 .ok_or_else(|| "Missing file path for preview".to_string())?;
-            if syntax_highlighting
-                && fs::metadata(path)
-                    .map(|metadata| metadata.len() <= MAX_CONTENT_BYTES as u64)
-                    .unwrap_or(false)
-            {
+            if syntax_highlighting {
                 // Read once: this supplies both the visible context and the
-                // complete source Tree-sitter needs for correct parsing.
-                let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
-                let spans = highlight_engine.highlight(path, &content);
-                let lines = indexed_full_lines(&content)
-                    .into_iter()
-                    .skip(start)
-                    .take(end.saturating_sub(start).saturating_add(1))
-                    .collect();
-                return Ok(PreviewRead { lines, spans });
+                // complete source Tree-sitter needs for correct parsing. A
+                // non-UTF-8 read intentionally falls through to the core's
+                // lossy window reader, matching the TUI's plain preview.
+                if let Ok(Some(content)) = highlight_engine.read_preview_content(path) {
+                    let spans = highlight_engine.highlight_preview_content(path, &content);
+                    let lines = indexed_lines_in_window(&content, start, end);
+                    return Ok(PreviewRead { lines, spans });
+                }
             }
             let lines = read_lines_range(path, start, end)
                 .map_err(|error| error.to_string())?
@@ -1443,18 +1437,27 @@ fn read_preview_window(
     }
 }
 
-fn indexed_full_lines(content: &str) -> ContextLines {
-    content.split_inclusive('\n').scan(0usize, |byte_offset, raw_line| {
-        let offset = *byte_offset;
-        *byte_offset = byte_offset.saturating_add(raw_line.len());
+fn indexed_lines_in_window(content: &str, start: usize, end: usize) -> ContextLines {
+    let mut byte_offset = 0usize;
+    let mut lines = Vec::new();
+    for (number, raw_line) in content.split_inclusive('\n').enumerate() {
+        if number > end {
+            break;
+        }
+        let offset = byte_offset;
+        byte_offset = byte_offset.saturating_add(raw_line.len());
+        if number < start {
+            continue;
+        }
         let without_newline = raw_line.strip_suffix('\n').unwrap_or(raw_line);
         let text = without_newline.strip_suffix('\r').unwrap_or(without_newline);
-        Some((offset, text.to_string()))
-    }).enumerate().map(|(number, (byte_offset, text))| IndexedLine {
-        number,
-        text,
-        byte_offset: Some(byte_offset),
-    }).collect()
+        lines.push(IndexedLine {
+            number,
+            text: text.to_string(),
+            byte_offset: Some(offset),
+        });
+    }
+    lines
 }
 
 fn centered_context_lines(
@@ -1494,16 +1497,46 @@ fn expected_first_line_content(result: &SearchResultWithReplacement) -> &str {
     }
 }
 
+fn context_preview_lines(lines: &[IndexedLine], spans: Option<&[HighlightSpan]>) -> Vec<PreviewLine> {
+    let Some(spans) = spans else {
+        return lines
+            .iter()
+            .map(|line| context_preview_line(line, None))
+            .collect();
+    };
+    let first_offset = lines.first().and_then(|line| line.byte_offset).unwrap_or(0);
+    // A span ending exactly at a line start belongs to the previous line, not
+    // this one. Starting here and advancing one cursor makes the whole
+    // visible window linear in spans instead of rescanning the full file per
+    // line.
+    let mut cursor = spans.partition_point(|span| span.byte_range.end <= first_offset);
+    lines
+        .iter()
+        .map(|line| {
+            let Some(line_start) = line.byte_offset else {
+                return context_preview_line(line, None);
+            };
+            let line_end = line_start.saturating_add(line.text.len());
+            while cursor < spans.len() && spans[cursor].byte_range.end <= line_start {
+                cursor += 1;
+            }
+            let mut end = cursor;
+            while end < spans.len() && spans[end].byte_range.start < line_end {
+                end += 1;
+            }
+            context_preview_line(line, Some(&spans[cursor..end]))
+        })
+        .collect()
+}
+
 fn context_preview_line(source: &IndexedLine, spans: Option<&[HighlightSpan]>) -> PreviewLine {
     let mut preview_line = PreviewLine::default();
     push_preview_segment(&mut preview_line, "  ", StyleTag::Text);
     let Some(byte_offset) = source.byte_offset else {
-        push_preview_segment(&mut preview_line, &source.text, StyleTag::Text);
-        return preview_line;
+        return plain_context_preview_line(source);
     };
     let Some(spans) = spans else {
-        push_preview_segment(&mut preview_line, &source.text, StyleTag::Text);
-        return preview_line;
+        return plain_context_preview_line(source);
     };
     let line_end = byte_offset.saturating_add(source.text.len());
     let mut position = byte_offset;
@@ -1513,23 +1546,41 @@ fn context_preview_line(source: &IndexedLine, spans: Option<&[HighlightSpan]>) -
         if start >= end || start < position {
             continue;
         }
+        let Some(plain) = source.text.get(position.saturating_sub(byte_offset)..start.saturating_sub(byte_offset))
+        else {
+            return plain_context_preview_line(source);
+        };
+        let Some(highlighted) = source.text.get(start.saturating_sub(byte_offset)..end.saturating_sub(byte_offset))
+        else {
+            return plain_context_preview_line(source);
+        };
         push_preview_segment(
             &mut preview_line,
-            &source.text[position.saturating_sub(byte_offset)..start.saturating_sub(byte_offset)],
+            plain,
             StyleTag::Text,
         );
         push_preview_segment(
             &mut preview_line,
-            &source.text[start.saturating_sub(byte_offset)..end.saturating_sub(byte_offset)],
+            highlighted,
             StyleTag::Scope(Arc::clone(&span.scope)),
         );
         position = end;
     }
+    let Some(tail) = source.text.get(position.saturating_sub(byte_offset)..) else {
+        return plain_context_preview_line(source);
+    };
     push_preview_segment(
         &mut preview_line,
-        &source.text[position.saturating_sub(byte_offset)..],
+        tail,
         StyleTag::Text,
     );
+    preview_line
+}
+
+fn plain_context_preview_line(source: &IndexedLine) -> PreviewLine {
+    let mut preview_line = PreviewLine::default();
+    push_preview_segment(&mut preview_line, "  ", StyleTag::Text);
+    push_preview_segment(&mut preview_line, &source.text, StyleTag::Text);
     preview_line
 }
 
@@ -1835,7 +1886,7 @@ mod tests {
     };
 
     use scooter_core::{
-        app::{Popup, Screen, SearchPhase},
+        app::{InputSource, Popup, Screen, SearchPhase},
         errors::AppError,
         line_reader::LineEnding,
         replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
@@ -1844,11 +1895,11 @@ mod tests {
     use tempfile::tempdir;
     use tokio::sync::mpsc;
 
-    use crate::engine::ScooterEngine;
+    use crate::{engine::ScooterEngine, highlight::HighlightEngine};
 
     use super::{
-        Frame, IndexedLine, PopupLine, StyleTag, context_preview_line, diff_lines, display_width,
-        render_paragraph_popup, render_results_tallies, truncate,
+        Frame, HighlightSpan, IndexedLine, PopupLine, StyleTag, context_preview_line, context_preview_lines,
+        diff_lines, display_width, read_preview_window, render_paragraph_popup, render_results_tallies, truncate,
     };
 
     #[test]
@@ -1956,6 +2007,81 @@ mod tests {
                 .iter()
                 .all(|segment| segment.tag == StyleTag::Text)
         );
+    }
+
+    #[test]
+    fn malformed_highlight_offsets_render_the_entire_context_line_plain() {
+        let line = context_preview_line(
+            &IndexedLine {
+                number: 0,
+                text: "éclair".to_string(),
+                byte_offset: Some(0),
+            },
+            Some(&[HighlightSpan {
+                byte_range: 1..2,
+                scope: Arc::from("keyword"),
+            }]),
+        );
+        assert_eq!(
+            line.segments.iter().map(|segment| segment.text.as_str()).collect::<String>(),
+            "  éclair"
+        );
+        assert!(line.segments.iter().all(|segment| segment.tag == StyleTag::Text));
+    }
+
+    #[test]
+    fn context_span_cursor_respects_line_boundaries_and_zero_length_spans() {
+        let lines = vec![
+            IndexedLine { number: 0, text: "a".to_string(), byte_offset: Some(0) },
+            IndexedLine { number: 1, text: "b".to_string(), byte_offset: Some(2) },
+            IndexedLine { number: 2, text: "c".to_string(), byte_offset: Some(4) },
+        ];
+        let scope = Arc::from("keyword");
+        let previews = context_preview_lines(
+            &lines,
+            Some(&[
+                HighlightSpan { byte_range: 0..0, scope: Arc::clone(&scope) },
+                HighlightSpan { byte_range: 0..2, scope: Arc::clone(&scope) },
+                HighlightSpan { byte_range: 1..5, scope: Arc::clone(&scope) },
+            ]),
+        );
+        assert!(previews[0].segments.iter().any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope))));
+        assert!(previews[1].segments.iter().any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope))));
+        assert!(previews[2].segments.iter().any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope))));
+    }
+
+    #[test]
+    fn non_utf8_preview_falls_back_to_the_core_lossy_plain_window() {
+        let fixture = tempdir().expect("fixture directory");
+        let path = fixture.path().join("invalid.rs");
+        fs::write(
+            &path,
+            b"before context\ninvalid \xff alpha target\nafter context\n",
+        )
+        .expect("write non-UTF-8 fixture");
+        let result = SearchResultWithReplacement {
+            search_result: SearchResult::new_line(
+                Some(path),
+                2,
+                "invalid � alpha target".to_string(),
+                LineEnding::Lf,
+                true,
+            ),
+            replacement: String::new(),
+            replace_result: None,
+            preview_error: None,
+        };
+        let preview = read_preview_window(
+            &InputSource::Directory(fixture.path().to_path_buf()),
+            &result,
+            1,
+            2,
+            &HighlightEngine::new(None),
+            true,
+        )
+        .expect("plain fallback succeeds");
+        assert_eq!(preview.lines[1].text, "invalid � alpha target");
+        assert!(preview.spans.is_none());
     }
 
     #[test]

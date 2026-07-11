@@ -75,10 +75,7 @@ tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" OMEGA
 e2e_wait_for_present '+ OMEGA one'
 # Replacement previews update asynchronously after the first visible diff. The
 # core deliberately rejects replacement until that short update finishes.
-sleep 1
-tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter
-tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter
-e2e_wait_for_present 'Successful replacements'
+e2e_press_until_present Enter 'Successful replacements'
 e2e_capture_pane > "$CAPTURE_DIR/e5-results.txt"
 
 if ! grep -q 'OMEGA one' "$REPLACE_FIXTURE_DIR/one.txt"; then

@@ -18,7 +18,7 @@ pub(crate) fn initialise() {
         };
         let path = strategy.cache_dir().join(APP_NAME).join("scooter-hx.log");
         if make_parent_dir(&path).is_ok() {
-            let _ = simple_log::file(path.to_string_lossy(), "warn", 100, 10);
+            let _ = simple_log::file(path.to_string_lossy(), "warn", 2, 2);
         }
     });
 }

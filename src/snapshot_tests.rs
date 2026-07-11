@@ -352,20 +352,34 @@ fn highlighted_rust_preview_snapshots_and_cache() {
         "let alpha = value;\n",
         "pub fn context_after() -> usize { 2 }\n",
     );
-    let (_fixture, mut engine) = engine_with_named_fixture("fixture.rs", source);
+    let (fixture, mut engine) = engine_with_named_fixture("fixture.rs", source);
     search_with_replacement(&mut engine, "alpha", "OMEGA");
 
     let wide = engine.render(WIDE_SIZE.0, WIDE_SIZE.1);
     assert!(wide.runs.iter().any(|run| run.tag.as_str().starts_with("s:")));
     let highlight_computations = engine.highlight_computations();
+    let file_reads = engine.preview_file_reads();
+    let content_hashes = engine.preview_content_hashes();
+    assert_eq!(file_reads, 1);
+    assert_eq!(content_hashes, 0);
     let _ = engine.render(WIDE_SIZE.0, WIDE_SIZE.1);
     assert_eq!(engine.highlight_computations(), highlight_computations);
+    assert_eq!(engine.preview_file_reads(), file_reads);
+    assert_eq!(engine.preview_content_hashes(), content_hashes);
+
     assert_frame(&mut engine, "highlighted_preview_wide", WIDE_SIZE);
     assert_frame(&mut engine, "highlighted_preview_narrow", STANDARD_SIZE);
 
     press(&mut engine, "l", 2);
     wait_until_toast_dismissed(&mut engine);
     assert_frame(&mut engine, "highlighted_preview_wrapping", STANDARD_SIZE);
+
+    // Metadata is checked on every render, but a changed file replaces the
+    // content Arc rather than retaining stale preview text.
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    fs::write(fixture.path().join("fixture.rs"), "let changed = true;\n").unwrap();
+    let _ = engine.render(WIDE_SIZE.0, WIDE_SIZE.1);
+    assert_eq!(engine.preview_file_reads(), file_reads + 1);
 
 }
 

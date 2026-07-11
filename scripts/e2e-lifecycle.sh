@@ -45,7 +45,6 @@ tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" 'lifecycle-match'
 e2e_wait_for_present 'Still searching...'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Escape
 e2e_wait_for_absent 'Search text'
-sleep 3
 
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
 e2e_wait_for_present 'Results: 2000 [Search complete]'
