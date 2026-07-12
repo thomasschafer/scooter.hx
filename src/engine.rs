@@ -7,7 +7,8 @@ use scooter_core::{
         App, BackgroundProcessingEvent, Event, EventHandlingResult, FocussedSection, InputSource,
         InternalEvent, Screen, SearchPhase,
     },
-    fields::SearchFieldValues,
+    config::KeysConfig,
+    fields::{Field, SearchFieldValues},
     keyboard::{KeyCode, KeyEvent, KeyModifiers},
 };
 use tokio::runtime::{Builder, Runtime};
@@ -60,6 +61,9 @@ pub(crate) struct ScooterEngine {
     // Keeping this per session lets repeated preview renders share the LRU.
     highlight_engine: HighlightEngine,
     syntax_highlighting: bool,
+    open_in_editor_bg: KeyEvent,
+    #[cfg(test)]
+    forwarded_key_events: Vec<KeyEvent>,
 }
 
 impl ScooterEngine {
@@ -78,6 +82,7 @@ impl ScooterEngine {
             .build()
             .map_err(|error| error.to_string())?;
         let _guard = runtime.enter();
+        validate_background_open_binding(&options.config.keys, options.open_in_editor_bg)?;
         let highlight_engine = HighlightEngine::new(options.runtime_dir.clone());
         let app = App::new(
             InputSource::Directory(directory.into()),
@@ -93,6 +98,9 @@ impl ScooterEngine {
             actions: VecDeque::new(),
             highlight_engine,
             syntax_highlighting: options.syntax_highlighting,
+            open_in_editor_bg: options.open_in_editor_bg,
+            #[cfg(test)]
+            forwarded_key_events: Vec::new(),
         })
     }
 
@@ -108,6 +116,13 @@ impl ScooterEngine {
         let Some(key_event) = key::decode(code, modifiers) else {
             return self.response("rerender");
         };
+        self.handle_key_event(key_event)
+    }
+
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> EngineResponse {
+        if self.active_runtime().is_none() {
+            return self.response("rerender");
+        }
 
         if key_event.code == KeyCode::Esc && self.should_hide_for_escape() {
             self.drain_ready_events(false);
@@ -120,14 +135,7 @@ impl ScooterEngine {
             self.drain_ready_events(false);
             return self.response("rerender");
         }
-        if self.should_ignore_background_open_key(key_event) {
-            // Alt plus a potential background-open character is never text
-            // input. It is intentionally a no-op until results are focussed.
-            self.drain_ready_events(false);
-            return self.response("rerender");
-        }
-
-        // Background open is a Helix-only addition.  Re-submit the configured
+        // Background open is a Helix-only addition. Re-submit the configured
         // foreground binding to core so it retains ownership of selection and
         // launch semantics; only the deferred action's tag differs.
         let background_open = self.background_open_key(key_event);
@@ -138,6 +146,8 @@ impl ScooterEngine {
                 return self.response("rerender");
             };
             let _guard = runtime.enter();
+            #[cfg(test)]
+            self.forwarded_key_events.push(key_event);
             self.app.handle_key_event(key_event)
         };
         let status = if matches!(result, EventHandlingResult::Exit(_)) {
@@ -197,6 +207,7 @@ impl ScooterEngine {
             &mut self.app,
             &self.highlight_engine,
             self.syntax_highlighting,
+            Some(self.open_in_editor_bg),
             width,
             height,
         )
@@ -232,6 +243,40 @@ impl ScooterEngine {
         self.actions.clear();
     }
 
+    /// Insert bracketed-paste text through core's normal text-input path.
+    /// This preserves field validation and debounce scheduling while keeping
+    /// paste inert on checkboxes, result focus, and overlays.
+    pub(crate) fn paste(&mut self, text: &str) -> EngineResponse {
+        if self.active_runtime().is_none()
+            || self.app.show_popup()
+            || !matches!(
+                &self.app.ui_state.current_screen,
+                Screen::SearchFields(state)
+                    if state.focussed_section == FocussedSection::SearchFields
+            )
+            || !matches!(self.app.search_fields.highlighted_field().field, Field::Text(_))
+        {
+            return self.response("rerender");
+        }
+
+        let text = text.replace(['\r', '\n'], " ");
+        if text.is_empty() {
+            return self.response("rerender");
+        }
+        let Some(runtime) = self.runtime.as_ref() else {
+            return self.response("rerender");
+        };
+        let _guard = runtime.enter();
+        for character in text.chars() {
+            let event = KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE);
+            #[cfg(test)]
+            self.forwarded_key_events.push(event);
+            self.app.handle_key_event(event);
+        }
+        self.drain_ready_events(false);
+        self.response("rerender")
+    }
+
     pub(crate) fn quit(&mut self) {
         if let Some(runtime) = self.active_runtime() {
             let _guard = runtime.enter();
@@ -264,10 +309,8 @@ impl ScooterEngine {
         self.runtime.as_ref()
     }
 
-    /// Return the configured foreground open binding when `key_event` is its
-    /// Alt-modified plain-character counterpart in the focussed results list.
-    /// Non-character and already-modified bindings deliberately have no
-    /// background-open shorthand.
+    /// Return the foreground open binding only when the configured plugin
+    /// background-open chord was pressed from the focussed results list.
     fn background_open_key(&self, key_event: KeyEvent) -> Option<KeyEvent> {
         let Screen::SearchFields(state) = &self.app.ui_state.current_screen else {
             return None;
@@ -276,36 +319,10 @@ impl ScooterEngine {
             return None;
         }
 
-        self.configured_background_open_key(key_event)
-    }
-
-    fn should_ignore_background_open_key(&self, key_event: KeyEvent) -> bool {
-        matches!(
-            &self.app.ui_state.current_screen,
-            Screen::SearchFields(state)
-                if state.focussed_section == FocussedSection::SearchFields
-        ) && self.configured_background_open_key(key_event).is_some()
-    }
-
-    fn configured_background_open_key(&self, key_event: KeyEvent) -> Option<KeyEvent> {
-        let configured = self
-            .app
-            .config
-            .keys
-            .search
-            .results
-            .open_in_editor
-            .first()
-            .copied()?;
-        if !matches!(configured.code, KeyCode::Char(_))
-            || configured.modifiers != KeyModifiers::NONE
-            || key_event.code != configured.code
-            || key_event.modifiers != KeyModifiers::ALT
-        {
+        if key_event != self.open_in_editor_bg {
             return None;
         }
-
-        Some(configured)
+        self.app.config.keys.search.results.open_in_editor.first().copied()
     }
 
     fn drain_ready_events(&mut self, tag_launches_as_background: bool) -> bool {
@@ -378,6 +395,82 @@ impl ScooterEngine {
     }
 }
 
+fn validate_background_open_binding(keys: &KeysConfig, binding: KeyEvent) -> Result<(), String> {
+    let reachable = [
+        (&keys.general.quit, "general.quit"),
+        (&keys.general.reset, "general.reset"),
+        (&keys.general.show_help_menu, "general.show_help_menu"),
+        (&keys.search.toggle_preview_wrapping, "search.toggle_preview_wrapping"),
+        (&keys.search.toggle_hidden_files, "search.toggle_hidden_files"),
+        (&keys.search.toggle_multiline, "search.toggle_multiline"),
+        (
+            &keys.search.toggle_interpret_escape_sequences,
+            "search.toggle_interpret_escape_sequences",
+        ),
+        (
+            &keys.search.fields.unlock_prepopulated_fields,
+            "search.fields.unlock_prepopulated_fields",
+        ),
+        (&keys.search.fields.trigger_search, "search.fields.trigger_search"),
+        (&keys.search.fields.focus_next_field, "search.fields.focus_next_field"),
+        (
+            &keys.search.fields.focus_previous_field,
+            "search.fields.focus_previous_field",
+        ),
+        (
+            &keys.search.results.trigger_replacement,
+            "search.results.trigger_replacement",
+        ),
+        (&keys.search.results.back_to_fields, "search.results.back_to_fields"),
+        (&keys.search.results.open_in_editor, "search.results.open_in_editor"),
+        (&keys.search.results.move_down, "search.results.move_down"),
+        (&keys.search.results.move_up, "search.results.move_up"),
+        (
+            &keys.search.results.move_down_half_page,
+            "search.results.move_down_half_page",
+        ),
+        (
+            &keys.search.results.move_up_half_page,
+            "search.results.move_up_half_page",
+        ),
+        (
+            &keys.search.results.move_down_full_page,
+            "search.results.move_down_full_page",
+        ),
+        (
+            &keys.search.results.move_up_full_page,
+            "search.results.move_up_full_page",
+        ),
+        (&keys.search.results.move_top, "search.results.move_top"),
+        (&keys.search.results.move_bottom, "search.results.move_bottom"),
+        (
+            &keys.search.results.toggle_selected_inclusion,
+            "search.results.toggle_selected_inclusion",
+        ),
+        (
+            &keys.search.results.toggle_all_selected,
+            "search.results.toggle_all_selected",
+        ),
+        (
+            &keys.search.results.toggle_multiselect_mode,
+            "search.results.toggle_multiselect_mode",
+        ),
+        (
+            &keys.search.results.flip_multiselect_direction,
+            "search.results.flip_multiselect_direction",
+        ),
+    ];
+    if let Some((_, core_command)) = reachable
+        .into_iter()
+        .find(|(keys, _)| keys.contains(&binding))
+    {
+        return Err(format!(
+            "Key binding conflict detected!\n\nThe key '{binding}' is bound to multiple commands in [keys.plugin]:\n  1. open_in_editor_bg\n  2. {core_command}\n\nPlease update your config to use unique key bindings."
+        ));
+    }
+    Ok(())
+}
+
 impl Drop for ScooterEngine {
     fn drop(&mut self) {
         self.quit();
@@ -400,6 +493,8 @@ mod tests {
     use crate::view::StyleTag;
     use scooter_core::{
         app::{BackgroundProcessingEvent, Event, FocussedSection, Popup, Screen, SearchPhase},
+        config::KeysConfig,
+        keyboard::KeyCode,
         line_reader::LineEnding,
         replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
         search::{SearchResult, SearchResultWithReplacement},
@@ -765,14 +860,14 @@ mod tests {
     }
 
     #[test]
-    fn alt_first_configured_open_binding_launches_in_background_only_from_results() {
+    fn configured_background_open_launches_only_from_results() {
         let fixture = tempdir().expect("fixture directory");
         let expected_path = fixture.path().join("selected.txt");
         fs::write(&expected_path, "alpha result\n").expect("write fixture");
         let options = EngineOptions::from_entries([OptionEntry::keys(
             "keys.search.results.open_in_editor",
             &["o", "e"],
-        )])
+        ), OptionEntry::keys("keys.plugin.open_in_editor_bg", &["A-p"])])
         .expect("options parse");
         let mut engine =
             ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
@@ -782,11 +877,10 @@ mod tests {
         }
         wait_until_complete(&mut engine);
 
-        // Alt plus the configured base key has no special meaning while a
-        // text field is focussed: it neither launches nor enters a character.
-        let fields_response = engine.handle_key("o", 4);
+        // The plugin chord forwards untouched in fields focus.
+        let fields_response = engine.handle_key("p", 4);
         assert!(fields_response.actions.is_empty());
-        assert_eq!(engine.app.search_fields.search().text(), "alpha");
+        assert_eq!(engine.app.search_fields.search().text(), "alphap");
 
         assert_eq!(engine.handle_key("enter", 0), "rerender");
         assert!(matches!(
@@ -795,10 +889,10 @@ mod tests {
                 if state.focussed_section == FocussedSection::SearchResults
         ));
 
-        // The feature follows the first remapped binding, not a hardcoded e.
-        let wrong_key_response = engine.handle_key("e", 4);
+        // The plugin binding, not the foreground binding, owns interception.
+        let wrong_key_response = engine.handle_key("o", 4);
         assert!(wrong_key_response.actions.is_empty());
-        let response = engine.handle_key("o", 4);
+        let response = engine.handle_key("p", 4);
         assert_eq!(
             response.actions,
             vec![EngineAction::OpenFileBackground {
@@ -806,6 +900,186 @@ mod tests {
                 line: 1,
             }]
         );
+    }
+
+    #[test]
+    fn default_a_e_reaches_escape_toggle_from_both_search_focus_states() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(fixture.path().join("match.txt"), "alpha\n").expect("write fixture");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+
+        assert_eq!(engine.handle_key("e", 4), "rerender");
+        assert!(engine.app.run_config.interpret_escape_sequences);
+        assert_eq!(engine.app.toast_message(), Some("Escape sequences: ON"));
+
+        for character in "alpha".chars() {
+            engine.handle_key(&character.to_string(), 0);
+        }
+        wait_until_complete(&mut engine);
+        engine.handle_key("enter", 0);
+        assert_eq!(engine.handle_key("e", 4), "rerender");
+        assert!(!engine.app.run_config.interpret_escape_sequences);
+        assert_eq!(engine.app.toast_message(), Some("Escape sequences: OFF"));
+    }
+
+    #[test]
+    fn default_a_o_opens_in_background_and_plugin_collision_is_rejected() {
+        let fixture = tempdir().expect("fixture directory");
+        let expected_path = fixture.path().join("match.txt");
+        fs::write(&expected_path, "alpha\n").expect("write fixture");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        for character in "alpha".chars() {
+            engine.handle_key(&character.to_string(), 0);
+        }
+        wait_until_complete(&mut engine);
+        engine.handle_key("enter", 0);
+        assert_eq!(
+            engine.handle_key("o", 4).actions,
+            vec![EngineAction::OpenFileBackground {
+                path: expected_path,
+                line: 1,
+            }]
+        );
+
+        let options = EngineOptions::from_entries([OptionEntry::keys(
+            "keys.plugin.open_in_editor_bg",
+            &["A-e"],
+        )])
+        .expect("options parse");
+        let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
+            panic!("plugin binding must not swallow a core command");
+        };
+        assert!(error.contains("Key binding conflict detected!"));
+        assert!(error.contains("toggle_interpret_escape_sequences"));
+    }
+
+    #[test]
+    fn paste_uses_core_text_input_and_ignores_non_text_contexts() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(fixture.path().join("match.txt"), "alpha beta\n").expect("write fixture");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        assert_eq!(engine.paste("alpha\nbeta").status, "rerender");
+        assert_eq!(engine.app.search_fields.search().text(), "alpha beta");
+        assert!(engine.busy());
+
+        engine.app.search_fields.highlighted = 2;
+        assert_eq!(engine.paste("ignored").status, "rerender");
+        assert_eq!(engine.app.search_fields.search().text(), "alpha beta");
+        engine.handle_key("h", 2);
+        assert_eq!(engine.paste("also ignored").status, "rerender");
+        assert_eq!(engine.app.search_fields.search().text(), "alpha beta");
+    }
+
+    #[test]
+    fn configured_background_binding_is_injected_into_results_help_only() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(fixture.path().join("match.txt"), "alpha\n").expect("write fixture");
+        let options = EngineOptions::from_entries([OptionEntry::keys(
+            "keys.plugin.open_in_editor_bg",
+            &["A-p"],
+        )])
+        .expect("options parse");
+        let mut engine =
+            ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
+        engine.handle_key("h", 2);
+        assert!(!joined_runs(&mut engine).contains("open in background"));
+        engine.handle_key("esc", 0);
+        for character in "alpha".chars() {
+            engine.handle_key(&character.to_string(), 0);
+        }
+        wait_until_complete(&mut engine);
+        engine.handle_key("enter", 0);
+        engine.handle_key("h", 2);
+        let help = joined_runs(&mut engine);
+        assert!(help.contains("<A-p>"));
+        assert!(help.contains("open in background"));
+    }
+
+    #[test]
+    fn syntax_highlighting_off_emits_no_scope_runs() {
+        let fixture = tempdir().expect("fixture directory");
+        fs::write(
+            fixture.path().join("match.rs"),
+            "pub fn match_context() { let alpha = 1; }\n",
+        )
+        .expect("write fixture");
+        let options = EngineOptions::from_entries([OptionEntry::boolean(
+            "preview.syntax-highlighting",
+            false,
+        )])
+        .expect("options parse");
+        let mut engine =
+            ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
+        for character in "alpha".chars() {
+            engine.handle_key(&character.to_string(), 0);
+        }
+        wait_until_complete(&mut engine);
+        engine.handle_key("enter", 0);
+        assert!(
+            engine
+                .render(120, 40)
+                .runs
+                .iter()
+                .all(|run| !run.tag.as_str().starts_with("s:"))
+        );
+    }
+
+    #[test]
+    fn every_core_default_binding_is_forwarded_to_core() {
+        let keys = KeysConfig::default();
+        let bindings = [
+            &keys.general.quit,
+            &keys.general.reset,
+            &keys.general.show_help_menu,
+            &keys.search.toggle_preview_wrapping,
+            &keys.search.toggle_hidden_files,
+            &keys.search.toggle_multiline,
+            &keys.search.toggle_interpret_escape_sequences,
+            &keys.search.fields.unlock_prepopulated_fields,
+            &keys.search.fields.trigger_search,
+            &keys.search.fields.focus_next_field,
+            &keys.search.fields.focus_previous_field,
+            &keys.search.results.trigger_replacement,
+            &keys.search.results.back_to_fields,
+            &keys.search.results.open_in_editor,
+            &keys.search.results.move_down,
+            &keys.search.results.move_up,
+            &keys.search.results.move_down_half_page,
+            &keys.search.results.move_up_half_page,
+            &keys.search.results.move_down_full_page,
+            &keys.search.results.move_up_full_page,
+            &keys.search.results.move_top,
+            &keys.search.results.move_bottom,
+            &keys.search.results.toggle_selected_inclusion,
+            &keys.search.results.toggle_all_selected,
+            &keys.search.results.toggle_multiselect_mode,
+            &keys.search.results.flip_multiselect_direction,
+            &keys.results.scroll_errors_down,
+            &keys.results.scroll_errors_up,
+            &keys.results.quit,
+        ]
+        .into_iter()
+        .flat_map(|keys| keys.iter().copied())
+        .collect::<Vec<_>>();
+
+        for binding in bindings {
+            let fixture = tempdir().expect("fixture directory");
+            let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+            // Escape is deliberately intercepted only in fields focus. Its
+            // configured result-focus action must still reach core.
+            if binding.code == KeyCode::Esc {
+                let Screen::SearchFields(state) = &mut engine.app.ui_state.current_screen else {
+                    unreachable!("new engines start on the fields screen");
+                };
+                state.focussed_section = FocussedSection::SearchResults;
+            }
+            let _ = engine.handle_key_event(binding);
+            assert_eq!(
+                engine.forwarded_key_events.last(),
+                Some(&binding),
+                "default core binding {binding} was intercepted by the plugin"
+            );
+        }
     }
 
     #[test]

@@ -77,7 +77,7 @@ and any background work continue, and `:scooter` resumes that session. `C-c`
 quits instead, cancelling work and discarding the session.
 
 When the results list is focused, `e` opens the selected match in Helix and
-hides the window; `A-e` opens it in the background and leaves the window open.
+hides the window; `A-o` opens it in the background and leaves the window open.
 After a replacement completes, scooter.hx reloads every open, non-dirty Helix
 buffer so its contents are current.
 
@@ -157,6 +157,12 @@ settings until then.
 ```scheme
 (scooter-keys! "search.results.move_down" '("j" "down"))
 ```
+
+Plugin-only bindings use the same function and participate in conflict checking against all core search-screen bindings.
+
+| Binding path | Default | Effect |
+| --- | --- | --- |
+| `plugin.open_in_editor_bg` | `A-o` | Open the selected result in Helix without hiding Scooter. |
 <!-- CONFIG END -->
 
 For syntax highlighting, runtime discovery checks `runtime-dir` first, then
@@ -165,9 +171,9 @@ For syntax highlighting, runtime discovery checks `runtime-dir` first, then
 
 Scooter validates the complete map when creating a session. An invalid key or
 a conflicting binding is reported in Helix's error area and the window does
-not open. The foreground open action follows a remapped
-`search.results.open_in_editor`; its background shortcut is Alt plus that
-action's first binding only when it is an unmodified character key.
+not open. The plugin-only `plugin.open_in_editor_bg` binding defaults to
+`A-o`, is configured independently of `search.results.open_in_editor`, and
+must not collide with a core binding reachable on the search screen.
 
 ## Differences from the Scooter TUI
 

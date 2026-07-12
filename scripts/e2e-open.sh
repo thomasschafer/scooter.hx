@@ -71,8 +71,8 @@ fi
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
 e2e_wait_for_present 'Results: 2 [Search complete]'
 
-# The default background binding is Alt plus the first foreground binding.
-tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" j M-e
+# The standalone default background binding is Alt-o.
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" j M-o
 e2e_wait_for_present 'Search text'
 
 # Results-focus Escape returns to the fields; a second Escape follows the

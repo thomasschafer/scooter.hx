@@ -10,6 +10,7 @@ use scooter_core::{
     fields::{Field, NUM_SEARCH_FIELDS, SearchField},
     replace::{PerformingReplacementState, ReplaceState},
     search::{MatchContent, SearchResultWithReplacement},
+    keyboard::KeyEvent,
     utils::{read_lines_range, relative_path, strip_control_chars},
 };
 use unicode_width::UnicodeWidthChar;
@@ -71,10 +72,12 @@ struct PreviewRead {
 }
 
 /// Render Scooter's active screen plus its footer and transient overlays.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn render(
     app: &mut App,
     highlight_engine: &HighlightEngine,
     syntax_highlighting: bool,
+    open_in_editor_bg: Option<KeyEvent>,
     width: usize,
     height: usize,
 ) -> Frame {
@@ -178,7 +181,14 @@ pub(crate) fn render(
     render_footer(&mut frame.runs, app, width, height - 1);
 
     if let Some(popup) = app.popup() {
-        render_popup(&mut frame.runs, app, popup, width, content_height);
+        render_popup(
+            &mut frame.runs,
+            app,
+            popup,
+            open_in_editor_bg,
+            width,
+            content_height,
+        );
     }
     if let Some(message) = app.toast_message() {
         render_toast(&mut frame.runs, message, width, content_height);
@@ -209,7 +219,14 @@ pub(crate) fn cursor(app: &App, width: usize, height: usize) -> Option<(usize, u
     )
 }
 
-fn render_popup(runs: &mut Vec<Run>, app: &App, popup: &Popup, width: usize, height: usize) {
+fn render_popup(
+    runs: &mut Vec<Run>,
+    app: &App,
+    popup: &Popup,
+    open_in_editor_bg: Option<KeyEvent>,
+    width: usize,
+    height: usize,
+) {
     match popup {
         Popup::Error => {
             let errors = app.errors();
@@ -232,7 +249,12 @@ fn render_popup(runs: &mut Vec<Run>, app: &App, popup: &Popup, width: usize, hei
             }
             render_paragraph_popup(runs, "Errors", &lines, width, height);
         }
-        Popup::Help => render_help_popup(runs, &app.keymaps_all(), width, height),
+        Popup::Help => render_help_popup(
+            runs,
+            &help_keymaps(app, open_in_editor_bg),
+            width,
+            height,
+        ),
         Popup::Text { title, body } => {
             let lines = body
                 .split('\n')
@@ -244,6 +266,25 @@ fn render_popup(runs: &mut Vec<Run>, app: &App, popup: &Popup, width: usize, hei
             render_paragraph_popup(runs, title, &lines, width, height);
         }
     }
+}
+
+fn help_keymaps(app: &App, open_in_editor_bg: Option<KeyEvent>) -> Vec<(String, String)> {
+    let mut keymaps = app.keymaps_all();
+    let on_results = matches!(
+        &app.ui_state.current_screen,
+        Screen::SearchFields(state) if state.focussed_section == FocussedSection::SearchResults
+    );
+    if on_results && let Some(binding) = open_in_editor_bg {
+        let insertion = keymaps
+            .iter()
+            .position(|(_, action)| action == "open in editor")
+            .map_or(keymaps.len(), |index| index + 1);
+        keymaps.insert(
+            insertion,
+            (format!("<{binding}>"), "open in background".to_string()),
+        );
+    }
+    keymaps
 }
 
 fn render_paragraph_popup(

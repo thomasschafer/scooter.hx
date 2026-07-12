@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use cargo_metadata::MetadataCommand;
 use scooter_core::config::KeysConfig;
-use scooter_hx::docs::option_specs;
+use scooter_hx::docs::{option_specs, plugin_key_specs};
 use syn::{Attribute, Fields, Item, ItemStruct, Meta, parse_file};
 
 const TOC_START: &str = "<!-- TOC START -->";
@@ -96,6 +96,11 @@ fn config_docs() -> String {
     docs.push_str(
         "```scheme\n(scooter-keys! \"search.results.move_down\" '(\"j\" \"down\"))\n```\n",
     );
+    docs.push_str("\nPlugin-only bindings use the same function and participate in conflict checking against all core search-screen bindings.\n\n");
+    docs.push_str("| Binding path | Default | Effect |\n| --- | --- | --- |\n");
+    for key in plugin_key_specs() {
+        let _ = writeln!(docs, "| `{}` | `{}` | {} |", key.path, key.default, key.description);
+    }
     docs
 }
 

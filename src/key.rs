@@ -5,6 +5,8 @@ use scooter_core::keyboard::{KeyCode, KeyEvent, KeyModifiers};
 const SHIFT_MODIFIER: usize = 1;
 const CONTROL_MODIFIER: usize = 2;
 const ALT_MODIFIER: usize = 4;
+const SUPER_MODIFIER: usize = 8;
+const META_MODIFIER: usize = 32;
 
 /// Decode the S1 key-name table into a canonical scooter-core key event.
 pub(crate) fn decode(code: &str, modifiers: usize) -> Option<KeyEvent> {
@@ -55,6 +57,12 @@ pub(crate) fn decode(code: &str, modifiers: usize) -> Option<KeyEvent> {
     if modifiers & ALT_MODIFIER != 0 {
         modifier_flags.insert(KeyModifiers::ALT);
     }
+    if modifiers & SUPER_MODIFIER != 0 {
+        modifier_flags.insert(KeyModifiers::SUPER);
+    }
+    if modifiers & META_MODIFIER != 0 {
+        modifier_flags.insert(KeyModifiers::META);
+    }
 
     let mut event = KeyEvent::new(code, modifier_flags);
     event.canonicalize();
@@ -72,6 +80,12 @@ mod tests {
         let event = decode("pageup", 2 | 4).expect("valid key");
         assert_eq!(event.code, KeyCode::PageUp);
         assert_eq!(event.modifiers, KeyModifiers::CONTROL | KeyModifiers::ALT);
+    }
+
+    #[test]
+    fn decodes_super_and_meta_modifier_bits() {
+        let event = decode("right", 8 | 32).expect("valid key");
+        assert_eq!(event.modifiers, KeyModifiers::SUPER | KeyModifiers::META);
     }
 
     #[test]

@@ -9,6 +9,7 @@
                  (only-in Scooter-render
                           Scooter-cursor
                           Scooter-handle-key
+                          Scooter-paste
                           Scooter-window-size
                           Scooter-pump
                           Scooter-busy?))
@@ -234,10 +235,11 @@
          (position (+ (area-y content-area) (list-ref cursor 1))
                    (+ (area-x content-area) (list-ref cursor 0))))))
 
-;; The engine contract deliberately contains only portable key names and the
-;; shift/ctrl/alt bits. Helix's super bit is not part of that contract.
+;; The engine contract uses Helix's keyboard modifier bits: shift=1,
+;; ctrl=2, alt=4, and super=8. Meta=32 is reserved for terminals/frontends
+;; that expose it separately, so preserve it too when present.
 (define (event-modifiers event)
-  (bitwise-and (or (key-event-modifier event) 0) 7))
+  (bitwise-and (or (key-event-modifier event) 0) 47))
 
 (define (event-code event)
   (cond
@@ -360,12 +362,16 @@
 
 ;; Returns the response status string so the entry point can own session teardown.
 (define (scooter-window-event-handler state event)
-  (let ([code (event-code event)])
-    (if code
-        (let ([status (consume-scooter-response!
-                       (Scooter-handle-key (ScooterWindowState-engine state)
-                                           code
-                                           (event-modifiers event)))])
+  (let ([response (if (paste-event? event)
+                      (Scooter-paste (ScooterWindowState-engine state)
+                                     (or (paste-event-string event) ""))
+                      (let ([code (event-code event)])
+                        (and code
+                             (Scooter-handle-key (ScooterWindowState-engine state)
+                                                 code
+                                                 (event-modifiers event)))))])
+    (if response
+        (let ([status (consume-scooter-response! response)])
           (when (Scooter-busy? (ScooterWindowState-engine state))
             (start-scooter-poll-loop! state))
           status)

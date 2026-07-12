@@ -28,6 +28,20 @@ pub struct OptionSpec {
     apply: fn(&mut EngineOptions, &str, &OptionValue) -> Result<(), String>,
 }
 
+/// A Helix-plugin-only binding accepted by `scooter-keys!`.
+#[derive(Debug, Clone, Copy)]
+pub struct PluginKeySpec {
+    pub path: &'static str,
+    pub default: &'static str,
+    pub description: &'static str,
+}
+
+const PLUGIN_KEY_SPECS: &[PluginKeySpec] = &[PluginKeySpec {
+    path: "plugin.open_in_editor_bg",
+    default: "A-o",
+    description: "Open the selected result in Helix without hiding Scooter.",
+}];
+
 #[derive(Debug, Clone, Copy)]
 enum DefaultValue {
     Bool(bool),
@@ -124,6 +138,11 @@ pub fn option_specs() -> &'static [OptionSpec] {
     OPTION_SPECS
 }
 
+/// Return the plugin-only `scooter-keys!` entries for generated docs.
+pub fn plugin_key_specs() -> &'static [PluginKeySpec] {
+    PLUGIN_KEY_SPECS
+}
+
 /// Return the parser wire path for a public `scooter-set!` symbol.
 pub(crate) fn setting_path(symbol: &str) -> Option<&'static str> {
     OPTION_SPECS
@@ -190,6 +209,10 @@ pub(crate) struct EngineOptions {
     pub(crate) window_size: f64,
     pub(crate) runtime_dir: Option<PathBuf>,
     pub(crate) syntax_highlighting: bool,
+    /// Helix-only result action. This intentionally lives outside core's
+    /// keymap so it can be validated against, rather than collide within, the
+    /// core map.
+    pub(crate) open_in_editor_bg: KeyEvent,
 }
 
 impl Default for EngineOptions {
@@ -200,6 +223,9 @@ impl Default for EngineOptions {
             window_size: 0.0,
             runtime_dir: None,
             syntax_highlighting: false,
+            open_in_editor_bg: "A-o"
+                .parse()
+                .expect("default background-open binding must be valid"),
         };
         for spec in OPTION_SPECS {
             spec.apply_default(&mut options);
@@ -237,6 +263,9 @@ impl EngineOptions {
     fn apply_key_binding(&mut self, path: &str, value: OptionValue) -> Result<(), String> {
         let keys = key_bindings(path, value)?;
         match path {
+            "keys.plugin.open_in_editor_bg" => {
+                self.open_in_editor_bg = single_key_binding(path, &keys)?;
+            }
             "keys.general.quit" => self.config.keys.general.quit = keys,
             "keys.general.reset" => self.config.keys.general.reset = keys,
             "keys.general.show_help_menu" => self.config.keys.general.show_help_menu = keys,
@@ -456,6 +485,15 @@ fn key_bindings(path: &str, value: OptionValue) -> Result<Keys, String> {
     Ok(Keys::new(bindings))
 }
 
+fn single_key_binding(path: &str, bindings: &Keys) -> Result<KeyEvent, String> {
+    match bindings.as_slice() {
+        [binding] => Ok(*binding),
+        _ => Err(format!(
+            "Invalid value for '{path}': expected exactly one key binding"
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use scooter_core::keyboard::{KeyCode, KeyModifiers};
@@ -526,6 +564,7 @@ mod tests {
     fn every_documented_key_path_accepts_core_key_syntax() {
         let paths = [
             "keys.general.quit",
+            "keys.plugin.open_in_editor_bg",
             "keys.general.reset",
             "keys.general.show_help_menu",
             "keys.search.toggle_preview_wrapping",
@@ -557,7 +596,12 @@ mod tests {
         ];
 
         for path in paths {
-            let options = EngineOptions::from_entries([OptionEntry::keys(path, &["C-o", "F12"])]);
+            let bindings = if path == "keys.plugin.open_in_editor_bg" {
+                &["C-o"][..]
+            } else {
+                &["C-o", "F12"][..]
+            };
+            let options = EngineOptions::from_entries([OptionEntry::keys(path, bindings)]);
             assert!(options.is_ok(), "{path} must be accepted");
         }
 
@@ -570,6 +614,7 @@ mod tests {
             options.config.keys.search.results.move_down[0].code,
             KeyCode::Char('n')
         );
+        assert_eq!(options.open_in_editor_bg.to_string(), "A-o");
         assert_eq!(
             options.config.keys.search.results.move_down[1].modifiers,
             KeyModifiers::NONE

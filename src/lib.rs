@@ -12,7 +12,7 @@ mod view;
 /// Keeping this narrow avoids making the engine's FFI internals public while
 /// letting `xtask` use the same options table as the runtime parser.
 pub mod docs {
-    pub use crate::options::{OptionSpec, option_specs};
+    pub use crate::options::{OptionSpec, PluginKeySpec, option_specs, plugin_key_specs};
 }
 
 #[cfg(test)]
@@ -164,6 +164,19 @@ fn scooter_handle_key(engine: &mut ScooterEngine, code: &str, modifiers: usize) 
     )
 }
 
+fn scooter_paste(engine: &mut ScooterEngine, text: &str) -> FFIValue {
+    ffi_guard(
+        "Scooter-paste",
+        || response_to_ffi(engine.paste(text)),
+        || {
+            response_to_ffi(EngineResponse {
+                status: "rerender",
+                actions: Vec::new(),
+            })
+        },
+    )
+}
+
 fn scooter_pump(engine: &mut ScooterEngine) -> FFIValue {
     ffi_guard(
         "Scooter-pump",
@@ -290,6 +303,7 @@ fn build_module() -> FFIModule {
         .register_fn("Scooter-window-size", scooter_window_size)
         .register_fn("Scooter-setting-path", scooter_setting_path)
         .register_fn("Scooter-handle-key", scooter_handle_key)
+        .register_fn("Scooter-paste", scooter_paste)
         .register_fn("Scooter-pump", scooter_pump)
         .register_fn("Scooter-busy?", scooter_busy)
         .register_fn("Scooter-render", scooter_render)
