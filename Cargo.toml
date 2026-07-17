@@ -17,8 +17,7 @@ abi_stable = "0.11.1"
 etcetera = "0.11.0"
 log = "0.4.30"
 lru = "0.18.1"
-# TODO: replace this pinned revision with scooter-core 0.4 from crates.io when it is published.
-scooter-core = { git = "https://github.com/thomasschafer/scooter", rev = "9387c36c6a6b8004d091b8f32e107b91ff530b0b", package = "scooter-core" }
+scooter-core = "0.4.0"
 simple-log = "2.4.0"
 steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a", features = ["dylibs", "sync"] }
 steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a" }

@@ -127,7 +127,7 @@ fn scooter_keys_source() -> Result<PathBuf> {
         .packages
         .iter()
         .find(|package| package.name == "scooter-core" && package.source.is_some())
-        .context("could not locate git dependency scooter-core in cargo metadata")?;
+        .context("could not locate scooter-core registry dependency in cargo metadata")?;
     let manifest_dir = package
         .manifest_path
         .parent()

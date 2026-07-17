@@ -191,8 +191,7 @@ them with `cargo xtask readme --check`.
 The tmux e2e harness is deliberately local-only because it requires a local
 Helix binary from `steel-event-system`, its runtime, Steel cogs, and tmux. It
 uses an isolated `.dev/` Steel and Helix configuration, never your normal
-configuration. After preparing that environment as described in
-[`docs/REWRITE-PLAN.md`](docs/REWRITE-PLAN.md#target-environment), run:
+configuration. After preparing that environment, run:
 
 ```sh
 scripts/e2e-smoke.sh
