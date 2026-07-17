@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Deterministic gif pipeline: drive hx+scooter in tmux, sample the screen with
-# tmux capture-pane -e on a timer, synthesize an asciinema cast, render via agg.
+# Regenerate media/preview.gif: drive hx+scooter in tmux, sample the screen
+# with atomic cursor+capture calls, synthesize an asciinema cast, render via
+# agg. Requires agg (brew install agg) and the isolated dev environment from
+# scripts/e2e-env.sh. The demo runs on a throwaway fixture copy: scooter
+# mutates files during the replacement.
 set -euo pipefail
 
-cd /Users/tomschafer/Development/scooter.hx
+cd "$(git rev-parse --show-toplevel)"
 source scripts/e2e-env.sh
 
-SCRATCH=/private/tmp/claude-501/-Users-tomschafer-Development-scooter-hx/46725038-b467-462a-ad1e-8e8a02c3abd2/scratchpad/gif
-GIF_FIX="$SCRATCH/fixture"
+WORK="${TMPDIR:-/tmp}/scooter-hx-gif"
+GIF_FIX="$WORK/fixture"
+FRAMES="$WORK/frames"
 SOCK=gifrec
 COLS=142
 ROWS=38
-FRAMES="$SCRATCH/frames"
 
-# Throwaway fixture in /tmp scratch: scooter mutates files during the demo.
-rm -rf "$GIF_FIX" && mkdir -p "$GIF_FIX"
+rm -rf "$WORK" && mkdir -p "$GIF_FIX" "$FRAMES"
 cp -R ~/Development/helix/helix-core/src "$GIF_FIX/helix-core"
 
 STEEL_HOME="$STEEL_HOME" cargo steel-lib >/dev/null 2>&1
@@ -24,15 +26,15 @@ tmux -L "$SOCK" new-session -d -x "$COLS" -y "$ROWS" -s gif -c "$GIF_FIX" "$HX_B
 tmux -L "$SOCK" set -t gif status off
 sleep 4
 
-rm -rf "$FRAMES" && mkdir -p "$FRAMES"
 capture_loop() {
+  local ms
   while tmux -L "$SOCK" has-session -t gif 2>/dev/null; do
-    local ms
-    ms=$(python3 -c 'import time; print(int(time.time()*1000))')
-    {
-      tmux -L "$SOCK" capture-pane -e -p -t gif
-      printf '@CURSOR %s\n' "$(tmux -L "$SOCK" display -p -t gif '#{cursor_x} #{cursor_y}')"
-    } > "$FRAMES/f_${ms}.txt" 2>/dev/null || true
+    ms=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+    # One tmux client invocation keeps the cursor query and the screen
+    # capture near-atomic; separate calls sample different redraws while
+    # typing, landing the rendered cursor on the wrong cell.
+    tmux -L "$SOCK" display -p -t gif '@CURSOR #{cursor_x} #{cursor_y}' \; \
+      capture-pane -e -p -t gif > "$FRAMES/f_${ms}.txt" 2>/dev/null || true
     sleep 0.08
   done
 }
@@ -54,11 +56,11 @@ type_slow ':scooter'
 send Enter
 sleep 1.0
 type_slow 'foo'
-sleep 2.2
+sleep 1.2
 send Tab
 sleep 0.5
 type_slow 'bar'
-sleep 1.6
+sleep 0.9
 send Enter
 sleep 1.2
 for _ in 1 2 3 4; do
@@ -75,7 +77,7 @@ sleep 1.6
 tmux -L "$SOCK" kill-server 2>/dev/null || true
 wait "$CAP_PID" 2>/dev/null || true
 
-python3 "$SCRATCH/build_cast.py" "$FRAMES" "$SCRATCH/demo.cast" "$COLS" "$ROWS"
-agg --font-size 14 "$SCRATCH/demo.cast" "$SCRATCH/preview.gif" 2>/dev/null
-ffprobe -v error -select_streams v:0 -show_entries stream=width,height,nb_frames -of csv=p=0 "$SCRATCH/preview.gif"
-ls -la "$SCRATCH/preview.gif" | awk '{print $5}'
+python3 scripts/gif/build_cast.py "$FRAMES" "$WORK/demo.cast" "$COLS" "$ROWS"
+agg --font-size 14 "$WORK/demo.cast" "$WORK/preview.gif" 2>/dev/null
+ffprobe -v error -select_streams v:0 -show_entries stream=width,height,nb_frames -of csv=p=0 "$WORK/preview.gif"
+echo "output: $WORK/preview.gif ($(wc -c < "$WORK/preview.gif" | tr -d ' ') bytes)"
