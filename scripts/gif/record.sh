@@ -51,28 +51,34 @@ type_slow() {
   done
 }
 
-sleep 0.8
+sleep 0.1
 type_slow ':scooter'
+sleep 0.1
 send Enter
-sleep 1.0
-type_slow 'foo'
-sleep 1.2
-send Tab
 sleep 0.5
+type_slow 'foo'
+sleep 0.1
+send Tab
+sleep 0.1
 type_slow 'bar'
-sleep 0.9
+sleep 0.1
 send Enter
-sleep 1.2
+sleep 0.5
 for _ in 1 2 3 4; do
   send j
-  sleep 0.45
+  sleep 0.1
 done
-send Space
-sleep 0.9
+for _ in 1 2 3; do
+  send j
+  sleep 0.1
+  send Space
+  sleep 0.1
+done
+sleep 0.5
 send Enter
-sleep 2.2
+sleep 1.5
 send Enter
-sleep 1.6
+sleep 1.5
 
 tmux -L "$SOCK" kill-server 2>/dev/null || true
 wait "$CAP_PID" 2>/dev/null || true
