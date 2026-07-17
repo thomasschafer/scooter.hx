@@ -170,39 +170,3 @@ a conflicting binding is reported in Helix's error area and the window does
 not open. The plugin-only `plugin.open_in_editor_bg` binding defaults to
 `A-o`, is configured independently of `search.results.open_in_editor`, and
 must not collide with a core binding reachable on the search screen.
-
-## Differences from the Scooter TUI
-
-- Preview context uses Helix grammar highlighting and the editor background rather than the TUI preview surface; diff lines retain Helix-theme diff styling.
-- Scooter's TOML `editor_open` configuration does not apply. scooter.hx
-  always opens results in Helix.
-- `esc` hides the plugin window when it would otherwise be unhandled; in the
-  results list it retains its normal action of returning to the fields.
-
-## Development and local validation
-
-`scripts/check.sh` is the portable Rust check used during development: it
-builds all targets, runs Clippy with warnings denied, and runs the test suite
-(including frame snapshots) against one pinned local toolchain.
-
-Regenerate README reference sections with `cargo xtask readme`; CI verifies
-them with `cargo xtask readme --check`.
-
-The tmux e2e harness is deliberately local-only because it requires a local
-Helix binary from `steel-event-system`, its runtime, Steel cogs, and tmux. It
-uses an isolated `.dev/` Steel and Helix configuration, never your normal
-configuration. After preparing that environment, run:
-
-```sh
-scripts/e2e-smoke.sh
-scripts/e2e-live-search.sh
-scripts/e2e-sizes.sh
-scripts/e2e-preview.sh
-scripts/e2e-replace.sh
-scripts/e2e-lifecycle.sh
-scripts/e2e-config.sh
-scripts/e2e-open.sh
-```
-
-For an interactive isolated development session, use `scripts/try.sh
-[directory]`.
