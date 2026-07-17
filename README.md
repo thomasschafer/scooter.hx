@@ -6,11 +6,7 @@ embeds the same `scooter-core` engine as the
 selection, previews, and replacement follow the TUI's behaviour. The window
 and all of its styling are rendered natively by Helix, using your Helix theme.
 
-> **Stale media — release decision pending.** The checked-in
-> [`media/preview.gif`](media/preview.gif) and
-> [`media/preview.png`](media/preview.png) predate this rewrite and are
-> intentionally not embedded here. They need to be regenerated or removed
-> before release.
+![scooter.hx preview](media/preview.gif)
 
 ## Contents
 
