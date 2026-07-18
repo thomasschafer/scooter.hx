@@ -34,7 +34,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ci/helix-runtime
-          key: helix-runtime-0522d519-${{ hashFiles('scripts/ci/assemble-runtime.sh') }}
+          # runner.os in the key: grammar dylibs are platform binaries, and a
+          # cross-OS cache hit loads unloadable artifacts.
+          key: helix-runtime-${{ runner.os }}-0522d519-${{ hashFiles('scripts/ci/assemble-runtime.sh') }}
 
       - name: Assemble minimal Helix runtime
         if: runner.os != 'Windows' && steps.helix-runtime-cache.outputs.cache-hit != 'true'
