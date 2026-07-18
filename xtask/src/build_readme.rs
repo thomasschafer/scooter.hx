@@ -20,8 +20,11 @@ const KEYS_END: &str = "<!-- KEYS END -->";
 const CONTENTS_HEADING: &str = "## Contents";
 
 pub fn generate_readme(readme_path: &Path, check_only: bool) -> Result<()> {
+    // Normalise CRLF so a Windows checkout with git autocrlf compares equal
+    // to the LF content this generator produces.
     let original = fs::read_to_string(readme_path)
-        .with_context(|| format!("failed to read {}", readme_path.display()))?;
+        .with_context(|| format!("failed to read {}", readme_path.display()))?
+        .replace("\r\n", "\n");
     let with_toc = generate_toc(&original)?;
     let with_config = replace_section(&with_toc, CONFIG_START, CONFIG_END, &config_docs())?;
     let updated = replace_section(&with_config, KEYS_START, KEYS_END, &keys_docs()?)?;
