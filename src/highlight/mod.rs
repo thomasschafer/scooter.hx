@@ -262,13 +262,14 @@ impl CacheKey {
 }
 
 fn discover_runtime(runtime_override: Option<PathBuf>) -> Option<PathBuf> {
-    let mut candidates = Vec::new();
     if let Some(path) = runtime_override {
-        candidates.push(path);
+        return path.join("grammars").is_dir().then_some(path);
     }
     if let Some(path) = env::var_os("HELIX_RUNTIME") {
-        candidates.push(PathBuf::from(path));
+        let path = PathBuf::from(path);
+        return path.join("grammars").is_dir().then_some(path);
     }
+    let mut candidates = Vec::new();
     if let Some(home) = env::var_os("HOME") {
         let home = PathBuf::from(home);
         candidates.push(home.join(".config/helix/runtime"));

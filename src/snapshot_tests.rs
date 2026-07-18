@@ -5,6 +5,7 @@
 //! plugin's `Frame` rather than duplicating core assertions.
 
 use std::{
+    env,
     fmt::Write,
     fs,
     path::PathBuf,
@@ -349,6 +350,12 @@ fn previews_cover_single_line_multiline_and_wrapping() {
 #[test]
 fn highlighted_rust_preview_snapshots_and_cache() {
     if !runtime_is_available() {
+        assert_ne!(
+            env::var_os("REQUIRE_HELIX_RUNTIME").as_deref(),
+            Some("1".as_ref()),
+            "highlighted_rust_preview_snapshots_and_cache requires a Helix runtime with grammars; HELIX_RUNTIME={:?}",
+            env::var_os("HELIX_RUNTIME")
+        );
         eprintln!(
             "highlighted_rust_preview_snapshots_and_cache skipped: no Helix runtime with grammars was discovered; set HELIX_RUNTIME to exercise syntax-highlighted previews"
         );

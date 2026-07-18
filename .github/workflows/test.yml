@@ -24,12 +24,26 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Cache minimal Helix runtime
+        id: helix-runtime-cache
+        uses: actions/cache@v4
+        with:
+          path: .ci/helix-runtime
+          key: helix-runtime-0522d519-${{ hashFiles('scripts/ci/assemble-runtime.sh') }}
+
+      - name: Assemble minimal Helix runtime
+        if: steps.helix-runtime-cache.outputs.cache-hit != 'true'
+        run: scripts/ci/assemble-runtime.sh .ci/helix-runtime
+
       # The tmux/Helix e2e harness needs a locally built Helix from the
       # steel-event-system branch, so it deliberately remains local-only.
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
+        env:
+          HELIX_RUNTIME: ${{ github.workspace }}/.ci/helix-runtime
+          REQUIRE_HELIX_RUNTIME: "1"
         run: cargo test --workspace
 
       - name: Check generated README
