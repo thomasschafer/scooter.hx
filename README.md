@@ -110,7 +110,7 @@ settings until then.
 
 ### Keymap
 
-`(scooter-keys! "path" bindings)` replaces one action's bindings. `bindings` may be one string or a list of strings, using Scooter's syntax: modifiers are `S-`, `C-`, and `A-`. The path omits the leading `keys.`.
+`(scooter-keys! "path" bindings)` replaces one action's bindings. `bindings` may be one string or a list of strings, using the standard Helix syntax: modifiers are `S-`, `C-`, and `A-`. The path omits the leading `keys.`.
 
 ```scheme
 (scooter-keys! "search.results.move_down" '("j" "down"))
@@ -124,15 +124,12 @@ Plugin-only bindings use the same function and participate in conflict checking 
 | `plugin.open_in_editor_bg` | `A-o` | Open the selected result in Helix without hiding Scooter. |
 <!-- PLUGIN KEYS END -->
 
-Scooter validates the complete map when creating a session. An invalid key or
-a conflicting binding is reported in Helix's error area and the window does
-not open. The plugin-only `plugin.open_in_editor_bg` binding defaults to
-`A-o`, is configured independently of `search.results.open_in_editor`, and
+The plugin-only `plugin.open_in_editor_bg` binding is configured independently of `search.results.open_in_editor`, and
 must not collide with a core binding reachable on the search screen.
 
 ### Default keymap
 
-Bindings are written in Scooter's key syntax.
+Bindings are written in Helix's key syntax.
 
 <!-- KEYS START -->
 Defaults from scooter-core 0.4.0, matching the Scooter TUI.
