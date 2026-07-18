@@ -15,8 +15,6 @@ const TOC_START: &str = "<!-- TOC START -->";
 const TOC_END: &str = "<!-- TOC END -->";
 const CONFIG_START: &str = "<!-- CONFIG START -->";
 const CONFIG_END: &str = "<!-- CONFIG END -->";
-const PLUGIN_KEYS_START: &str = "<!-- PLUGIN KEYS START -->";
-const PLUGIN_KEYS_END: &str = "<!-- PLUGIN KEYS END -->";
 const KEYS_START: &str = "<!-- KEYS START -->";
 const KEYS_END: &str = "<!-- KEYS END -->";
 const CONTENTS_HEADING: &str = "## Contents";
@@ -26,13 +24,7 @@ pub fn generate_readme(readme_path: &Path, check_only: bool) -> Result<()> {
         .with_context(|| format!("failed to read {}", readme_path.display()))?;
     let with_toc = generate_toc(&original)?;
     let with_config = replace_section(&with_toc, CONFIG_START, CONFIG_END, &config_docs())?;
-    let with_plugin_keys = replace_section(
-        &with_config,
-        PLUGIN_KEYS_START,
-        PLUGIN_KEYS_END,
-        &plugin_keys_docs(),
-    )?;
-    let updated = replace_section(&with_plugin_keys, KEYS_START, KEYS_END, &keys_docs()?)?;
+    let updated = replace_section(&with_config, KEYS_START, KEYS_END, &keys_docs()?)?;
 
     if updated == original {
         println!("README is up to date");
@@ -102,30 +94,32 @@ fn config_docs() -> String {
     docs
 }
 
-fn plugin_keys_docs() -> String {
-    let mut docs = String::from("| Binding path | Default | Effect |\n| --- | --- | --- |\n");
-    for key in plugin_key_specs() {
-        let _ = writeln!(
-            docs,
-            "| `{}` | `{}` | {} |",
-            key.path, key.default, key.description
-        );
-    }
-    docs
-}
-
 fn keys_docs() -> Result<String> {
     let descriptions = key_descriptions(&scooter_keys_source()?)?;
     let defaults = toml::Value::try_from(KeysConfig::default())?;
     let mut bindings = Vec::new();
     collect_key_defaults(&defaults, "", &mut bindings)?;
+    let mut rows = bindings
+        .into_iter()
+        .map(|(path, keys)| {
+            key_description(&path, &descriptions)
+                .map(|description| (path, keys, description.to_string()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    rows.extend(plugin_key_specs().iter().map(|key| {
+        (
+            key.path.to_string(),
+            key.default.to_string(),
+            key.description.to_string(),
+        )
+    }));
+    rows.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut docs = format!(
-        "Defaults from scooter-core {}, matching the Scooter TUI.\n\n| Binding path | Default key(s) | Description |\n| --- | --- | --- |\n",
+        "Defaults from scooter-core {}, matching the Scooter TUI, plus Scooter's plugin bindings.\n\n| Binding path | Default key(s) | Description |\n| --- | --- | --- |\n",
         scooter_core_version()?
     );
-    for (path, keys) in bindings {
-        let description = key_description(&path, &descriptions)?;
+    for (path, keys, description) in rows {
         writeln!(docs, "| `{path}` | `{keys}` | {description} |")?;
     }
     Ok(docs)

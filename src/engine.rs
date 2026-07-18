@@ -62,6 +62,7 @@ pub(crate) struct ScooterEngine {
     highlight_engine: HighlightEngine,
     syntax_highlighting: bool,
     open_in_editor_bg: KeyEvent,
+    hide: Vec<KeyEvent>,
     #[cfg(test)]
     forwarded_key_events: Vec<KeyEvent>,
 }
@@ -83,6 +84,7 @@ impl ScooterEngine {
             .map_err(|error| error.to_string())?;
         let _guard = runtime.enter();
         validate_background_open_binding(&options.config.keys, options.open_in_editor_bg)?;
+        validate_hide_bindings(&options.hide)?;
         let highlight_engine = HighlightEngine::new(options.runtime_dir.clone());
         let app = App::new(
             InputSource::Directory(directory.into()),
@@ -99,6 +101,7 @@ impl ScooterEngine {
             highlight_engine,
             syntax_highlighting: options.syntax_highlighting,
             open_in_editor_bg: options.open_in_editor_bg,
+            hide: options.hide,
             #[cfg(test)]
             forwarded_key_events: Vec::new(),
         })
@@ -124,16 +127,9 @@ impl ScooterEngine {
             return self.response("rerender");
         }
 
-        if key_event.code == KeyCode::Esc && self.should_hide_for_escape() {
+        if self.should_hide(key_event) {
             self.drain_ready_events(false);
             return self.response("hide");
-        }
-        if key_event.code == KeyCode::Esc && self.should_ignore_escape() {
-            // The TUI does nothing for Escape while replacement work/results
-            // are on screen.  Keep that behaviour native rather than letting
-            // core's legacy Escape compatibility popup leak into Helix.
-            self.drain_ready_events(false);
-            return self.response("rerender");
         }
         // Background open is a Helix-only addition. Re-submit the configured
         // foreground binding to core so it retains ownership of selection and
@@ -208,6 +204,7 @@ impl ScooterEngine {
             &self.highlight_engine,
             self.syntax_highlighting,
             Some(self.open_in_editor_bg),
+            &self.hide,
             width,
             height,
         )
@@ -288,21 +285,12 @@ impl ScooterEngine {
         }
     }
 
-    fn should_hide_for_escape(&self) -> bool {
-        !self.app.show_popup()
-            && matches!(
-                &self.app.ui_state.current_screen,
-                Screen::SearchFields(state)
-                    if state.focussed_section == FocussedSection::SearchFields
-            )
-    }
-
-    fn should_ignore_escape(&self) -> bool {
-        !self.app.show_popup()
-            && matches!(
-                self.app.ui_state.current_screen,
-                Screen::PerformingReplacement(_) | Screen::Results(_)
-            )
+    /// Plugin hide bindings are fallbacks: popup and core-specific handling
+    /// always win, and only otherwise-unhandled non-text chords hide Scooter.
+    fn should_hide(&self, key_event: KeyEvent) -> bool {
+        self.hide.contains(&key_event)
+            && !self.app.show_popup()
+            && !core_binding_active(&self.app.config.keys, &self.app.ui_state.current_screen, key_event)
     }
 
     fn active_runtime(&self) -> Option<&Runtime> {
@@ -393,6 +381,73 @@ impl ScooterEngine {
     fn response(&mut self, status: &'static str) -> EngineResponse {
         EngineResponse::new(status, mem::take(&mut self.actions).into())
     }
+}
+
+fn core_binding_active(keys: &KeysConfig, screen: &Screen, key_event: KeyEvent) -> bool {
+    let active: &[&[KeyEvent]] = match screen {
+        Screen::SearchFields(state) => match state.focussed_section {
+            FocussedSection::SearchFields => &[
+                &keys.search.toggle_preview_wrapping,
+                &keys.search.toggle_hidden_files,
+                &keys.search.toggle_multiline,
+                &keys.search.toggle_interpret_escape_sequences,
+                &keys.search.fields.unlock_prepopulated_fields,
+                &keys.search.fields.trigger_search,
+                &keys.search.fields.focus_next_field,
+                &keys.search.fields.focus_previous_field,
+                &keys.general.quit,
+                &keys.general.reset,
+                &keys.general.show_help_menu,
+            ],
+            FocussedSection::SearchResults => &[
+                &keys.search.toggle_preview_wrapping,
+                &keys.search.toggle_hidden_files,
+                &keys.search.toggle_multiline,
+                &keys.search.toggle_interpret_escape_sequences,
+                &keys.search.results.trigger_replacement,
+                &keys.search.results.back_to_fields,
+                &keys.search.results.open_in_editor,
+                &keys.search.results.move_down,
+                &keys.search.results.move_up,
+                &keys.search.results.move_down_half_page,
+                &keys.search.results.move_up_half_page,
+                &keys.search.results.move_down_full_page,
+                &keys.search.results.move_up_full_page,
+                &keys.search.results.move_top,
+                &keys.search.results.move_bottom,
+                &keys.search.results.toggle_selected_inclusion,
+                &keys.search.results.toggle_all_selected,
+                &keys.search.results.toggle_multiselect_mode,
+                &keys.search.results.flip_multiselect_direction,
+                &keys.general.quit,
+                &keys.general.reset,
+                &keys.general.show_help_menu,
+            ],
+        },
+        Screen::PerformingReplacement(_) => {
+            &[&keys.general.quit, &keys.general.reset, &keys.general.show_help_menu]
+        }
+        Screen::Results(_) => &[
+            &keys.results.scroll_errors_down,
+            &keys.results.scroll_errors_up,
+            &keys.results.quit,
+            &keys.general.quit,
+            &keys.general.reset,
+            &keys.general.show_help_menu,
+        ],
+    };
+    active.iter().any(|bindings| bindings.contains(&key_event))
+}
+
+fn validate_hide_bindings(bindings: &[KeyEvent]) -> Result<(), String> {
+    if let Some(binding) = bindings.iter().find(|binding| {
+        matches!(binding.code, KeyCode::Char(_)) && binding.modifiers == KeyModifiers::NONE
+    }) {
+        return Err(format!(
+            "Invalid plugin.hide binding '{binding}': bare character keys are text input in search fields; use esc, a named key, or a modified chord."
+        ));
+    }
+    Ok(())
 }
 
 fn validate_background_open_binding(keys: &KeysConfig, binding: KeyEvent) -> Result<(), String> {
@@ -799,13 +854,13 @@ mod tests {
             "OMEGA one\nOMEGAbet two\n"
         );
 
-        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert_eq!(engine.handle_key("esc", 0), "hide");
         assert!(engine.app.popup().is_none());
         assert_eq!(engine.handle_key("enter", 0), "quit");
     }
 
     #[test]
-    fn results_errors_and_non_search_escape_are_rendered_without_hiding() {
+    fn results_errors_and_replacement_escape_hide_when_core_has_no_action() {
         let fixture = tempdir().expect("fixture directory");
         let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
         engine.app.ui_state.current_screen = Screen::Results(ReplaceState {
@@ -820,7 +875,7 @@ mod tests {
         assert!(results.contains("Errors:"));
         assert!(results.contains("failed.txt:4"));
         assert!(results.contains("permission denied"));
-        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert_eq!(engine.handle_key("esc", 0), "hide");
         assert!(engine.app.popup().is_none());
 
         let (_sender, receiver) = mpsc::unbounded_channel();
@@ -832,7 +887,7 @@ mod tests {
                 1,
             ));
         assert!(joined_runs(&mut engine).contains("Performing replacement..."));
-        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert_eq!(engine.handle_key("esc", 0), "hide");
         assert!(engine.app.popup().is_none());
     }
 
@@ -954,6 +1009,67 @@ mod tests {
     }
 
     #[test]
+    fn hide_binding_defers_to_popup_and_active_core_bindings() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+
+        engine.handle_key("h", 2);
+        assert!(engine.app.popup().is_some());
+        assert_eq!(engine.handle_key("esc", 0), "rerender");
+        assert!(engine.app.popup().is_none());
+
+        let options = EngineOptions::from_entries([
+            OptionEntry::keys("keys.plugin.hide", &["C-q"]),
+            OptionEntry::keys("keys.search.toggle_hidden_files", &["C-q"]),
+        ])
+        .expect("options parse");
+        let mut engine =
+            ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
+        assert_eq!(engine.handle_key("q", 2), "rerender");
+        assert!(engine.app.run_config.include_hidden);
+        assert_eq!(engine.forwarded_key_events.last().unwrap().to_string(), "C-q");
+    }
+
+    #[test]
+    fn hide_binding_hides_from_both_search_focuses_and_results_screen() {
+        let fixture = tempdir().expect("fixture directory");
+        let options = EngineOptions::from_entries([OptionEntry::keys(
+            "keys.plugin.hide",
+            &["C-q", "F12"],
+        )])
+        .expect("options parse");
+        let mut engine =
+            ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
+        assert_eq!(engine.handle_key("q", 2), "hide");
+
+        let Screen::SearchFields(state) = &mut engine.app.ui_state.current_screen else {
+            unreachable!("new engines start on search fields");
+        };
+        state.focussed_section = FocussedSection::SearchResults;
+        assert_eq!(engine.handle_key("q", 2), "hide");
+
+        engine.app.ui_state.current_screen = Screen::Results(ReplaceState {
+            num_successes: 0,
+            num_ignored: 0,
+            errors: vec![],
+            replacement_errors_pos: 0,
+        });
+        assert_eq!(engine.handle_key("f12", 0), "hide");
+    }
+
+    #[test]
+    fn bare_character_hide_binding_is_rejected_at_session_creation() {
+        let fixture = tempdir().expect("fixture directory");
+        let options = EngineOptions::from_entries([OptionEntry::keys("keys.plugin.hide", &["q"])])
+            .expect("options parse");
+        let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
+            panic!("bare field text must not be a hide binding");
+        };
+        assert!(error.contains("Invalid plugin.hide binding 'q'"), "{error}");
+        assert!(error.contains("text input"), "{error}");
+    }
+
+    #[test]
     fn paste_uses_core_text_input_and_ignores_non_text_contexts() {
         let fixture = tempdir().expect("fixture directory");
         fs::write(fixture.path().join("match.txt"), "alpha beta\n").expect("write fixture");
@@ -977,12 +1093,15 @@ mod tests {
         let options = EngineOptions::from_entries([OptionEntry::keys(
             "keys.plugin.open_in_editor_bg",
             &["A-p"],
-        )])
+        ), OptionEntry::keys("keys.plugin.hide", &["C-q"])])
         .expect("options parse");
         let mut engine =
             ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
         engine.handle_key("h", 2);
-        assert!(!joined_runs(&mut engine).contains("open in background"));
+        let fields_help = joined_runs(&mut engine);
+        assert!(!fields_help.contains("open in background"));
+        assert!(fields_help.contains("<C-q>"));
+        assert!(fields_help.contains("hide Scooter"));
         engine.handle_key("esc", 0);
         for character in "alpha".chars() {
             engine.handle_key(&character.to_string(), 0);

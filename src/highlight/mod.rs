@@ -848,6 +848,10 @@ injection-regex = "demo-alias"
         let Some(runtime) = test_runtime() else {
             return;
         };
+        let cpp_highlights = runtime_query(&runtime, "cpp", "highlights.scm")
+            .expect("Helix C++ highlights query is available");
+        assert!(cpp_highlights.contains("\"return\" @keyword.control.return"));
+
         let engine = HighlightEngine::with_runtime(runtime);
         let rust = "pub fn greeting(name: &str) -> String { format!(\"hi {name}\") }\n";
         let rust_spans = engine.highlight(Path::new("example.rs"), rust).unwrap();

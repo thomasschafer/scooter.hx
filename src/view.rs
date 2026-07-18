@@ -10,7 +10,7 @@ use scooter_core::{
     fields::{Field, NUM_SEARCH_FIELDS, SearchField},
     replace::{PerformingReplacementState, ReplaceState},
     search::{MatchContent, SearchResultWithReplacement},
-    keyboard::KeyEvent,
+    keyboard::{KeyCode, KeyEvent, KeyModifiers},
     utils::{read_lines_range, relative_path, strip_control_chars},
 };
 use unicode_width::UnicodeWidthChar;
@@ -78,6 +78,7 @@ pub(crate) fn render(
     highlight_engine: &HighlightEngine,
     syntax_highlighting: bool,
     open_in_editor_bg: Option<KeyEvent>,
+    hide: &[KeyEvent],
     width: usize,
     height: usize,
 ) -> Frame {
@@ -186,6 +187,7 @@ pub(crate) fn render(
             app,
             popup,
             open_in_editor_bg,
+            hide,
             width,
             content_height,
         );
@@ -224,6 +226,7 @@ fn render_popup(
     app: &App,
     popup: &Popup,
     open_in_editor_bg: Option<KeyEvent>,
+    hide: &[KeyEvent],
     width: usize,
     height: usize,
 ) {
@@ -251,7 +254,7 @@ fn render_popup(
         }
         Popup::Help => render_help_popup(
             runs,
-            &help_keymaps(app, open_in_editor_bg),
+            &help_keymaps(app, open_in_editor_bg, hide),
             width,
             height,
         ),
@@ -268,7 +271,11 @@ fn render_popup(
     }
 }
 
-fn help_keymaps(app: &App, open_in_editor_bg: Option<KeyEvent>) -> Vec<(String, String)> {
+fn help_keymaps(
+    app: &App,
+    open_in_editor_bg: Option<KeyEvent>,
+    hide: &[KeyEvent],
+) -> Vec<(String, String)> {
     let mut keymaps = app.keymaps_all();
     let on_results = matches!(
         &app.ui_state.current_screen,
@@ -283,6 +290,19 @@ fn help_keymaps(app: &App, open_in_editor_bg: Option<KeyEvent>) -> Vec<(String, 
             insertion,
             (format!("<{binding}>"), "open in background".to_string()),
         );
+    }
+    let default_hide = [KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)];
+    if hide != default_hide {
+        let binding = hide
+            .iter()
+            .map(|binding| format!("<{binding}>"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let insertion = keymaps
+            .iter()
+            .position(|(_, action)| action.contains("back to search fields"))
+            .map_or(keymaps.len(), |index| index + 1);
+        keymaps.insert(insertion, (binding, "hide Scooter".to_string()));
     }
     keymaps
 }

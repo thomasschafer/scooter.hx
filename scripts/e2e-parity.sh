@@ -81,3 +81,47 @@ e2e_wait_for_present 'alpha one'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
 e2e_wait_for_present 'Key binding conflict detected!'
 e2e_wait_for_absent 'Search text'
+e2e_cleanup
+
+# Default Escape hides from fields. A custom, otherwise-unbound hide chord
+# works from results focus and from the post-replacement Results screen.
+printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
+start_session
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Escape
+e2e_wait_for_absent 'Search text'
+e2e_cleanup
+
+printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
+printf '%s\n' '(scooter-keys! "plugin.hide" "C-q")' >> "$XDG_CONFIG_HOME/helix/init.scm"
+start_session
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" alpha
+e2e_wait_for_present '[Search complete]'
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter C-q
+e2e_wait_for_absent 'Search text'
+e2e_cleanup
+
+start_session
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" alpha
+e2e_wait_for_present 'Results: 5 [Search complete]'
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Tab
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" OMEGA
+e2e_wait_for_present '+ OMEGA one'
+e2e_press_until_present Enter 'Successful replacements'
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" C-q
+e2e_wait_for_absent 'Successful replacements'
+e2e_cleanup
+
+# Field text is never a valid hide chord, and session creation reports why.
+printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
+printf '%s\n' '(scooter-keys! "plugin.hide" "q")' >> "$XDG_CONFIG_HOME/helix/init.scm"
+TMUX_SOCKET="scooter-fin1-hide-${PPID}-${RANDOM}"
+TMUX_SESSION="scooter-fin1-hide"
+PANE_TARGET="$TMUX_SESSION:0.0"
+tmux -L "$TMUX_SOCKET" new-session -d -x 120 -y 40 -s "$TMUX_SESSION" \
+  -c "$SEARCH_FIXTURE_DIR" "$HX_BINARY" one.txt \
+  || e2e_fail 'could not start the invalid hide-binding Helix session'
+e2e_wait_for_helix
+e2e_wait_for_present 'OMEGA one'
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
+e2e_wait_for_present 'Invalid plugin.hide binding'
+e2e_wait_for_absent 'Search text'

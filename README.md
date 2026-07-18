@@ -70,7 +70,8 @@ Press `C-h` in the window for the full keymap.
 
 `esc` hides the window when Scooter has nothing else to dismiss. The search
 and any background work continue, and `:scooter` resumes that session. `C-c`
-quits instead, cancelling work and discarding the session.
+quits instead, cancelling work and discarding the session. After replacement
+results, `esc` now hides the window too.
 
 When the results list is focused, `e` opens the selected match in Helix and
 hides the window; `A-o` opens it in the background and leaves the window open.
@@ -116,29 +117,22 @@ settings until then.
 (scooter-keys! "search.results.move_down" '("j" "down"))
 ```
 
-Plugin-only bindings use the same function and participate in conflict checking against all core search-screen bindings.
-
-<!-- PLUGIN KEYS START -->
-| Binding path | Default | Effect |
-| --- | --- | --- |
-| `plugin.open_in_editor_bg` | `A-o` | Open the selected result in Helix without hiding Scooter. |
-<!-- PLUGIN KEYS END -->
-
-The plugin-only `plugin.open_in_editor_bg` binding is configured independently of `search.results.open_in_editor`, and
-must not collide with a core binding reachable on the search screen.
+Plugin-only bindings use the same function. `plugin.open_in_editor_bg` must not collide with a core binding reachable on the search screen; `plugin.hide` may overlap core bindings, which take precedence in their active context.
 
 ### Default keymap
 
 Bindings are written in Helix's key syntax.
 
 <!-- KEYS START -->
-Defaults from scooter-core 0.4.0, matching the Scooter TUI.
+Defaults from scooter-core 0.4.0, matching the Scooter TUI, plus Scooter's plugin bindings.
 
 | Binding path | Default key(s) | Description |
 | --- | --- | --- |
 | `general.quit` | `C-c` | Exit scooter |
 | `general.reset` | `C-r` | Cancel in-progress operations, reset fields to default values and return to search screen |
 | `general.show_help_menu` | `C-h` | Show the help menu containing keymaps |
+| `plugin.hide` | `esc` | Hide Scooter when core has no action for the key in the current context; core bindings take precedence. |
+| `plugin.open_in_editor_bg` | `A-o` | Open the selected result in Helix without hiding Scooter. |
 | `results.quit` | `enter`, `q` | Exit scooter. This is in addition to the `quit` command in the `general` section. |
 | `results.scroll_errors_down` | `j`, `down`, `C-n` | Navigate to the error below |
 | `results.scroll_errors_up` | `k`, `up`, `C-p` | Navigate to the error above |

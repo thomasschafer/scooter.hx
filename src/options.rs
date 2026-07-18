@@ -40,6 +40,10 @@ const PLUGIN_KEY_SPECS: &[PluginKeySpec] = &[PluginKeySpec {
     path: "plugin.open_in_editor_bg",
     default: "A-o",
     description: "Open the selected result in Helix without hiding Scooter.",
+}, PluginKeySpec {
+    path: "plugin.hide",
+    default: "esc",
+    description: "Hide Scooter when core has no action for the key in the current context; core bindings take precedence.",
 }];
 
 #[derive(Debug, Clone, Copy)]
@@ -213,6 +217,9 @@ pub(crate) struct EngineOptions {
     /// keymap so it can be validated against, rather than collide within, the
     /// core map.
     pub(crate) open_in_editor_bg: KeyEvent,
+    /// Helix-only hide actions. Unlike background-open, these deliberately
+    /// overlap core bindings: core wins in every context where it handles one.
+    pub(crate) hide: Vec<KeyEvent>,
 }
 
 impl Default for EngineOptions {
@@ -226,6 +233,7 @@ impl Default for EngineOptions {
             open_in_editor_bg: "A-o"
                 .parse()
                 .expect("default background-open binding must be valid"),
+            hide: vec!["esc".parse().expect("default hide binding must be valid")],
         };
         for spec in OPTION_SPECS {
             spec.apply_default(&mut options);
@@ -266,6 +274,7 @@ impl EngineOptions {
             "keys.plugin.open_in_editor_bg" => {
                 self.open_in_editor_bg = single_key_binding(path, &keys)?;
             }
+            "keys.plugin.hide" => self.hide = keys.to_vec(),
             "keys.general.quit" => self.config.keys.general.quit = keys,
             "keys.general.reset" => self.config.keys.general.reset = keys,
             "keys.general.show_help_menu" => self.config.keys.general.show_help_menu = keys,
@@ -565,6 +574,7 @@ mod tests {
         let paths = [
             "keys.general.quit",
             "keys.plugin.open_in_editor_bg",
+            "keys.plugin.hide",
             "keys.general.reset",
             "keys.general.show_help_menu",
             "keys.search.toggle_preview_wrapping",
@@ -615,6 +625,7 @@ mod tests {
             KeyCode::Char('n')
         );
         assert_eq!(options.open_in_editor_bg.to_string(), "A-o");
+        assert_eq!(options.hide[0].to_string(), "esc");
         assert_eq!(
             options.config.keys.search.results.move_down[1].modifiers,
             KeyModifiers::NONE
