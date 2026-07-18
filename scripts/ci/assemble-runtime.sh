@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Keep this pin as the single source of truth for both the runtime queries and
 # the grammar revisions read from Helix's languages.toml.
-HELIX_REV="0522d519"
+HELIX_REV="0522d519fd5227f77ecef387a87e51b732907562"
 
 if [[ $# -ne 1 ]]; then
   echo "usage: $0 <runtime-dir>" >&2
