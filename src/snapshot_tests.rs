@@ -29,6 +29,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::{
     engine::ScooterEngine,
+    highlight::runtime_is_available,
     view::{Frame, Run},
 };
 
@@ -347,6 +348,13 @@ fn previews_cover_single_line_multiline_and_wrapping() {
 
 #[test]
 fn highlighted_rust_preview_snapshots_and_cache() {
+    if !runtime_is_available() {
+        eprintln!(
+            "highlighted_rust_preview_snapshots_and_cache skipped: no Helix runtime with grammars was discovered; set HELIX_RUNTIME to exercise syntax-highlighted previews"
+        );
+        return;
+    }
+
     let source = concat!(
         "pub fn context_before_with_a_deliberately_long_name() { let value = 1; }\n",
         "let alpha = value;\n",

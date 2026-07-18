@@ -282,6 +282,11 @@ fn discover_runtime(runtime_override: Option<PathBuf>) -> Option<PathBuf> {
         .find(|path| path.join("grammars").is_dir())
 }
 
+#[cfg(test)]
+pub(crate) fn runtime_is_available() -> bool {
+    discover_runtime(None).is_some()
+}
+
 #[derive(Debug)]
 struct RuntimeLoader {
     runtime: PathBuf,

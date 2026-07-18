@@ -19,6 +19,12 @@ log = "0.4.30"
 lru = "0.18.1"
 scooter-core = "0.4.0"
 simple-log = "2.4.0"
+# steel-core/steel-derive must match the exact revision pinned in the Helix
+# steel-event-system branch's Cargo.lock. Dylib loading only compares declared
+# versions (via abi_stable), but the steel git branch moves between releases
+# without bumping them, so two builds both claiming e.g. 0.8.2 can still differ
+# in ABI — and loading such a dylib is undefined behaviour. Track Helix's rev,
+# not a version requirement, until that branch depends on a published release.
 steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a", features = ["dylibs", "sync"] }
 steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a" }
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
