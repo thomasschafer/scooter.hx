@@ -9,13 +9,13 @@ export REPO
 export STEEL_HOME="$REPO/.dev/steel-home"
 export XDG_CONFIG_HOME="$REPO/.dev/config"
 export XDG_CACHE_HOME="$REPO/.dev/cache"
-export HELIX_RUNTIME="$HOME/Development/helix/runtime"
+export HELIX_RUNTIME="${HELIX_RUNTIME:-$HOME/Development/helix/runtime}"
 export FIXTURE_DIR="$REPO/.dev/fixtures/basic"
 export SEARCH_FIXTURE_DIR="$REPO/.dev/fixtures/search"
 export PREVIEW_FIXTURE_DIR="$REPO/.dev/fixtures/preview"
 export RUST_PREVIEW_FIXTURE_DIR="$REPO/.dev/fixtures/preview-rust"
 export LIFECYCLE_FIXTURE_DIR="$REPO/.dev/fixtures/lifecycle"
-export HX_BINARY="$HOME/Development/helix/target/release/hx"
+export HX_BINARY="${HX_BINARY:-$HOME/Development/helix/target/release/hx}"
 export E2E_THEME="${E2E_THEME:-catppuccin_mocha}"
 
 if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
@@ -25,6 +25,7 @@ if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
+rm -rf "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR" "$RUST_PREVIEW_FIXTURE_DIR" "$LIFECYCLE_FIXTURE_DIR"
 mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR" "$RUST_PREVIEW_FIXTURE_DIR" "$LIFECYCLE_FIXTURE_DIR"
 
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
@@ -36,9 +37,12 @@ printf '%s\n' 'alpha: first fixture line' 'alpha: second fixture line' > "$FIXTU
 printf '%s\n' 'bravo: a separate fixture' 'bravo: another fixture line' > "$FIXTURE_DIR/bravo.txt"
 printf '%s\n' '# Scooter S1 fixture' 'static, deterministic content' > "$FIXTURE_DIR/README.md"
 
-printf '%s\n' 'alpha one' 'alphabet one' > "$SEARCH_FIXTURE_DIR/one.txt"
-printf '%s\n' 'alpha two' 'alphabet two' > "$SEARCH_FIXTURE_DIR/two.txt"
-printf '%s\n' 'alpha three' > "$SEARCH_FIXTURE_DIR/three.txt"
+# The shared search corpus is deliberately small but serves live search,
+# replacement, renderer sizing, and background-open coverage together:
+# `alpha` has five matches, while `alphabet` narrows that to two.
+printf '%s\n' 'alpha one' > "$SEARCH_FIXTURE_DIR/one.txt"
+printf '%s\n' 'alpha two' 'background-two-target' > "$SEARCH_FIXTURE_DIR/two.txt"
+printf '%s\n' 'alpha three' 'alphabet four' 'alphabet five' > "$SEARCH_FIXTURE_DIR/three.txt"
 printf '%s\n' '# Scooter E3 fixture' 'static, deterministic content' > "$SEARCH_FIXTURE_DIR/README.md"
 
 printf '%s\n' \
@@ -49,6 +53,7 @@ printf '%s\n' \
   'preview context after second result' > "$PREVIEW_FIXTURE_DIR/preview.txt"
 rm -f "$PREVIEW_FIXTURE_DIR/preview.rs"
 printf '%s\n' \
+  '// italic comment scope' \
   'pub fn preview_context_before() { let number = 42; }' \
   'let alpha = number;' \
   'pub fn preview_context_after() -> usize { 7 }' > "$RUST_PREVIEW_FIXTURE_DIR/preview.rs"
@@ -131,11 +136,11 @@ e2e_assert_popup_interior_matches_border_background() {
         my $code = $codes[$index];
         if ($code == 0 || $code == 49) {
           $background = undef;
-        } elsif ($code == 48 && $codes[$index + 1] // q{} eq q{2}
+        } elsif ($code == 48 && ($codes[$index + 1] // q{}) eq q{2}
                  && $index + 4 < @codes) {
           $background = join q{:}, q{rgb}, @codes[$index + 2 .. $index + 4];
           $index += 4;
-        } elsif ($code == 48 && $codes[$index + 1] // q{} eq q{5}
+        } elsif ($code == 48 && ($codes[$index + 1] // q{}) eq q{5}
                  && $index + 2 < @codes) {
           $background = q{indexed:} . $codes[$index + 2];
           $index += 2;

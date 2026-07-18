@@ -36,10 +36,10 @@ printf '%s\n' '(scooter-keys! "search.results.move_down" "n")' >> "$XDG_CONFIG_H
 
 printf '%s\n' \
   'matrix-first-a' \
-  'matrix-second with a deliberately long preview tail matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker' \
+  'matrix-second with a deliberately long preview tail matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-required' \
   'between' \
   'matrix-first-b' \
-  'matrix-second with a deliberately long preview tail matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker' \
+  'matrix-second with a deliberately long preview tail matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-marker matrix-wrap-required' \
   > "$SEARCH_FIXTURE_DIR/matrix.txt"
 
 tmux -L "$TMUX_SOCKET" new-session -d -x 100 -y 34 -s "$TMUX_SESSION" \
@@ -57,7 +57,10 @@ tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" \
 e2e_wait_for_present 'Results: 2 [Search complete]'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter n Space
 e2e_wait_for_present '[ ] matrix.txt:4'
-e2e_wait_for_present 'matrix-wrap-marker'
+e2e_wait_for_present 'matrix-wrap-required'
+if ! e2e_capture_pane | grep -E '↪ .*matrix-wrap-required' >/dev/null; then
+  e2e_fail 'wrap marker was not rendered on a wrapped preview row'
+fi
 
 # The default A-e must still reach core under the complete option matrix.
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" M-e

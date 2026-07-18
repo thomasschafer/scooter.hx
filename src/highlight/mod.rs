@@ -14,6 +14,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use etcetera::base_strategy::{BaseStrategy, choose_base_strategy};
+
 use lru::LruCache;
 use regex::Regex;
 use ropey::Rope;
@@ -237,11 +239,32 @@ struct CacheKey {
     content: ContentKey,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum ContentKey {
     Hash(u64),
-    ArcPointer(usize),
+    ArcPointer(Arc<str>),
 }
+
+impl std::hash::Hash for ContentKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Hash(hash) => hash.hash(state),
+            Self::ArcPointer(content) => (Arc::as_ptr(content).cast::<()>() as usize).hash(state),
+        }
+    }
+}
+
+impl PartialEq for ContentKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Hash(left), Self::Hash(right)) => left == right,
+            (Self::ArcPointer(left), Self::ArcPointer(right)) => Arc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ContentKey {}
 
 impl CacheKey {
     fn from_content(path: &Path, content: &str) -> Self {
@@ -256,7 +279,7 @@ impl CacheKey {
     fn from_arc(path: &Path, content: &Arc<str>) -> Self {
         Self {
             path: path.to_path_buf(),
-            content: ContentKey::ArcPointer(Arc::as_ptr(content).cast::<()>() as usize),
+            content: ContentKey::ArcPointer(Arc::clone(content)),
         }
     }
 }
@@ -269,10 +292,12 @@ fn discover_runtime(runtime_override: Option<PathBuf>) -> Option<PathBuf> {
         let path = PathBuf::from(path);
         return path.join("grammars").is_dir().then_some(path);
     }
-    let mut candidates = Vec::new();
+    let mut candidates = choose_base_strategy()
+        .ok()
+        .map(|strategy| vec![strategy.config_dir().join("helix/runtime")])
+        .unwrap_or_default();
     if let Some(home) = env::var_os("HOME") {
         let home = PathBuf::from(home);
-        candidates.push(home.join(".config/helix/runtime"));
         // Development-only fallback for this repository's conventional local
         // Helix checkout. Supported installs use the explicit option,
         // HELIX_RUNTIME, or the Helix config-directory runtime above.
@@ -478,17 +503,18 @@ impl LanguageRegistry {
     /// those entries first (both so they win and so path matching preserves
     /// Helix's first-match semantics), then fill every unmentioned language
     /// from the built-in registry.
-    fn from_user_definitions(mut user_languages: Vec<LanguageDefinition>) -> Self {
-        let user_names = user_languages
-            .iter()
-            .map(|language| language.name.to_ascii_lowercase())
-            .collect::<HashSet<_>>();
-        user_languages.extend(
-            fallback_languages()
-                .into_iter()
-                .filter(|language| !user_names.contains(&language.name.to_ascii_lowercase())),
-        );
-        Self::from_definitions(user_languages)
+    fn from_user_definitions(user_languages: Vec<LanguageOverride>) -> Self {
+        let mut fallback = fallback_languages();
+        let mut merged = Vec::with_capacity(user_languages.len() + fallback.len());
+        for user in user_languages {
+            if let Some(index) = fallback.iter().position(|language| language.name.eq_ignore_ascii_case(&user.name)) {
+                merged.push(user.merge(fallback.remove(index)));
+            } else {
+                merged.push(user.into_definition());
+            }
+        }
+        merged.extend(fallback);
+        Self::from_definitions(merged)
     }
 
     fn from_definitions(languages: Vec<LanguageDefinition>) -> Self {
@@ -572,7 +598,7 @@ impl LanguageRegistry {
     }
 }
 
-fn parse_languages_toml(path: &Path) -> Option<Vec<LanguageDefinition>> {
+fn parse_languages_toml(path: &Path) -> Option<Vec<LanguageOverride>> {
     // `toml::Value` parses a single TOML value with the 1.x crate.  Helix's
     // `languages.toml` is a document, so parse its root table directly.
     let document = fs::read_to_string(path).ok()?.parse::<toml::Table>().ok()?;
@@ -580,22 +606,62 @@ fn parse_languages_toml(path: &Path) -> Option<Vec<LanguageDefinition>> {
     Some(entries.iter().filter_map(parse_language).collect())
 }
 
-fn parse_language(value: &toml::Value) -> Option<LanguageDefinition> {
+#[derive(Debug)]
+struct LanguageOverride {
+    name: String,
+    grammar: Option<String>,
+    file_types: Option<Vec<FileType>>,
+    injection_regex: Inherited<Option<Regex>>,
+}
+
+#[derive(Debug)]
+enum Inherited<T> {
+    Inherit,
+    Value(T),
+}
+
+impl LanguageOverride {
+    fn into_definition(self) -> LanguageDefinition {
+        LanguageDefinition {
+            grammar: self.grammar.unwrap_or_else(|| self.name.clone()),
+            file_types: self.file_types.unwrap_or_default(),
+            injection_regex: match self.injection_regex {
+                Inherited::Inherit => None,
+                Inherited::Value(value) => value,
+            },
+            name: self.name,
+        }
+    }
+
+    fn merge(self, fallback: LanguageDefinition) -> LanguageDefinition {
+        LanguageDefinition {
+            name: self.name,
+            grammar: self.grammar.unwrap_or(fallback.grammar),
+            file_types: self.file_types.unwrap_or(fallback.file_types),
+            injection_regex: match self.injection_regex {
+                Inherited::Inherit => fallback.injection_regex,
+                Inherited::Value(value) => value,
+            },
+        }
+    }
+}
+
+fn parse_language(value: &toml::Value) -> Option<LanguageOverride> {
     let table = value.as_table()?;
     let name = table.get("name")?.as_str()?.to_owned();
     let grammar = table
         .get("grammar")
         .and_then(toml::Value::as_str)
-        .unwrap_or(&name)
-        .to_owned();
+        .map(ToOwned::to_owned);
     let injection_regex = table
         .get("injection-regex")
-        .and_then(toml::Value::as_str)
-        .and_then(injection_regex);
+        .map_or(Inherited::Inherit, |value| {
+            Inherited::Value(value.as_str().and_then(injection_regex))
+        });
     let file_types = table
         .get("file-types")
         .and_then(toml::Value::as_array)
-        .map_or_else(Vec::new, |types| {
+        .map(|types| {
             types
                 .iter()
                 .filter_map(|value| {
@@ -611,7 +677,7 @@ fn parse_language(value: &toml::Value) -> Option<LanguageDefinition> {
                 })
                 .collect()
         });
-    Some(LanguageDefinition {
+    Some(LanguageOverride {
         name,
         grammar,
         file_types,
@@ -775,7 +841,13 @@ file-types = [{ glob = ".demo.in" }]
 "#,
         )
         .unwrap();
-        let registry = LanguageRegistry::from_definitions(parse_languages_toml(&manifest).unwrap());
+        let registry = LanguageRegistry::from_definitions(
+            parse_languages_toml(&manifest)
+                .unwrap()
+                .into_iter()
+                .map(LanguageOverride::into_definition)
+                .collect(),
+        );
         assert_eq!(
             registry
                 .language_for_path(Path::new("src/file.demo"))
@@ -841,6 +913,38 @@ injection-regex = "demo-alias"
         let demo = registry.language_for_path(Path::new("input.demo")).unwrap();
         assert_eq!(registry.languages[demo.idx()].name, "demo");
         assert_eq!(registry.languages[registry.language_for_injection("demo-alias").unwrap().idx()].name, "demo");
+    }
+
+    #[test]
+    fn user_language_fields_inherit_independently_from_fallback() {
+        let directory = tempdir().unwrap();
+        let runtime = directory.path().join("runtime");
+        fs::create_dir(&runtime).unwrap();
+        fs::write(directory.path().join("languages.toml"), "[[language]]\nname = \"rust\"\n").unwrap();
+        let registry = LanguageRegistry::from_runtime(&runtime);
+        let rust = registry.language_for_path(Path::new("lib.rs")).unwrap();
+        assert_eq!(registry.languages[rust.idx()].grammar, "rust");
+        assert!(registry.languages[rust.idx()].injection_regex.is_some());
+
+        fs::write(directory.path().join("languages.toml"), "[[language]]\nname = \"rust\"\nfile-types = [\"custom-rs\"]\n").unwrap();
+        let registry = LanguageRegistry::from_runtime(&runtime);
+        assert!(registry.language_for_path(Path::new("lib.rs")).is_none());
+        assert_eq!(registry.languages[registry.language_for_path(Path::new("lib.custom-rs")).unwrap().idx()].name, "rust");
+
+        fs::write(directory.path().join("languages.toml"), "[[language]]\nname = \"rust\"\ngrammar = \"custom-rust\"\n").unwrap();
+        let registry = LanguageRegistry::from_runtime(&runtime);
+        let rust = registry.language_for_path(Path::new("lib.rs")).unwrap();
+        assert_eq!(registry.languages[rust.idx()].grammar, "custom-rust");
+    }
+
+    #[test]
+    fn arc_cache_key_retains_its_content_and_compares_by_allocation() {
+        let content: Arc<str> = Arc::from("retained");
+        let key = CacheKey::from_arc(Path::new("file.rs"), &content);
+        assert_eq!(Arc::strong_count(&content), 2);
+        assert_eq!(key, CacheKey::from_arc(Path::new("file.rs"), &content));
+        let same_text: Arc<str> = Arc::from("retained");
+        assert_ne!(key, CacheKey::from_arc(Path::new("file.rs"), &same_text));
     }
 
     #[test]

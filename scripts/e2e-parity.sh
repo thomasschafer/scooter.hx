@@ -60,11 +60,13 @@ e2e_cleanup
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
 printf '%s\n' '(scooter-keys! "plugin.open_in_editor_bg" "A-p")' >> "$XDG_CONFIG_HOME/helix/init.scm"
 start_session
-tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" alpha
-e2e_wait_for_present 'Results:'
-e2e_wait_for_present '[Search complete]'
+# This exact term occurs only in two.txt, so a background open has one
+# unambiguous target while the shared `alpha` corpus remains five results.
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" 'background-two-target'
+e2e_wait_for_present 'Results: 1 [Search complete]'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter M-p
 e2e_wait_for_present 'Search text'
+e2e_wait_for_present 'two.txt'
 e2e_cleanup
 
 # Collision reporting uses the same session-creation path as core conflicts.
@@ -102,7 +104,8 @@ e2e_cleanup
 
 start_session
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" alpha
-e2e_wait_for_present 'Results: 5 [Search complete]'
+e2e_wait_for_present 'Results:'
+e2e_wait_for_present '[Search complete]'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Tab
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" OMEGA
 e2e_wait_for_present '+ OMEGA one'

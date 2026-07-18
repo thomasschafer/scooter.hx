@@ -1113,7 +1113,7 @@ fn render_results(
             preview_y,
             layout.width,
             height.saturating_sub(preview_y),
-            NARROW_LIST_HEIGHT,
+            list_height,
         )
     } else {
         let content_width = layout.width.saturating_sub(1);
@@ -2371,6 +2371,17 @@ mod tests {
             for &height in &heights {
                 let frame = engine.render(width, height);
                 assert_frame_is_well_formed(&frame, width, height);
+                if let Screen::SearchFields(state) = &engine.app.ui_state.current_screen
+                    && let Some(search) = &state.search_state
+                    && let Some(rendered_rows) = search.num_displayed
+                    && rendered_rows > 0
+                {
+                    let primary = search.primary_selected_pos();
+                    assert!(
+                        (search.view_offset..search.view_offset + rendered_rows).contains(&primary),
+                        "primary selection {primary} is outside rendered rows at {width}x{height}"
+                    );
+                }
             }
         }
     }

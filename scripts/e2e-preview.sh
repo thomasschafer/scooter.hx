@@ -142,8 +142,9 @@ run_highlighting() {
   else
     if ! printf '%s\n' "$capture" | perl -CS -e '
       my @lines = <STDIN>;
-      my ($editor_bg, $surface_bg, $preview_bg, $plain_fg, $scope_fg);
+      my ($editor_bg, $surface_bg, $preview_bg, $plain_fg, $scope_fg, $italic_comment);
       for my $line (@lines) {
+        $italic_comment ||= $line =~ /\e\[[0-9;]*3[0-9;]*m[^\n]*\/\//;
         my $raw = $line;
         $raw =~ s/\e\[[0-9;]*m//g;
         my ($fg, $bg, $column) = (q{}, q{}, 0);
@@ -173,8 +174,9 @@ run_highlighting() {
       exit 1 unless defined $scope_fg && defined $plain_fg && $scope_fg ne $plain_fg;
       exit 1 unless defined $preview_bg && defined $editor_bg && $preview_bg eq $editor_bg;
       exit 1 unless defined $surface_bg && $preview_bg ne $surface_bg;
+      exit 1 unless $italic_comment;
     '; then
-      e2e_fail 'Rust preview SGR foreground/background assertion failed'
+      e2e_fail 'Rust preview SGR foreground/background/italic-comment assertion failed'
     fi
   fi
   printf '%s' "$capture" > "$CAPTURE_DIR/preview-highlight-${label}.ansi"

@@ -139,24 +139,14 @@ fn scooter_core_version() -> Result<String> {
 }
 
 fn key_description<'a>(path: &str, descriptions: &'a HashMap<String, String>) -> Result<&'a str> {
-    let overrides = HashMap::from([
-        (
-            "search.fields.unlock_prepopulated_fields",
-            "Allow editing of prepopulated search fields.",
-        ),
-        (
-            "search.results.open_in_editor",
-            "Open the selected result in Helix and hide Scooter.",
-        ),
-    ]);
-
-    if let Some(description) = overrides.get(path) {
-        return Ok(description);
+    match path {
+        "search.fields.unlock_prepopulated_fields" => Ok("Allow editing of prepopulated search fields."),
+        "search.results.open_in_editor" => Ok("Open the selected result in Helix and hide Scooter."),
+        _ => descriptions
+            .get(path)
+            .map(String::as_str)
+            .with_context(|| format!("no doc comment for scooter-core key path '{path}'")),
     }
-    descriptions
-        .get(path)
-        .map(String::as_str)
-        .with_context(|| format!("no doc comment for scooter-core key path '{path}'"))
 }
 
 fn scooter_keys_source() -> Result<PathBuf> {

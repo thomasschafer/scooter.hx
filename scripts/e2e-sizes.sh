@@ -43,11 +43,12 @@ run_size() {
   tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
   e2e_wait_for_present 'Search text'
   tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" 'alpha'
-  e2e_wait_for_present 'alpha'
 
   if [[ "$terminal_width" == 80 && "$terminal_height" == 24 ]]; then
     # The 19-row popup content fits six whole fields plus the one-row gap;
-    # there is no row left for the banner. Check the field survives instead.
+    # there is no row left for the banner. The search text field survives, but
+    # the count is intentionally not renderable at this size.
+    e2e_wait_for_present 'alpha'
     if [[ "$(e2e_capture_pane)" == *'Results:'* ]]; then
       e2e_fail '80x24 unexpectedly rendered a banner without room for it'
     fi

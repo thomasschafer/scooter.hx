@@ -23,7 +23,7 @@ git init -q "$helix_dir"
 # The pinned commit is on this fork's steel-event-system branch. Fetch its
 # history with blobs filtered out, then sparse checkout only the runtime data.
 git -C "$helix_dir" remote add origin https://github.com/mattwparas/helix.git
-git -C "$helix_dir" fetch -q --filter=blob:none origin steel-event-system
+git -C "$helix_dir" fetch -q --depth 1 --filter=blob:none origin "$HELIX_REV"
 git -C "$helix_dir" sparse-checkout init --no-cone
 git -C "$helix_dir" sparse-checkout set \
   languages.toml \
@@ -31,7 +31,7 @@ git -C "$helix_dir" sparse-checkout set \
   runtime/queries/c \
   runtime/queries/cpp \
   runtime/queries/markdown
-git -C "$helix_dir" checkout -q --detach FETCH_HEAD
+git -C "$helix_dir" checkout -q --detach "$HELIX_REV"
 
 stage_dir="$work_dir/runtime"
 mkdir -p "$stage_dir/grammars" "$stage_dir/queries"

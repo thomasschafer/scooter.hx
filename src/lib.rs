@@ -138,7 +138,7 @@ fn ffi_option_value(value: FFIArg<'_>, key: &str) -> Result<OptionValue, String>
             .collect::<Result<Vec<_>, _>>()
             .map(OptionValue::Strings),
         _ => Err(format!(
-            "Invalid value for '{key}': expected a boolean, number, or list of strings"
+            "Invalid value for '{key}': expected a boolean, number, string, or list of strings"
         )),
     }
 }

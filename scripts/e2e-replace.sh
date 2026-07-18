@@ -78,11 +78,11 @@ e2e_wait_for_present '+ OMEGA one'
 e2e_press_until_present Enter 'Successful replacements'
 e2e_capture_pane > "$CAPTURE_DIR/e5-results.txt"
 
-if ! grep -q 'OMEGA one' "$REPLACE_FIXTURE_DIR/one.txt"; then
-  e2e_fail 'replacement did not update the disposable fixture'
-fi
-if grep -q 'alpha one' "$REPLACE_FIXTURE_DIR/one.txt"; then
+if [[ "$(grep -R -o 'alpha' "$REPLACE_FIXTURE_DIR" | wc -l | tr -d ' ')" != 0 ]]; then
   e2e_fail 'original search text remains in the disposable fixture'
+fi
+if [[ "$(grep -R -o 'OMEGA' "$REPLACE_FIXTURE_DIR" | wc -l | tr -d ' ')" != 5 ]]; then
+  e2e_fail 'replacement count is not exactly five'
 fi
 
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Enter

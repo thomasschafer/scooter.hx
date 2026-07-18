@@ -319,6 +319,8 @@ impl ScooterEngine {
         }
         let mut processed = false;
 
+        // Every launch drains synchronously in its own keypress; resume pumps before input.
+        // Therefore no pre-existing launch can be queued when this background chord drains.
         for _ in 0..DRAIN_LIMIT {
             let Some(event) = self.app.event_channels.try_recv() else {
                 break;
@@ -441,16 +443,23 @@ fn core_binding_active(keys: &KeysConfig, screen: &Screen, key_event: KeyEvent) 
 
 fn validate_hide_bindings(bindings: &[KeyEvent]) -> Result<(), String> {
     if let Some(binding) = bindings.iter().find(|binding| {
-        matches!(binding.code, KeyCode::Char(_)) && binding.modifiers == KeyModifiers::NONE
+        (matches!(binding.code, KeyCode::Char(_)) && binding.modifiers == KeyModifiers::NONE)
+            || matches!(binding.code, KeyCode::Backspace | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End)
     }) {
         return Err(format!(
-            "Invalid plugin.hide binding '{binding}': bare character keys are text input in search fields; use esc, a named key, or a modified chord."
+            "Invalid plugin.hide binding '{binding}': it is text input or editing input in search fields; use esc or a modified chord."
         ));
     }
     Ok(())
 }
 
 fn validate_background_open_binding(keys: &KeysConfig, binding: KeyEvent) -> Result<(), String> {
+    if keys.search.results.open_in_editor.is_empty() {
+        return Err(
+            "Invalid Scooter options: plugin.open_in_editor_bg requires search.results.open_in_editor to be bound"
+                .to_owned(),
+        );
+    }
     let reachable = [
         (&keys.general.quit, "general.quit"),
         (&keys.general.reset, "general.reset"),
@@ -1067,6 +1076,31 @@ mod tests {
         };
         assert!(error.contains("Invalid plugin.hide binding 'q'"), "{error}");
         assert!(error.contains("text input"), "{error}");
+    }
+
+    #[test]
+    fn editing_key_hide_binding_is_rejected_at_session_creation() {
+        let fixture = tempdir().expect("fixture directory");
+        let options = EngineOptions::from_entries([OptionEntry::keys("keys.plugin.hide", &["backspace"])])
+            .expect("options parse");
+        let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
+            panic!("field editing key must not be a hide binding");
+        };
+        assert!(error.contains("Invalid plugin.hide binding 'backspace'"), "{error}");
+    }
+
+    #[test]
+    fn background_open_requires_a_foreground_open_binding() {
+        let fixture = tempdir().expect("fixture directory");
+        let options = EngineOptions::from_entries([
+            OptionEntry::keys("keys.search.results.open_in_editor", &[]),
+            OptionEntry::keys("keys.plugin.open_in_editor_bg", &["A-p"]),
+        ])
+        .expect("options parse");
+        let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
+            panic!("background open without foreground binding must fail");
+        };
+        assert!(error.contains("requires search.results.open_in_editor"), "{error}");
     }
 
     #[test]

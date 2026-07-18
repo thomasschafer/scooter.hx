@@ -52,11 +52,15 @@
    (style-fg style (colour-or (style->fg style) foreground))
    (colour-or (style->bg style) background)))
 
-;; Content styles are patched onto whichever fill was painted first.  Start
-;; from a new Style so a theme scope's optional background cannot punch a hole
-;; through a popup or a selected result row.
+;; Content styles are patched onto whichever fill was painted first.  A source
+;; style without a background can safely retain its modifiers while receiving
+;; an explicit foreground.  A source background is deliberately discarded by
+;; rebuilding from `(style)`: this loses its modifiers, but guarantees that a
+;; content run cannot punch through a popup or selected-row fill.
 (define (style-with-foreground style-value foreground)
-  (style-fg (style) (colour-or (style->fg style-value) foreground)))
+  (if (style->bg style-value)
+      (style-fg (style) (colour-or (style->fg style-value) foreground))
+      (style-fg style-value (colour-or (style->fg style-value) foreground))))
 
 ;; Style invariant (the table is deliberately exhaustive):
 ;;
@@ -75,6 +79,9 @@
 ;; row must replace its background before its text is painted.  Every run
 ;; layered over it uses one of the content styles above, so it still inherits
 ;; that selected background.  All popup/toast surfaces use the overlay rule.
+;; A content source without a background retains its theme modifiers; a source
+;; with a background is rebuilt without modifiers so that background can never
+;; punch through the fill beneath it.
 (define (style-table)
   (let* ([theme-text (safe-theme-style "ui.text" (style))]
          [theme-background (safe-theme-style "ui.background" (style))]
