@@ -1,6 +1,6 @@
 //! Native frame model for Scooter's search-fields screen.
 
-use std::{cmp::min, path::Path, sync::{Arc, atomic::Ordering}};
+use std::{cmp::min, io, path::Path, sync::{Arc, atomic::Ordering}};
 
 use crate::highlight::{HighlightEngine, HighlightSpan};
 
@@ -1475,7 +1475,7 @@ fn read_preview_window(
                 }
             }
             let lines = read_lines_range(path, start, end)
-                .map_err(|error| error.to_string())?
+                .map_err(|error| preview_read_error(&error))?
                 .map(|(number, text)| IndexedLine {
                     number,
                     text,
@@ -1495,6 +1495,15 @@ fn read_preview_window(
                 .collect(),
             spans: None,
         }),
+    }
+}
+
+/// Keep common file-read failures concise and consistent across platforms.
+fn preview_read_error(error: &io::Error) -> String {
+    match error.kind() {
+        io::ErrorKind::NotFound => "file not found".to_string(),
+        io::ErrorKind::PermissionDenied => "permission denied".to_string(),
+        _ => error.to_string(),
     }
 }
 
@@ -1960,13 +1969,29 @@ mod tests {
 
     use super::{
         Frame, HighlightSpan, IndexedLine, PopupLine, StyleTag, context_preview_line, context_preview_lines,
-        diff_lines, display_width, read_preview_window, render_paragraph_popup, render_results_tallies, truncate,
+        diff_lines, display_width, preview_read_error, read_preview_window, render_paragraph_popup,
+        render_results_tallies, truncate,
     };
 
     #[test]
     fn truncates_by_display_width() {
         assert_eq!(truncate("a界b", 3), "a界");
         assert_eq!(truncate("a界b", 2), "a");
+    }
+
+    #[test]
+    fn preview_read_errors_normalise_common_file_failures() {
+        assert_eq!(
+            preview_read_error(&std::io::Error::from(std::io::ErrorKind::NotFound)),
+            "file not found"
+        );
+        assert_eq!(
+            preview_read_error(&std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            "permission denied"
+        );
+
+        let error = std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid preview data");
+        assert_eq!(preview_read_error(&error), "invalid preview data");
     }
 
     #[test]

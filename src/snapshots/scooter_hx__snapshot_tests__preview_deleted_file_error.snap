@@ -18,7 +18,7 @@ canvas: 120x40
 12 |                                                                                                                        |
 13 |                                                                                                                        |
 14 |                                                                                                                        |
-15 |      Error generating preview: No such file or directory (os error 2)                                                  |
+15 |      Error generating preview: file not found                                                                          |
 16 |                                                                                                                        |
 17 |                                                                                                                        |
 18 |                                                                                                                        |
@@ -52,7 +52,7 @@ tags:
 05: 6-114 text
 07: 6-16 text | 16-34 diff-added | 94-114 diff-added
 09: 6-114 selection
-15: 6-70 error | 70-114 preview
+15: 6-46 error | 46-114 preview
 16: 6-114 preview
 17: 6-114 preview
 18: 6-114 preview
