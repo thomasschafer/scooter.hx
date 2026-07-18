@@ -5,16 +5,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use cargo_metadata::MetadataCommand;
 use scooter_core::config::KeysConfig;
 use scooter_hx::docs::{option_specs, plugin_key_specs};
-use syn::{Attribute, Fields, Item, ItemStruct, Meta, parse_file};
+use syn::{parse_file, Attribute, Fields, Item, ItemStruct, Meta};
 
 const TOC_START: &str = "<!-- TOC START -->";
 const TOC_END: &str = "<!-- TOC END -->";
 const CONFIG_START: &str = "<!-- CONFIG START -->";
 const CONFIG_END: &str = "<!-- CONFIG END -->";
+const PLUGIN_KEYS_START: &str = "<!-- PLUGIN KEYS START -->";
+const PLUGIN_KEYS_END: &str = "<!-- PLUGIN KEYS END -->";
 const KEYS_START: &str = "<!-- KEYS START -->";
 const KEYS_END: &str = "<!-- KEYS END -->";
 const CONTENTS_HEADING: &str = "## Contents";
@@ -24,7 +26,13 @@ pub fn generate_readme(readme_path: &Path, check_only: bool) -> Result<()> {
         .with_context(|| format!("failed to read {}", readme_path.display()))?;
     let with_toc = generate_toc(&original)?;
     let with_config = replace_section(&with_toc, CONFIG_START, CONFIG_END, &config_docs())?;
-    let updated = replace_section(&with_config, KEYS_START, KEYS_END, &keys_docs()?)?;
+    let with_plugin_keys = replace_section(
+        &with_config,
+        PLUGIN_KEYS_START,
+        PLUGIN_KEYS_END,
+        &plugin_keys_docs(),
+    )?;
+    let updated = replace_section(&with_plugin_keys, KEYS_START, KEYS_END, &keys_docs()?)?;
 
     if updated == original {
         println!("README is up to date");
@@ -91,15 +99,17 @@ fn config_docs() -> String {
             option.symbol, option.value_type, option.default, option.description
         );
     }
-    docs.push_str("\n### `scooter-keys!`\n\n");
-    docs.push_str("`(scooter-keys! \"path\" bindings)` replaces one action's bindings. `bindings` may be one string or a list of strings, using Scooter's syntax: modifiers are `S-`, `C-`, and `A-`. The path omits the leading `keys.`.\n\n");
-    docs.push_str(
-        "```scheme\n(scooter-keys! \"search.results.move_down\" '(\"j\" \"down\"))\n```\n",
-    );
-    docs.push_str("\nPlugin-only bindings use the same function and participate in conflict checking against all core search-screen bindings.\n\n");
-    docs.push_str("| Binding path | Default | Effect |\n| --- | --- | --- |\n");
+    docs
+}
+
+fn plugin_keys_docs() -> String {
+    let mut docs = String::from("| Binding path | Default | Effect |\n| --- | --- | --- |\n");
     for key in plugin_key_specs() {
-        let _ = writeln!(docs, "| `{}` | `{}` | {} |", key.path, key.default, key.description);
+        let _ = writeln!(
+            docs,
+            "| `{}` | `{}` | {} |",
+            key.path, key.default, key.description
+        );
     }
     docs
 }
@@ -110,15 +120,46 @@ fn keys_docs() -> Result<String> {
     let mut bindings = Vec::new();
     collect_key_defaults(&defaults, "", &mut bindings)?;
 
-    let mut docs =
-        String::from("| Binding path | Default key(s) | Description |\n| --- | --- | --- |\n");
+    let mut docs = format!(
+        "Defaults from scooter-core {}, matching the Scooter TUI.\n\n| Binding path | Default key(s) | Description |\n| --- | --- | --- |\n",
+        scooter_core_version()?
+    );
     for (path, keys) in bindings {
-        let description = descriptions
-            .get(&path)
-            .with_context(|| format!("no doc comment for scooter-core key path '{path}'"))?;
+        let description = key_description(&path, &descriptions)?;
         writeln!(docs, "| `{path}` | `{keys}` | {description} |")?;
     }
     Ok(docs)
+}
+
+fn scooter_core_version() -> Result<String> {
+    let metadata = MetadataCommand::new().exec()?;
+    metadata
+        .packages
+        .iter()
+        .find(|package| package.name == "scooter-core" && package.source.is_some())
+        .map(|package| package.version.to_string())
+        .context("could not locate scooter-core registry dependency in cargo metadata")
+}
+
+fn key_description<'a>(path: &str, descriptions: &'a HashMap<String, String>) -> Result<&'a str> {
+    let overrides = HashMap::from([
+        (
+            "search.fields.unlock_prepopulated_fields",
+            "Allow editing of prepopulated search fields.",
+        ),
+        (
+            "search.results.open_in_editor",
+            "Open the selected result in Helix and hide Scooter.",
+        ),
+    ]);
+
+    if let Some(description) = overrides.get(path) {
+        return Ok(description);
+    }
+    descriptions
+        .get(path)
+        .map(String::as_str)
+        .with_context(|| format!("no doc comment for scooter-core key path '{path}'"))
 }
 
 fn scooter_keys_source() -> Result<PathBuf> {

@@ -15,8 +15,6 @@ and all of its styling are rendered natively by Helix, using your Helix theme.
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
-- [Differences from the Scooter TUI](#differences-from-the-scooter-tui)
-- [Development and local validation](#development-and-local-validation)
 <!-- TOC END -->
 
 ## Requirements
@@ -68,6 +66,8 @@ For a source checkout, require the checked-out Scheme file instead:
 - `:scooter-new` cancels the current session and starts again with fresh
   fields and the current configuration.
 
+Press `C-h` in the window for the full keymap.
+
 `esc` hides the window when Scooter has nothing else to dismiss. The search
 and any background work continue, and `:scooter` resumes that session. `C-c`
 quits instead, cancelling work and discarding the session.
@@ -77,13 +77,66 @@ hides the window; `A-o` opens it in the background and leaves the window open.
 After a replacement completes, scooter.hx reloads every open, non-dirty Helix
 buffer so its contents are current.
 
+## Configuration
+
+Configure scooter.hx in `init.scm`, after its `require` line. Settings are
+captured when a session is created: they apply to the first `:scooter` with no
+active session, or to `:scooter-new`; a hidden session retains its existing
+settings until then.
+
+### Options
+
+<!-- CONFIG START -->
+| Setting | Value | Default | Effect |
+| --- | --- | --- | --- |
+| `multiline` | boolean | `#f` | Allow search patterns to match across line boundaries. |
+| `hidden` | boolean | `#f` | Include hidden files and directories. |
+| `advanced-regex` | boolean | `#f` | Enable Scooter's advanced regular-expression engine. |
+| `include-git-folders` | boolean | `#f` | Search Git metadata directories as well as normal files. |
+| `escape-sequences` | boolean | `#f` | Interpret `\n`, `\t`, and `\\` in replacement text. |
+| `wrap-text` | boolean | `#f` | Wrap long preview lines. |
+| `syntax-highlighting` | boolean | `#t` | Highlight preview context with Helix runtime grammars and your Helix theme, rendered on the editor background (a deliberate difference from the TUI). |
+| `window-size` | number, `0.5`–`1.0` | `0.9` | Set the window size as a terminal ratio. |
+| `runtime-dir` | string path | Helix runtime discovery | Override the runtime used to load preview syntax grammars; otherwise discovery checks `HELIX_RUNTIME`, then Helix's config-directory runtime (`~/.config/helix/runtime`). |
+<!-- CONFIG END -->
+
+```scheme
+(scooter-set! 'multiline #t)
+(scooter-set! 'wrap-text #t)
+(scooter-set! 'syntax-highlighting #f)
+(scooter-set! 'window-size 0.85)
+(scooter-set! 'runtime-dir "/path/to/helix/runtime")
+```
+
+### Keymap
+
+`(scooter-keys! "path" bindings)` replaces one action's bindings. `bindings` may be one string or a list of strings, using Scooter's syntax: modifiers are `S-`, `C-`, and `A-`. The path omits the leading `keys.`.
+
+```scheme
+(scooter-keys! "search.results.move_down" '("j" "down"))
+```
+
+Plugin-only bindings use the same function and participate in conflict checking against all core search-screen bindings.
+
+<!-- PLUGIN KEYS START -->
+| Binding path | Default | Effect |
+| --- | --- | --- |
+| `plugin.open_in_editor_bg` | `A-o` | Open the selected result in Helix without hiding Scooter. |
+<!-- PLUGIN KEYS END -->
+
+Scooter validates the complete map when creating a session. An invalid key or
+a conflicting binding is reported in Helix's error area and the window does
+not open. The plugin-only `plugin.open_in_editor_bg` binding defaults to
+`A-o`, is configured independently of `search.results.open_in_editor`, and
+must not collide with a core binding reachable on the search screen.
+
 ### Default keymap
 
-This table is generated from `scooter_core::config::KeysConfig::default()` at
-revision `9387c36`; it is the same default map as the Scooter TUI. Bindings
-are written in Scooter's key syntax.
+Bindings are written in Scooter's key syntax.
 
 <!-- KEYS START -->
+Defaults from scooter-core 0.4.0, matching the Scooter TUI.
+
 | Binding path | Default key(s) | Description |
 | --- | --- | --- |
 | `general.quit` | `C-c` | Exit scooter |
@@ -95,7 +148,7 @@ are written in Scooter's key syntax.
 | `search.fields.focus_next_field` | `tab` | Focus on the next field |
 | `search.fields.focus_previous_field` | `S-tab` | Focus on the previous field |
 | `search.fields.trigger_search` | `enter` | Trigger a search |
-| `search.fields.unlock_prepopulated_fields` | `A-u` | Allow editing of fields that were populated using CLI args, such as `--search_text foo`. (Note that you can use the `disable_prepopulated_fields` config option to change the default behaviour.) |
+| `search.fields.unlock_prepopulated_fields` | `A-u` | Allow editing of prepopulated search fields. |
 | `search.results.back_to_fields` | `esc`, `C-o` | Move focus back to the search fields |
 | `search.results.flip_multiselect_direction` | `A-;` | Flip the direction of the multiselect selection |
 | `search.results.move_bottom` | `G` | Navigate to the last search result |
@@ -106,7 +159,7 @@ are written in Scooter's key syntax.
 | `search.results.move_up` | `k`, `up`, `C-p` | Navigate to the search result above |
 | `search.results.move_up_full_page` | `C-b`, `pageup` | Navigate to the search result a page above |
 | `search.results.move_up_half_page` | `C-u` | Navigate to the search result half a page above |
-| `search.results.open_in_editor` | `e` | Open the currently selected search result in your editor. The editor command can be overriden using the `editor_open` section of your config. |
+| `search.results.open_in_editor` | `e` | Open the selected result in Helix and hide Scooter. |
 | `search.results.toggle_all_selected` | `a` | Toggle whether all results will be replaced or ignored |
 | `search.results.toggle_multiselect_mode` | `v` | Toggle whether multiselect mode is enabled |
 | `search.results.toggle_selected_inclusion` | `space` | Toggle whether the currently highlighted result will be replaced or ignored |
@@ -116,57 +169,3 @@ are written in Scooter's key syntax.
 | `search.toggle_multiline` | `A-m` | Toggle multiline search mode, which allows patterns to match across line boundaries |
 | `search.toggle_preview_wrapping` | `C-l` | Toggle wrapping of lines that don't fit within the width of the preview |
 <!-- KEYS END -->
-
-## Configuration
-
-Configure scooter.hx in `init.scm`, after its `require` line. Settings are
-captured when a session is created: they apply to the first `:scooter` with no
-active session, or to `:scooter-new`; a hidden session retains its existing
-settings until then.
-
-```scheme
-(scooter-set! 'multiline #t)
-(scooter-set! 'wrap-text #t)
-(scooter-set! 'syntax-highlighting #f)
-(scooter-set! 'window-size 0.85)
-(scooter-set! 'runtime-dir "/path/to/helix/runtime")
-(scooter-keys! "search.results.move_down" '("j" "down"))
-```
-
-<!-- CONFIG START -->
-| Setting | Value | Default | Effect |
-| --- | --- | --- | --- |
-| `multiline` | boolean | `#f` | Allow search patterns to match across line boundaries. |
-| `hidden` | boolean | `#f` | Include hidden files and directories. |
-| `advanced-regex` | boolean | `#f` | Enable Scooter's advanced regular-expression engine. |
-| `include-git-folders` | boolean | `#f` | Search Git metadata directories as well as normal files. |
-| `escape-sequences` | boolean | `#f` | Interpret `\n`, `\t`, and `\\` in replacement text. |
-| `wrap-text` | boolean | `#f` | Wrap long preview lines. |
-| `syntax-highlighting` | boolean | `#t` | Highlight preview context with Helix grammars. |
-| `window-size` | number, `0.5`–`1.0` | `0.9` | Set the window size as a terminal ratio. |
-| `runtime-dir` | string path | Helix runtime discovery | Override the runtime used to load preview syntax grammars. |
-
-### `scooter-keys!`
-
-`(scooter-keys! "path" bindings)` replaces one action's bindings. `bindings` may be one string or a list of strings, using Scooter's syntax: modifiers are `S-`, `C-`, and `A-`. The path omits the leading `keys.`.
-
-```scheme
-(scooter-keys! "search.results.move_down" '("j" "down"))
-```
-
-Plugin-only bindings use the same function and participate in conflict checking against all core search-screen bindings.
-
-| Binding path | Default | Effect |
-| --- | --- | --- |
-| `plugin.open_in_editor_bg` | `A-o` | Open the selected result in Helix without hiding Scooter. |
-<!-- CONFIG END -->
-
-For syntax highlighting, runtime discovery checks `runtime-dir` first, then
-`HELIX_RUNTIME`, then Helix's config-directory runtime
-(`~/.config/helix/runtime`).
-
-Scooter validates the complete map when creating a session. An invalid key or
-a conflicting binding is reported in Helix's error area and the window does
-not open. The plugin-only `plugin.open_in_editor_bg` binding defaults to
-`A-o`, is configured independently of `search.results.open_in_editor`, and
-must not collide with a core binding reachable on the search screen.
