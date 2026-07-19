@@ -87,9 +87,15 @@
          [theme-background (safe-theme-style "ui.background" (style))]
          [text theme-text]
          [background theme-background]
-         [foreground (colour-or (style->fg text) (style->fg theme-text))]
+         ;; Transparent themes leave ui.background (and sometimes ui.text)
+         ;; without colours. Color/Reset is the terminal default — the correct
+         ;; meaning of "no colour" — and keeps every downstream style-fg /
+         ;; style-bg call away from #false, which they reject.
+         [foreground
+          (colour-or (colour-or (style->fg text) (style->fg theme-text)) Color/Reset)]
          [background-colour
-          (colour-or (style->bg background) (style->bg theme-background))]
+          (colour-or (colour-or (style->bg background) (style->bg theme-background))
+                     Color/Reset)]
          [hint (style-with-foreground (safe-theme-style "hint" text) foreground)]
          [selection (style-with-explicit-colours
                      (safe-theme-style "ui.selection" text)
