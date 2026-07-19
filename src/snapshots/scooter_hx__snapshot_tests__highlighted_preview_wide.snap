@@ -3,19 +3,19 @@ source: src/snapshot_tests.rs
 expression: snapshot
 ---
 canvas: 160x45
-00 |        ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐        |
-01 |        │alpha                                                                                                                                         │        |
-02 |        └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘        |
-03 |        ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐        |
-04 |        │OMEGA                                                                                                                                         │        |
-05 |        └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘        |
+00 |  ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+01 |  │alpha                                                                                                                                                     │  |
+02 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+03 |  ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+04 |  │OMEGA                                                                                                                                                     │  |
+05 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
 06 |                                                                                                                                                                |
-07 |        Results: 1 [Search complete]                                                                                                [Time taken: TIME]        |
+07 |  Results: 1 [Search complete]                                                                                                            [Time taken: TIME]  |
 08 |                                                                                                                                                                |
-09 |        [x] fixture.rs:2                                      (1)   pub fn context_before_with_a_deliberately_long_name() { let value = 1; }                    |
-10 |                                                                  - let alpha = value;                                                                          |
-11 |                                                                  + let OMEGA = value;                                                                          |
-12 |                                                                    pub fn context_after() -> usize { 2 }                                                       |
+09 |  [x] fixture.rs:2                                           (1)   pub fn context_before_with_a_deliberately_long_name() { let value = 1; }                     |
+10 |                                                                 - let alpha = value;                                                                           |
+11 |                                                                 + let OMEGA = value;                                                                           |
+12 |                                                                   pub fn context_after() -> usize { 2 }                                                        |
 13 |                                                                                                                                                                |
 14 |                                                                                                                                                                |
 15 |                                                                                                                                                                |
@@ -49,46 +49,46 @@ canvas: 160x45
 43 |                                                                                                                                                                |
 44 |                               <space> toggle / <esc> back to search fields / <enter> replace selected / <C-h> help / <C-c> quit                                |
 tags:
-00: 8-152 text
-01: 8-14 text | 151-152 text
-02: 8-152 text
-03: 8-152 text
-04: 8-14 text | 151-152 text
-05: 8-152 text
-07: 8-18 text | 18-36 diff-added | 132-152 diff-added
-09: 8-65 selection | 66-68 text | 68-71 s:keyword | 71-72 text | 72-74 s:keyword.function | 74-75 text | 75-119 s:function | 119-121 s:punctuation.bracket | 121-122 text | 122-123 s:punctuation.bracket | 123-124 text | 124-127 s:keyword.storage | 127-128 text | 128-133 s:variable | 133-134 text | 134-135 s:operator | 135-136 text | 136-137 s:constant.numeric.integer | 137-138 s:punctuation.delimiter | 138-139 text | 139-140 s:punctuation.bracket | 140-152 preview
-10: 66-72 diff-removed | 72-77 diff-removed-emph | 77-86 diff-removed | 86-152 preview
-11: 66-72 diff-added | 72-77 diff-added-emph | 77-86 diff-added | 86-152 preview
-12: 66-68 text | 68-71 s:keyword | 71-72 text | 72-74 s:keyword.function | 74-75 text | 75-88 s:function | 88-90 s:punctuation.bracket | 90-91 text | 91-93 s:operator | 93-94 text | 94-99 s:type.builtin | 99-100 text | 100-101 s:punctuation.bracket | 101-102 text | 102-103 s:constant.numeric.integer | 103-104 text | 104-105 s:punctuation.bracket | 105-152 preview
-13: 66-152 preview
-14: 66-152 preview
-15: 66-152 preview
-16: 66-152 preview
-17: 66-152 preview
-18: 66-152 preview
-19: 66-152 preview
-20: 66-152 preview
-21: 66-152 preview
-22: 66-152 preview
-23: 66-152 preview
-24: 66-152 preview
-25: 66-152 preview
-26: 66-152 preview
-27: 66-152 preview
-28: 66-152 preview
-29: 66-152 preview
-30: 66-152 preview
-31: 66-152 preview
-32: 66-152 preview
-33: 66-152 preview
-34: 66-152 preview
-35: 66-152 preview
-36: 66-152 preview
-37: 66-152 preview
-38: 66-152 preview
-39: 66-152 preview
-40: 66-152 preview
-41: 66-152 preview
-42: 66-152 preview
-43: 66-152 preview
+00: 2-158 text
+01: 2-8 text | 157-158 text
+02: 2-158 text
+03: 2-158 text
+04: 2-8 text | 157-158 text
+05: 2-158 text
+07: 2-12 text | 12-30 diff-added | 138-158 diff-added
+09: 2-64 selection | 65-67 text | 67-70 s:keyword | 70-71 text | 71-73 s:keyword.function | 73-74 text | 74-118 s:function | 118-120 s:punctuation.bracket | 120-121 text | 121-122 s:punctuation.bracket | 122-123 text | 123-126 s:keyword.storage | 126-127 text | 127-132 s:variable | 132-133 text | 133-134 s:operator | 134-135 text | 135-136 s:constant.numeric.integer | 136-137 s:punctuation.delimiter | 137-138 text | 138-139 s:punctuation.bracket | 139-158 preview
+10: 65-71 diff-removed | 71-76 diff-removed-emph | 76-85 diff-removed | 85-158 preview
+11: 65-71 diff-added | 71-76 diff-added-emph | 76-85 diff-added | 85-158 preview
+12: 65-67 text | 67-70 s:keyword | 70-71 text | 71-73 s:keyword.function | 73-74 text | 74-87 s:function | 87-89 s:punctuation.bracket | 89-90 text | 90-92 s:operator | 92-93 text | 93-98 s:type.builtin | 98-99 text | 99-100 s:punctuation.bracket | 100-101 text | 101-102 s:constant.numeric.integer | 102-103 text | 103-104 s:punctuation.bracket | 104-158 preview
+13: 65-158 preview
+14: 65-158 preview
+15: 65-158 preview
+16: 65-158 preview
+17: 65-158 preview
+18: 65-158 preview
+19: 65-158 preview
+20: 65-158 preview
+21: 65-158 preview
+22: 65-158 preview
+23: 65-158 preview
+24: 65-158 preview
+25: 65-158 preview
+26: 65-158 preview
+27: 65-158 preview
+28: 65-158 preview
+29: 65-158 preview
+30: 65-158 preview
+31: 65-158 preview
+32: 65-158 preview
+33: 65-158 preview
+34: 65-158 preview
+35: 65-158 preview
+36: 65-158 preview
+37: 65-158 preview
+38: 65-158 preview
+39: 65-158 preview
+40: 65-158 preview
+41: 65-158 preview
+42: 65-158 preview
+43: 65-158 preview
 44: 31-128 info

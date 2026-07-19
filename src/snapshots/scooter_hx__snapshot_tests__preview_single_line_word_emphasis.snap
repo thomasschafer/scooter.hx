@@ -3,25 +3,25 @@ source: src/snapshot_tests.rs
 expression: snapshot
 ---
 canvas: 120x40
-00 |      ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────┐      |
-01 |      │alpha                                                                                                     │      |
-02 |      └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘      |
-03 |      ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────┐      |
-04 |      │OMEGA                                                                                                     │      |
-05 |      └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘      |
+00 |  ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+01 |  │alpha                                                                                                             │  |
+02 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+03 |  ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+04 |  │OMEGA                                                                                                             │  |
+05 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
 06 |                                                                                                                        |
-07 |      Results: 1 [Search complete]                                                            [Time taken: TIME]      |
+07 |  Results: 1 [Search complete]                                                                    [Time taken: TIME]  |
 08 |                                                                                                                        |
-09 |      [x] fixture.txt:2                                                                                        (1)      |
-10 |                                                                                                                        |
-11 |                                                                                                                        |
-12 |                                                                                                                        |
+09 |  [x] fixture.txt:2                          (1)   before context                                                       |
+10 |                                                 - alpha bright world                                                   |
+11 |                                                 + OMEGA bright world                                                   |
+12 |                                                   after context                                                        |
 13 |                                                                                                                        |
 14 |                                                                                                                        |
-15 |        before context                                                                                                  |
-16 |      - alpha bright world                                                                                              |
-17 |      + OMEGA bright world                                                                                              |
-18 |        after context                                                                                                   |
+15 |                                                                                                                        |
+16 |                                                                                                                        |
+17 |                                                                                                                        |
+18 |                                                                                                                        |
 19 |                                                                                                                        |
 20 |                                                                                                                        |
 21 |                                                                                                                        |
@@ -44,36 +44,41 @@ canvas: 120x40
 38 |                                                                                                                        |
 39 |           <space> toggle / <esc> back to search fields / <enter> replace selected / <C-h> help / <C-c> quit            |
 tags:
-00: 6-114 text
-01: 6-12 text | 113-114 text
-02: 6-114 text
-03: 6-114 text
-04: 6-12 text | 113-114 text
-05: 6-114 text
-07: 6-16 text | 16-34 diff-added | 94-114 diff-added
-09: 6-114 selection
-15: 6-22 text | 22-114 preview
-16: 6-8 diff-removed | 8-13 diff-removed-emph | 13-26 diff-removed | 26-114 preview
-17: 6-8 diff-added | 8-13 diff-added-emph | 13-26 diff-added | 26-114 preview
-18: 6-21 text | 21-114 preview
-19: 6-114 preview
-20: 6-114 preview
-21: 6-114 preview
-22: 6-114 preview
-23: 6-114 preview
-24: 6-114 preview
-25: 6-114 preview
-26: 6-114 preview
-27: 6-114 preview
-28: 6-114 preview
-29: 6-114 preview
-30: 6-114 preview
-31: 6-114 preview
-32: 6-114 preview
-33: 6-114 preview
-34: 6-114 preview
-35: 6-114 preview
-36: 6-114 preview
-37: 6-114 preview
-38: 6-114 preview
+00: 2-118 text
+01: 2-8 text | 117-118 text
+02: 2-118 text
+03: 2-118 text
+04: 2-8 text | 117-118 text
+05: 2-118 text
+07: 2-12 text | 12-30 diff-added | 98-118 diff-added
+09: 2-48 selection | 49-65 text | 65-118 preview
+10: 49-51 diff-removed | 51-56 diff-removed-emph | 56-69 diff-removed | 69-118 preview
+11: 49-51 diff-added | 51-56 diff-added-emph | 56-69 diff-added | 69-118 preview
+12: 49-64 text | 64-118 preview
+13: 49-118 preview
+14: 49-118 preview
+15: 49-118 preview
+16: 49-118 preview
+17: 49-118 preview
+18: 49-118 preview
+19: 49-118 preview
+20: 49-118 preview
+21: 49-118 preview
+22: 49-118 preview
+23: 49-118 preview
+24: 49-118 preview
+25: 49-118 preview
+26: 49-118 preview
+27: 49-118 preview
+28: 49-118 preview
+29: 49-118 preview
+30: 49-118 preview
+31: 49-118 preview
+32: 49-118 preview
+33: 49-118 preview
+34: 49-118 preview
+35: 49-118 preview
+36: 49-118 preview
+37: 49-118 preview
+38: 49-118 preview
 39: 11-108 info

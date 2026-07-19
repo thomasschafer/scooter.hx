@@ -3,25 +3,25 @@ source: src/snapshot_tests.rs
 expression: snapshot
 ---
 canvas: 120x40
-00 |      ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────┐      |
-01 |      │alpha                                                                                                     │      |
-02 |      └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘      |
-03 |      ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────┐      |
-04 |      │OMEGA                                                                                                     │      |
-05 |      └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘      |
+00 |  ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+01 |  │alpha                                                                                                             │  |
+02 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+03 |  ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+04 |  │OMEGA                                                                                                             │  |
+05 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
 06 |                                                                                                                        |
-07 |      Results: 1 [Search complete]                                                            [Time taken: TIME]      |
+07 |  Results: 1 [Search complete]                                                                    [Time taken: TIME]  |
 08 |                                                                                                                        |
-09 |      [x] fixture.rs:2                                                                                         (1)      |
-10 |                                                                                                                        |
-11 |                                                                                                                        |
-12 |                                                                                                                        |
+09 |  [x] fixture.rs:2                           (1)   pub fn context_before_with_a_deliberately_long_name() { let value =  |
+10 |                                                 - let alpha = value;                                                   |
+11 |                                                 + let OMEGA = value;                                                   |
+12 |                                                   pub fn context_after() -> usize { 2 }                                |
 13 |                                                                                                                        |
 14 |                                                                                                                        |
-15 |        pub fn context_before_with_a_deliberately_long_name() { let value = 1; }                                        |
-16 |      - let alpha = value;                                                                                              |
-17 |      + let OMEGA = value;                                                                                              |
-18 |        pub fn context_after() -> usize { 2 }                                                                           |
+15 |                                                                                                                        |
+16 |                                                                                                                        |
+17 |                                                                                                                        |
+18 |                                                                                                                        |
 19 |                                                                                                                        |
 20 |                                                                                                                        |
 21 |                                                                                                                        |
@@ -44,36 +44,41 @@ canvas: 120x40
 38 |                                                                                                                        |
 39 |           <space> toggle / <esc> back to search fields / <enter> replace selected / <C-h> help / <C-c> quit            |
 tags:
-00: 6-114 text
-01: 6-12 text | 113-114 text
-02: 6-114 text
-03: 6-114 text
-04: 6-12 text | 113-114 text
-05: 6-114 text
-07: 6-16 text | 16-34 diff-added | 94-114 diff-added
-09: 6-114 selection
-15: 6-8 text | 8-11 s:keyword | 11-12 text | 12-14 s:keyword.function | 14-15 text | 15-59 s:function | 59-61 s:punctuation.bracket | 61-62 text | 62-63 s:punctuation.bracket | 63-64 text | 64-67 s:keyword.storage | 67-68 text | 68-73 s:variable | 73-74 text | 74-75 s:operator | 75-76 text | 76-77 s:constant.numeric.integer | 77-78 s:punctuation.delimiter | 78-79 text | 79-80 s:punctuation.bracket | 80-114 preview
-16: 6-12 diff-removed | 12-17 diff-removed-emph | 17-26 diff-removed | 26-114 preview
-17: 6-12 diff-added | 12-17 diff-added-emph | 17-26 diff-added | 26-114 preview
-18: 6-8 text | 8-11 s:keyword | 11-12 text | 12-14 s:keyword.function | 14-15 text | 15-28 s:function | 28-30 s:punctuation.bracket | 30-31 text | 31-33 s:operator | 33-34 text | 34-39 s:type.builtin | 39-40 text | 40-41 s:punctuation.bracket | 41-42 text | 42-43 s:constant.numeric.integer | 43-44 text | 44-45 s:punctuation.bracket | 45-114 preview
-19: 6-114 preview
-20: 6-114 preview
-21: 6-114 preview
-22: 6-114 preview
-23: 6-114 preview
-24: 6-114 preview
-25: 6-114 preview
-26: 6-114 preview
-27: 6-114 preview
-28: 6-114 preview
-29: 6-114 preview
-30: 6-114 preview
-31: 6-114 preview
-32: 6-114 preview
-33: 6-114 preview
-34: 6-114 preview
-35: 6-114 preview
-36: 6-114 preview
-37: 6-114 preview
-38: 6-114 preview
+00: 2-118 text
+01: 2-8 text | 117-118 text
+02: 2-118 text
+03: 2-118 text
+04: 2-8 text | 117-118 text
+05: 2-118 text
+07: 2-12 text | 12-30 diff-added | 98-118 diff-added
+09: 2-48 selection | 49-51 text | 51-54 s:keyword | 54-55 text | 55-57 s:keyword.function | 57-58 text | 58-102 s:function | 102-104 s:punctuation.bracket | 104-105 text | 105-106 s:punctuation.bracket | 106-107 text | 107-110 s:keyword.storage | 110-111 text | 111-116 s:variable | 116-117 text | 117-118 s:operator
+10: 49-55 diff-removed | 55-60 diff-removed-emph | 60-69 diff-removed | 69-118 preview
+11: 49-55 diff-added | 55-60 diff-added-emph | 60-69 diff-added | 69-118 preview
+12: 49-51 text | 51-54 s:keyword | 54-55 text | 55-57 s:keyword.function | 57-58 text | 58-71 s:function | 71-73 s:punctuation.bracket | 73-74 text | 74-76 s:operator | 76-77 text | 77-82 s:type.builtin | 82-83 text | 83-84 s:punctuation.bracket | 84-85 text | 85-86 s:constant.numeric.integer | 86-87 text | 87-88 s:punctuation.bracket | 88-118 preview
+13: 49-118 preview
+14: 49-118 preview
+15: 49-118 preview
+16: 49-118 preview
+17: 49-118 preview
+18: 49-118 preview
+19: 49-118 preview
+20: 49-118 preview
+21: 49-118 preview
+22: 49-118 preview
+23: 49-118 preview
+24: 49-118 preview
+25: 49-118 preview
+26: 49-118 preview
+27: 49-118 preview
+28: 49-118 preview
+29: 49-118 preview
+30: 49-118 preview
+31: 49-118 preview
+32: 49-118 preview
+33: 49-118 preview
+34: 49-118 preview
+35: 49-118 preview
+36: 49-118 preview
+37: 49-118 preview
+38: 49-118 preview
 39: 11-108 info

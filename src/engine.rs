@@ -800,9 +800,9 @@ mod tests {
                 .iter()
                 .any(|run| run.text == ":2" && run.tag == StyleTag::Info)
         );
-        // A 160-column frame has a 144-column content block beginning at x=8;
-        // its wide results list is floor((144 - 1) * 2 / 5) = 57 cells.
-        assert_eq!(first_index.x + first_index.text.len(), 8 + 57);
+        // A 160-column frame has a 156-column content block beginning at x=2;
+        // its wide results list is floor((156 - 1) * 2 / 5) = 62 cells.
+        assert_eq!(first_index.x + first_index.text.len(), 2 + 62);
 
         assert_eq!(engine.handle_key("tab", 0), "rerender");
         for character in "OMEGA".chars() {
@@ -818,7 +818,7 @@ mod tests {
         assert!(initial.contains("+ OMEGA first"));
         let focussed = engine.render(160, 45);
         assert!(focussed.runs.iter().any(|run| {
-            run.tag == StyleTag::Selection && run.x == 8 && run.text == " ".repeat(57)
+            run.tag == StyleTag::Selection && run.x == 2 && run.text == " ".repeat(62)
         }));
         assert!(
             focussed
