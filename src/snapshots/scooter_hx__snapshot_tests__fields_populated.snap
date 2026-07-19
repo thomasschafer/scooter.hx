@@ -62,8 +62,8 @@ tags:
 15: 6-114 text
 16: 6-11 text | 113-114 text
 17: 6-114 text
-18: 6-114 active
-19: 6-7 active | 7-13 text | 113-114 active
-20: 6-114 active
+18: 6-114 focused-field
+19: 6-7 focused-field | 7-13 text | 113-114 focused-field
+20: 6-114 focused-field
 39: 19-101 info
 cursor: 13,19

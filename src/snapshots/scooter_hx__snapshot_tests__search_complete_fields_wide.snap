@@ -49,9 +49,9 @@ canvas: 160x45
 43 |                                                                                                                                                                |
 44 |                                       <enter> jump to results / <tab> focus next / <C-r> reset / <C-h> help / <C-c> quit                                       |
 tags:
-00: 8-152 active
-01: 8-9 active | 9-14 text | 151-152 active
-02: 8-152 active
+00: 8-152 focused-field
+01: 8-9 focused-field | 9-14 text | 151-152 focused-field
+02: 8-152 focused-field
 03: 8-152 text
 04: 8-9 text | 151-152 text
 05: 8-152 text

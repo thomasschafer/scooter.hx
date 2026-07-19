@@ -67,7 +67,8 @@
 ;;   tag                             kind
 ;;   popup, popup-border, toast-border overlay: explicit fg + surface bg
 ;;   preview                         overlay: explicit fg + editor bg
-;;   text, dim, active, error, info    content: fg/modifiers; inherits fill
+;;   text, dim, active, focused-field, error, info
+;;                                           content: fg/modifiers; inherits fill
 ;;   diff-added, diff-added-emph       content: fg/modifiers; inherits fill
 ;;   diff-removed, diff-removed-emph   content: fg/modifiers; inherits fill
 ;;   s:<scope>                         content: fg-patch; inherits fill
@@ -125,6 +126,10 @@
           "active" (style-with-foreground
                     (safe-theme-style "ui.text.focus" hint)
                     foreground)
+          ;; Scooter uses green for the focused field border and title.
+          ;; diff.plus is the theme-owned Helix equivalent, so the cue follows
+          ;; the user's palette instead of hard-coding a terminal colour.
+          "focused-field" diff-added
           "popup" popup
           ;; The preview is intentionally editor-native rather than TUI-like:
           ;; it fills only the preview rectangle with ui.background, while its

@@ -745,7 +745,7 @@ fn render_field(
 ) {
     let y = layout.y + index * FIELD_HEIGHT;
     let border_tag = if highlighted {
-        StyleTag::Active
+        StyleTag::FocusedField
     } else {
         StyleTag::Text
     };

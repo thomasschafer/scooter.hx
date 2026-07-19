@@ -704,7 +704,7 @@ mod tests {
             .render(100, 36)
             .runs
             .into_iter()
-            .filter(|run| run.tag == StyleTag::Active)
+            .filter(|run| run.tag == StyleTag::FocusedField)
             .map(|run| run.text)
             .collect::<String>();
         assert!(active.contains("Replace text"));

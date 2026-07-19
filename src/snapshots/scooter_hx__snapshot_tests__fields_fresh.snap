@@ -44,9 +44,9 @@ canvas: 120x40
 38 |                                                                                                                        |
 39 |                   <enter> jump to results / <tab> focus next / <C-r> reset / <C-h> help / <C-c> quit                   |
 tags:
-00: 6-114 active
-01: 6-7 active | 113-114 active
-02: 6-114 active
+00: 6-114 focused-field
+01: 6-7 focused-field | 113-114 focused-field
+02: 6-114 focused-field
 03: 6-114 text
 04: 6-7 text | 113-114 text
 05: 6-114 text
