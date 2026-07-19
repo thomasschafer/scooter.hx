@@ -1,6 +1,5 @@
 ---
 source: src/snapshot_tests.rs
-assertion_line: 159
 expression: snapshot
 ---
 canvas: 120x40
@@ -18,25 +17,25 @@ canvas: 120x40
 11 |         │     <e> open in editor                                                                             │         |
 12 |         │   <A-o> open in background                                                                         │         |
 13 |         │   <esc> back to search fields                                                                      │         |
-14 |         │     <j> down                                                                                       │         |
-15 |      - a│     <k> up                                                                                         │         |
-16 |      +  │   <C-u> up half a page                                                                             │         |
-17 |         │   <C-d> down half a page                                                                           │         |
-18 |         │   <C-b> up a full page                                                                             │         |
-19 |         │   <C-f> down a full page                                                                           │         |
-20 |         │     <g> jump to top                                                                                │         |
-21 |         │     <G> jump to bottom                                                                             │         |
-22 |         │ <enter> replace selected                                                                           │         |
-23 |         │   <C-l> toggle text wrapping in preview                                                            │         |
-24 |         │   <C-t> toggle hidden files                                                                        │         |
-25 |         │   <A-m> toggle multiline                                                                           │         |
-26 |         │   <A-e> toggle escape sequences                                                                    │         |
-27 |         │   <C-r> reset                                                                                      │         |
-28 |         │   <C-h> help                                                                                       │         |
-29 |         │   <esc> close popup / exit multi-select                                                            │         |
-30 |         │   <C-c> quit                                                                                       │         |
-31 |         └────────────────────────────────────────────────────────────────────────────────────────────────────┘         |
-32 |                                                                                                                        |
+14 |         │   <A-h> hide Scooter                                                                               │         |
+15 |      - a│     <j> down                                                                                       │         |
+16 |      +  │     <k> up                                                                                         │         |
+17 |         │   <C-u> up half a page                                                                             │         |
+18 |         │   <C-d> down half a page                                                                           │         |
+19 |         │   <C-b> up a full page                                                                             │         |
+20 |         │   <C-f> down a full page                                                                           │         |
+21 |         │     <g> jump to top                                                                                │         |
+22 |         │     <G> jump to bottom                                                                             │         |
+23 |         │ <enter> replace selected                                                                           │         |
+24 |         │   <C-l> toggle text wrapping in preview                                                            │         |
+25 |         │   <C-t> toggle hidden files                                                                        │         |
+26 |         │   <A-m> toggle multiline                                                                           │         |
+27 |         │   <A-e> toggle escape sequences                                                                    │         |
+28 |         │   <C-r> reset                                                                                      │         |
+29 |         │   <C-h> help                                                                                       │         |
+30 |         │   <esc> close popup / exit multi-select                                                            │         |
+31 |         │   <C-c> quit                                                                                       │         |
+32 |         └────────────────────────────────────────────────────────────────────────────────────────────────────┘         |
 33 |                                                                                                                        |
 34 |                                                                                                                        |
 35 |                                                                                                                        |
@@ -59,25 +58,25 @@ tags:
 11: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border
 12: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-37 text | 37-110 popup | 110-111 popup-border
 13: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-40 text | 40-110 popup | 110-111 popup-border
-14: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
-15: 6-8 diff-removed | 8-9 diff-removed-emph | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-21 text | 21-110 popup | 110-111 popup-border | 111-114 preview
-16: 6-8 diff-added | 8-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-114 preview
-17: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
-18: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-114 preview
-19: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
-20: 6-9 preview | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-30 text | 30-110 popup | 110-111 popup-border | 111-114 preview
-21: 6-9 preview | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-114 preview
-22: 6-9 preview | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
-23: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-114 preview
-24: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-38 text | 38-110 popup | 110-111 popup-border | 111-114 preview
-25: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
-26: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-42 text | 42-110 popup | 110-111 popup-border | 111-114 preview
-27: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-24 text | 24-110 popup | 110-111 popup-border | 111-114 preview
-28: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-114 preview
-29: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-114 preview
-30: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-114 preview
-31: 6-9 preview | 9-111 popup-border | 111-114 preview
-32: 6-114 preview
+14: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-31 text | 31-110 popup | 110-111 popup-border
+15: 6-8 diff-removed | 8-9 diff-removed-emph | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-114 preview
+16: 6-8 diff-added | 8-9 preview | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-21 text | 21-110 popup | 110-111 popup-border | 111-114 preview
+17: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-114 preview
+18: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
+19: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-114 preview
+20: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
+21: 6-9 preview | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-30 text | 30-110 popup | 110-111 popup-border | 111-114 preview
+22: 6-9 preview | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-114 preview
+23: 6-9 preview | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
+24: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-114 preview
+25: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-38 text | 38-110 popup | 110-111 popup-border | 111-114 preview
+26: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 preview
+27: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-42 text | 42-110 popup | 110-111 popup-border | 111-114 preview
+28: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-24 text | 24-110 popup | 110-111 popup-border | 111-114 preview
+29: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-114 preview
+30: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-114 preview
+31: 6-9 preview | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-114 preview
+32: 6-9 preview | 9-111 popup-border | 111-114 preview
 33: 6-114 preview
 34: 6-114 preview
 35: 6-114 preview

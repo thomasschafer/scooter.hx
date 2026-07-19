@@ -15,6 +15,7 @@ and all of its styling are rendered natively by Helix, using your Helix theme.
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
 <!-- TOC END -->
 
 ## Requirements
@@ -68,10 +69,10 @@ For a source checkout, require the checked-out Scheme file instead:
 
 Press `C-h` in the window for the full keymap.
 
-`esc` hides the window when Scooter has nothing else to dismiss. The search
-and any background work continue, and `:scooter` resumes that session. `C-c`
-quits instead, cancelling work and discarding the session. After replacement
-results, `esc` now hides the window too.
+To hide the window, hit `A-h` - the search and any background
+work continue, and `:scooter` resumes that session. `C-c` quits instead,
+cancelling work and discarding the session. After replacement results, both
+hide bindings hide the window too.
 
 When the results list is focused, `e` opens the selected match in Helix and
 hides the window; `A-o` opens it in the background and leaves the window open.
@@ -124,14 +125,12 @@ Plugin-only bindings use the same function. `plugin.open_in_editor_bg` must not 
 Bindings are written in Helix's key syntax.
 
 <!-- KEYS START -->
-Defaults from scooter-core 0.4.0, matching the Scooter TUI, plus Scooter's plugin bindings.
-
 | Binding path | Default key(s) | Description |
 | --- | --- | --- |
 | `general.quit` | `C-c` | Exit scooter |
 | `general.reset` | `C-r` | Cancel in-progress operations, reset fields to default values and return to search screen |
 | `general.show_help_menu` | `C-h` | Show the help menu containing keymaps |
-| `plugin.hide` | `esc` | Hide Scooter when core has no action for the key in the current context; core bindings take precedence. |
+| `plugin.hide` | `esc, A-h` | Hide Scooter when core has no action for the key in the current context; core bindings take precedence. |
 | `plugin.open_in_editor_bg` | `A-o` | Open the selected result in Helix without hiding Scooter. |
 | `results.quit` | `enter`, `q` | Exit scooter. This is in addition to the `quit` command in the `general` section. |
 | `results.scroll_errors_down` | `j`, `down`, `C-n` | Navigate to the error below |
@@ -160,3 +159,15 @@ Defaults from scooter-core 0.4.0, matching the Scooter TUI, plus Scooter's plugi
 | `search.toggle_multiline` | `A-m` | Toggle multiline search mode, which allows patterns to match across line boundaries |
 | `search.toggle_preview_wrapping` | `C-l` | Toggle wrapping of lines that don't fit within the width of the preview |
 <!-- KEYS END -->
+
+## Troubleshooting
+
+### Plugin fails to load, or an update does not take effect
+
+The native library must be built against the same Steel revision as Helix and
+installed into the `STEEL_HOME` used by Helix. For a source checkout, run
+`cargo steel-lib` and check that its output says it copied
+`libscooter_hx` into `$STEEL_HOME/native`. Fully quit and restart Helix after
+installing an update because each Helix process keeps its loaded library in
+memory.
+

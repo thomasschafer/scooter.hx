@@ -641,7 +641,7 @@ mod tests {
 
     use crate::options::{EngineOptions, OptionEntry};
 
-    use super::{DRAIN_LIMIT, MAX_PASTE_CHARS, EngineAction, ScooterEngine};
+    use super::{DRAIN_LIMIT, EngineAction, MAX_PASTE_CHARS, ScooterEngine};
 
     #[test]
     fn engine_creation_returns_core_key_conflict_errors() {
@@ -1107,6 +1107,7 @@ mod tests {
         let fixture = tempdir().expect("fixture directory");
         let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
 
+        assert_eq!(engine.handle_key("h", 4), "hide");
         engine.handle_key("h", 2);
         assert!(engine.app.popup().is_some());
         assert_eq!(engine.handle_key("esc", 0), "rerender");

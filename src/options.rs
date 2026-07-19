@@ -44,7 +44,7 @@ const PLUGIN_KEY_SPECS: &[PluginKeySpec] = &[
     },
     PluginKeySpec {
         path: "plugin.hide",
-        default: "esc",
+        default: "esc, A-h",
         description: "Hide Scooter when core has no action for the key in the current context; core bindings take precedence.",
     },
 ];
@@ -236,7 +236,10 @@ impl Default for EngineOptions {
             open_in_editor_bg: "A-o"
                 .parse()
                 .expect("default background-open binding must be valid"),
-            hide: vec!["esc".parse().expect("default hide binding must be valid")],
+            hide: ["esc", "A-h"]
+                .into_iter()
+                .map(|binding| binding.parse().expect("default hide binding must be valid"))
+                .collect(),
         };
         for spec in OPTION_SPECS {
             spec.apply_default(&mut options);
@@ -628,7 +631,14 @@ mod tests {
             KeyCode::Char('n')
         );
         assert_eq!(options.open_in_editor_bg.to_string(), "A-o");
-        assert_eq!(options.hide[0].to_string(), "esc");
+        assert_eq!(
+            options
+                .hide
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["esc", "A-h"]
+        );
         assert_eq!(
             options.config.keys.search.results.move_down[1].modifiers,
             KeyModifiers::NONE

@@ -118,24 +118,12 @@ fn keys_docs() -> Result<String> {
     }));
     rows.sort_by(|left, right| left.0.cmp(&right.0));
 
-    let mut docs = format!(
-        "Defaults from scooter-core {}, matching the Scooter TUI, plus Scooter's plugin bindings.\n\n| Binding path | Default key(s) | Description |\n| --- | --- | --- |\n",
-        scooter_core_version()?
-    );
+    let mut docs =
+        "| Binding path | Default key(s) | Description |\n| --- | --- | --- |\n".to_string();
     for (path, keys, description) in rows {
         writeln!(docs, "| `{path}` | `{keys}` | {description} |")?;
     }
     Ok(docs)
-}
-
-fn scooter_core_version() -> Result<String> {
-    let metadata = MetadataCommand::new().exec()?;
-    metadata
-        .packages
-        .iter()
-        .find(|package| package.name == "scooter-core" && package.source.is_some())
-        .map(|package| package.version.to_string())
-        .context("could not locate scooter-core registry dependency in cargo metadata")
 }
 
 fn key_description<'a>(path: &str, descriptions: &'a HashMap<String, String>) -> Result<&'a str> {

@@ -14,21 +14,21 @@ canvas: 120x40
 08 |      └───┘                                                                                                             |
 09 |      ┌───┐                                                                                                             |
 10 |      │   │ Match whole word                                                                                            |
-11 |      └───┘                                                                                                             |
-12 |      ┌──┌────────────────────────────────────────────────Help────────────────────────────────────────────────┐         |
-13 |      │ X│ <enter> jump to results                                                                            │         |
-14 |      └──│   <tab> focus next                                                                                 │         |
-15 |      ┌─F│ <S-tab> focus previous                                                                             │──┐      |
-16 |      │  │ <space> toggle checkbox                                                                            │  │      |
-17 |      └──│   <A-u> unlock pre-populated fields                                                                │──┘      |
-18 |      ┌─F│   <C-l> toggle text wrapping in preview                                                            │──┐      |
-19 |      │  │   <C-t> toggle hidden files                                                                        │  │      |
-20 |      └──│   <A-m> toggle multiline                                                                           │──┘      |
-21 |         │   <A-e> toggle escape sequences                                                                    │         |
-22 |      Res│   <C-r> reset                                                                                      │         |
-23 |         │   <C-h> help                                                                                       │         |
-24 |         │   <esc> close popup                                                                                │         |
-25 |         │   <C-c> quit                                                                                       │         |
+11 |      └──┌────────────────────────────────────────────────Help────────────────────────────────────────────────┐         |
+12 |      ┌──│ <enter> jump to results                                                                            │         |
+13 |      │ X│   <tab> focus next                                                                                 │         |
+14 |      └──│ <S-tab> focus previous                                                                             │         |
+15 |      ┌─F│ <space> toggle checkbox                                                                            │──┐      |
+16 |      │  │   <A-u> unlock pre-populated fields                                                                │  │      |
+17 |      └──│   <C-l> toggle text wrapping in preview                                                            │──┘      |
+18 |      ┌─F│   <C-t> toggle hidden files                                                                        │──┐      |
+19 |      │  │   <A-m> toggle multiline                                                                           │  │      |
+20 |      └──│   <A-e> toggle escape sequences                                                                    │──┘      |
+21 |         │   <C-r> reset                                                                                      │         |
+22 |      Res│   <C-h> help                                                                                       │         |
+23 |         │   <esc> close popup                                                                                │         |
+24 |         │   <C-c> quit                                                                                       │         |
+25 |         │   <A-h> hide Scooter                                                                               │         |
 26 |         └────────────────────────────────────────────────────────────────────────────────────────────────────┘         |
 27 |                                                                                                                        |
 28 |                                                                                                                        |
@@ -55,20 +55,20 @@ tags:
 08: 6-11 text
 09: 6-11 text
 10: 6-7 text | 10-11 text | 12-28 text
-11: 6-11 text
-12: 6-9 text | 9-58 popup-border | 58-62 popup | 62-111 popup-border
-13: 6-9 text | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-34 text | 34-110 popup | 110-111 popup-border
-14: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-29 text | 29-110 popup | 110-111 popup-border
-15: 6-9 text | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-114 text
-16: 6-7 text | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-34 text | 34-110 popup | 110-111 popup-border | 113-114 text
-17: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-46 text | 46-110 popup | 110-111 popup-border | 111-114 text
-18: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-114 text
-19: 6-7 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-38 text | 38-110 popup | 110-111 popup-border | 113-114 text
-20: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-114 text
-21: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-42 text | 42-110 popup | 110-111 popup-border
-22: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-24 text | 24-110 popup | 110-111 popup-border
-23: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
-24: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-30 text | 30-110 popup | 110-111 popup-border
-25: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
+11: 6-9 text | 9-58 popup-border | 58-62 popup | 62-111 popup-border
+12: 6-9 text | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-34 text | 34-110 popup | 110-111 popup-border
+13: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-29 text | 29-110 popup | 110-111 popup-border
+14: 6-9 text | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border
+15: 6-9 text | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-34 text | 34-110 popup | 110-111 popup-border | 111-114 text
+16: 6-7 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-46 text | 46-110 popup | 110-111 popup-border | 113-114 text
+17: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-114 text
+18: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-38 text | 38-110 popup | 110-111 popup-border | 111-114 text
+19: 6-7 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 113-114 text
+20: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-42 text | 42-110 popup | 110-111 popup-border | 111-114 text
+21: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-24 text | 24-110 popup | 110-111 popup-border
+22: 6-9 text | 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
+23: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-30 text | 30-110 popup | 110-111 popup-border
+24: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border
+25: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-31 text | 31-110 popup | 110-111 popup-border
 26: 9-111 popup-border
 39: 19-101 info

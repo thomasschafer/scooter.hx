@@ -296,10 +296,14 @@ fn help_keymaps(
             (format!("<{binding}>"), "open in background".to_string()),
         );
     }
-    let default_hide = [KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)];
-    if hide != default_hide {
-        let binding = hide
-            .iter()
+    let contextual_hide = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+    let dedicated_hide = hide
+        .iter()
+        .filter(|binding| **binding != contextual_hide)
+        .collect::<Vec<_>>();
+    if !dedicated_hide.is_empty() {
+        let binding = dedicated_hide
+            .into_iter()
             .map(|binding| format!("<{binding}>"))
             .collect::<Vec<_>>()
             .join(", ");
