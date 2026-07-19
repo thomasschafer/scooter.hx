@@ -36,15 +36,18 @@ pub struct PluginKeySpec {
     pub description: &'static str,
 }
 
-const PLUGIN_KEY_SPECS: &[PluginKeySpec] = &[PluginKeySpec {
-    path: "plugin.open_in_editor_bg",
-    default: "A-o",
-    description: "Open the selected result in Helix without hiding Scooter.",
-}, PluginKeySpec {
-    path: "plugin.hide",
-    default: "esc",
-    description: "Hide Scooter when core has no action for the key in the current context; core bindings take precedence.",
-}];
+const PLUGIN_KEY_SPECS: &[PluginKeySpec] = &[
+    PluginKeySpec {
+        path: "plugin.open_in_editor_bg",
+        default: "A-o",
+        description: "Open the selected result in Helix without hiding Scooter.",
+    },
+    PluginKeySpec {
+        path: "plugin.hide",
+        default: "esc",
+        description: "Hide Scooter when core has no action for the key in the current context; core bindings take precedence.",
+    },
+];
 
 #[derive(Debug, Clone, Copy)]
 enum DefaultValue {

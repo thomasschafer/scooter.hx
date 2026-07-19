@@ -40,7 +40,15 @@ mod tests {
     fn cache_log_path_is_nested_under_the_application_directory() {
         let strategy = choose_base_strategy().expect("cache base strategy");
         let path = strategy.cache_dir().join(APP_NAME).join("scooter-hx.log");
-        assert_eq!(path.file_name().and_then(|name| name.to_str()), Some("scooter-hx.log"));
-        assert_eq!(path.parent().and_then(|parent| parent.file_name()).and_then(|name| name.to_str()), Some(APP_NAME));
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("scooter-hx.log")
+        );
+        assert_eq!(
+            path.parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str()),
+            Some(APP_NAME)
+        );
     }
 }

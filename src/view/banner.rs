@@ -39,7 +39,11 @@ pub(super) fn render_banner(
     let right = time_taken.map(|duration| format!("[Time taken: {}]", format_duration(duration)));
     let right_width = right.as_deref().map_or(0, display_width);
     let show_right = right.is_some() && left_width + right_width <= layout.width;
-    let right_x = if show_right { end_x - right_width } else { end_x };
+    let right_x = if show_right {
+        end_x - right_width
+    } else {
+        end_x
+    };
 
     let mut left_x = layout.x;
     add_segment(
@@ -68,7 +72,11 @@ pub(super) fn render_banner(
             &mut time_x,
             layout.banner_y,
             &right,
-            if is_complete { StyleTag::DiffAdded } else { StyleTag::Info },
+            if is_complete {
+                StyleTag::DiffAdded
+            } else {
+                StyleTag::Info
+            },
             end_x,
             height,
         );
@@ -97,7 +105,9 @@ pub(super) fn status(phase: SearchPhase) -> (&'static str, StyleTag) {
     match phase {
         SearchPhase::Invalid => ("Invalid search", StyleTag::Error),
         SearchPhase::Complete { .. } => ("Search complete", StyleTag::DiffAdded),
-        SearchPhase::Pending | SearchPhase::Running { .. } => ("Still searching...", StyleTag::Info),
+        SearchPhase::Pending | SearchPhase::Running { .. } => {
+            ("Still searching...", StyleTag::Info)
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 use etcetera::base_strategy::{BaseStrategy, choose_base_strategy};
@@ -59,8 +59,7 @@ pub struct HighlightEngine {
 }
 
 struct CachedContent {
-    modified: SystemTime,
-    len: u64,
+    hash: u64,
     content: Arc<str>,
 }
 
@@ -97,33 +96,35 @@ impl HighlightEngine {
         self.highlight_with_key(path, content, CacheKey::from_content(path, content))
     }
 
-    /// Read a small preview file, validating cached content with metadata on
-    /// every render. The stat keeps the replacement freshness guard correct
-    /// while avoiding repeat reads and hashes during poll-loop rerenders.
+    /// Read a small preview file and validate it by content on every render.
+    /// `(mtime, len)` is not an integrity check: same-length writes can share
+    /// a coarse filesystem timestamp and otherwise show stale replacement
+    /// context. Reusing the Arc still avoids reparsing unchanged content.
     pub(crate) fn read_preview_content(&self, path: &Path) -> std::io::Result<Option<Arc<str>>> {
         let metadata = fs::metadata(path)?;
         if metadata.len() > MAX_CONTENT_BYTES as u64 {
             return Ok(None);
         }
-        let modified = metadata.modified()?;
-        if let Ok(mut cache) = self.content_cache.lock()
-            && let Some(cached) = cache.get(path)
-            && cached.len == metadata.len()
-            && cached.modified == modified
-        {
-            return Ok(Some(Arc::clone(&cached.content)));
-        }
-
         #[cfg(test)]
         self.file_reads
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let content: Arc<str> = fs::read_to_string(path)?.into();
+        let hash = content_hash(&content);
+        #[cfg(test)]
+        self.content_hashes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut cache) = self.content_cache.lock()
+            && let Some(cached) = cache.get(path)
+            && cached.hash == hash
+            && cached.content.as_ref() == content.as_ref()
+        {
+            return Ok(Some(Arc::clone(&cached.content)));
+        }
         if let Ok(mut cache) = self.content_cache.lock() {
             cache.put(
                 path.to_path_buf(),
                 CachedContent {
-                    modified,
-                    len: metadata.len(),
+                    hash,
                     content: Arc::clone(&content),
                 },
             );
@@ -233,6 +234,12 @@ impl HighlightEngine {
     }
 }
 
+fn content_hash(content: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut hasher);
+    hasher.finish()
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CacheKey {
     path: PathBuf,
@@ -268,11 +275,9 @@ impl Eq for ContentKey {}
 
 impl CacheKey {
     fn from_content(path: &Path, content: &str) -> Self {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        content.hash(&mut hasher);
         Self {
             path: path.to_path_buf(),
-            content: ContentKey::Hash(hasher.finish()),
+            content: ContentKey::Hash(content_hash(content)),
         }
     }
 
@@ -344,7 +349,12 @@ impl RuntimeLoader {
     }
 
     fn scope(&self, highlight: Highlight) -> Option<Arc<str>> {
-        self.scopes.lock().ok()?.values.get(highlight.idx()).cloned()
+        self.scopes
+            .lock()
+            .ok()?
+            .values
+            .get(highlight.idx())
+            .cloned()
     }
 
     fn config_for(&self, language: Language) -> Option<&LanguageConfig> {
@@ -507,7 +517,10 @@ impl LanguageRegistry {
         let mut fallback = fallback_languages();
         let mut merged = Vec::with_capacity(user_languages.len() + fallback.len());
         for user in user_languages {
-            if let Some(index) = fallback.iter().position(|language| language.name.eq_ignore_ascii_case(&user.name)) {
+            if let Some(index) = fallback
+                .iter()
+                .position(|language| language.name.eq_ignore_ascii_case(&user.name))
+            {
                 merged.push(user.merge(fallback.remove(index)));
             } else {
                 merged.push(user.into_definition());
@@ -546,7 +559,13 @@ impl LanguageRegistry {
                 }
             }
         }
-        Self { languages, names, extensions, filenames, globs }
+        Self {
+            languages,
+            names,
+            extensions,
+            filenames,
+            globs,
+        }
     }
 
     fn language_for_path(&self, path: &Path) -> Option<Language> {
@@ -563,12 +582,9 @@ impl LanguageRegistry {
         .into_iter()
         .flatten()
         .min_by_key(|language| language.idx());
-        let glob = self
-            .globs
-            .iter()
-            .find_map(|(language, pattern)| {
-                glob_matches(pattern, &file_name, path).then_some(*language)
-            });
+        let glob = self.globs.iter().find_map(|(language, pattern)| {
+            glob_matches(pattern, &file_name, path).then_some(*language)
+        });
         match (named, glob) {
             (Some(named), Some(glob)) if named.idx() < glob.idx() => Some(named),
             (_, Some(glob)) => Some(glob),
@@ -912,7 +928,10 @@ injection-regex = "demo-alias"
         assert_eq!(registry.languages[alias.idx()].name, "python");
         let demo = registry.language_for_path(Path::new("input.demo")).unwrap();
         assert_eq!(registry.languages[demo.idx()].name, "demo");
-        assert_eq!(registry.languages[registry.language_for_injection("demo-alias").unwrap().idx()].name, "demo");
+        assert_eq!(
+            registry.languages[registry.language_for_injection("demo-alias").unwrap().idx()].name,
+            "demo"
+        );
     }
 
     #[test]
@@ -920,18 +939,37 @@ injection-regex = "demo-alias"
         let directory = tempdir().unwrap();
         let runtime = directory.path().join("runtime");
         fs::create_dir(&runtime).unwrap();
-        fs::write(directory.path().join("languages.toml"), "[[language]]\nname = \"rust\"\n").unwrap();
+        fs::write(
+            directory.path().join("languages.toml"),
+            "[[language]]\nname = \"rust\"\n",
+        )
+        .unwrap();
         let registry = LanguageRegistry::from_runtime(&runtime);
         let rust = registry.language_for_path(Path::new("lib.rs")).unwrap();
         assert_eq!(registry.languages[rust.idx()].grammar, "rust");
         assert!(registry.languages[rust.idx()].injection_regex.is_some());
 
-        fs::write(directory.path().join("languages.toml"), "[[language]]\nname = \"rust\"\nfile-types = [\"custom-rs\"]\n").unwrap();
+        fs::write(
+            directory.path().join("languages.toml"),
+            "[[language]]\nname = \"rust\"\nfile-types = [\"custom-rs\"]\n",
+        )
+        .unwrap();
         let registry = LanguageRegistry::from_runtime(&runtime);
         assert!(registry.language_for_path(Path::new("lib.rs")).is_none());
-        assert_eq!(registry.languages[registry.language_for_path(Path::new("lib.custom-rs")).unwrap().idx()].name, "rust");
+        assert_eq!(
+            registry.languages[registry
+                .language_for_path(Path::new("lib.custom-rs"))
+                .unwrap()
+                .idx()]
+            .name,
+            "rust"
+        );
 
-        fs::write(directory.path().join("languages.toml"), "[[language]]\nname = \"rust\"\ngrammar = \"custom-rust\"\n").unwrap();
+        fs::write(
+            directory.path().join("languages.toml"),
+            "[[language]]\nname = \"rust\"\ngrammar = \"custom-rust\"\n",
+        )
+        .unwrap();
         let registry = LanguageRegistry::from_runtime(&runtime);
         let rust = registry.language_for_path(Path::new("lib.rs")).unwrap();
         assert_eq!(registry.languages[rust.idx()].grammar, "custom-rust");

@@ -7,9 +7,16 @@ const CONTROL_MODIFIER: usize = 2;
 const ALT_MODIFIER: usize = 4;
 const SUPER_MODIFIER: usize = 8;
 const META_MODIFIER: usize = 32;
+const KNOWN_MODIFIERS: usize =
+    SHIFT_MODIFIER | CONTROL_MODIFIER | ALT_MODIFIER | SUPER_MODIFIER | META_MODIFIER;
 
 /// Decode the S1 key-name table into a canonical scooter-core key event.
 pub(crate) fn decode(code: &str, modifiers: usize) -> Option<KeyEvent> {
+    // Steel's event bits are a closed wire contract.  Do not accidentally
+    // reinterpret a new or corrupt host bit as a valid key chord.
+    if modifiers & !KNOWN_MODIFIERS != 0 {
+        return None;
+    }
     let code = match code {
         "esc" => KeyCode::Esc,
         "enter" => KeyCode::Enter,
@@ -139,5 +146,11 @@ mod tests {
     fn rejects_function_keys_outside_core_key_syntax() {
         assert!(decode("f0", 0).is_none());
         assert!(decode("f25", 0).is_none());
+    }
+
+    #[test]
+    fn rejects_modifier_bits_outside_the_steel_contract() {
+        assert!(decode("a", 16).is_none());
+        assert!(decode("a", usize::MAX).is_none());
     }
 }

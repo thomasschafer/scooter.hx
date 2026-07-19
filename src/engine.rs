@@ -1,6 +1,6 @@
 //! Runtime-owning bridge between Steel and `scooter_core::app::App`.
 
-use std::{collections::VecDeque, mem, path::PathBuf};
+use std::{collections::VecDeque, fs, mem, path::PathBuf};
 
 use scooter_core::{
     app::{
@@ -16,6 +16,7 @@ use tokio::runtime::{Builder, Runtime};
 use crate::{highlight::HighlightEngine, key, options::EngineOptions, view};
 
 const DRAIN_LIMIT: usize = 1_000;
+const MAX_PASTE_CHARS: usize = 4 * 1024;
 
 /// A deferred request for the Steel layer to perform a Helix action.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +78,20 @@ impl ScooterEngine {
         directory: impl Into<PathBuf>,
         options: EngineOptions,
     ) -> Result<Self, String> {
+        let directory = directory.into();
+        let metadata = fs::metadata(&directory)
+            .map_err(|error| format!("Cannot start Scooter in {}: {error}", directory.display()))?;
+        if !metadata.is_dir() {
+            return Err(format!(
+                "Cannot start Scooter in {}: not a directory",
+                directory.display()
+            ));
+        }
+        // Probe access before creating core state, so a directory deleted or
+        // made unreadable between Helix obtaining its cwd and this call is a
+        // clean constructor error rather than a half-live session.
+        fs::read_dir(&directory)
+            .map_err(|error| format!("Cannot start Scooter in {}: {error}", directory.display()))?;
         let runtime = Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -87,7 +102,7 @@ impl ScooterEngine {
         validate_hide_bindings(&options.hide)?;
         let highlight_engine = HighlightEngine::new(options.runtime_dir.clone());
         let app = App::new(
-            InputSource::Directory(directory.into()),
+            InputSource::Directory(directory),
             &SearchFieldValues::default(),
             options.run_config,
             options.config,
@@ -251,12 +266,28 @@ impl ScooterEngine {
                 Screen::SearchFields(state)
                     if state.focussed_section == FocussedSection::SearchFields
             )
-            || !matches!(self.app.search_fields.highlighted_field().field, Field::Text(_))
+            || !matches!(
+                self.app.search_fields.highlighted_field().field,
+                Field::Text(_)
+            )
         {
             return self.response("rerender");
         }
 
-        let text = text.replace(['\r', '\n'], " ");
+        // Bracketed paste is untrusted terminal input. Bound work per FFI
+        // call and turn all controls into spaces so no escape/control byte can
+        // reach the renderer or core field state.
+        let text: String = text
+            .chars()
+            .take(MAX_PASTE_CHARS)
+            .map(|character| {
+                if character.is_control() {
+                    ' '
+                } else {
+                    character
+                }
+            })
+            .collect();
         if text.is_empty() {
             return self.response("rerender");
         }
@@ -290,7 +321,11 @@ impl ScooterEngine {
     fn should_hide(&self, key_event: KeyEvent) -> bool {
         self.hide.contains(&key_event)
             && !self.app.show_popup()
-            && !core_binding_active(&self.app.config.keys, &self.app.ui_state.current_screen, key_event)
+            && !core_binding_active(
+                &self.app.config.keys,
+                &self.app.ui_state.current_screen,
+                key_event,
+            )
     }
 
     fn active_runtime(&self) -> Option<&Runtime> {
@@ -310,7 +345,14 @@ impl ScooterEngine {
         if key_event != self.open_in_editor_bg {
             return None;
         }
-        self.app.config.keys.search.results.open_in_editor.first().copied()
+        self.app
+            .config
+            .keys
+            .search
+            .results
+            .open_in_editor
+            .first()
+            .copied()
     }
 
     fn drain_ready_events(&mut self, tag_launches_as_background: bool) -> bool {
@@ -426,9 +468,11 @@ fn core_binding_active(keys: &KeysConfig, screen: &Screen, key_event: KeyEvent) 
                 &keys.general.show_help_menu,
             ],
         },
-        Screen::PerformingReplacement(_) => {
-            &[&keys.general.quit, &keys.general.reset, &keys.general.show_help_menu]
-        }
+        Screen::PerformingReplacement(_) => &[
+            &keys.general.quit,
+            &keys.general.reset,
+            &keys.general.show_help_menu,
+        ],
         Screen::Results(_) => &[
             &keys.results.scroll_errors_down,
             &keys.results.scroll_errors_up,
@@ -444,7 +488,15 @@ fn core_binding_active(keys: &KeysConfig, screen: &Screen, key_event: KeyEvent) 
 fn validate_hide_bindings(bindings: &[KeyEvent]) -> Result<(), String> {
     if let Some(binding) = bindings.iter().find(|binding| {
         (matches!(binding.code, KeyCode::Char(_)) && binding.modifiers == KeyModifiers::NONE)
-            || matches!(binding.code, KeyCode::Backspace | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End)
+            || matches!(
+                binding.code,
+                KeyCode::Backspace
+                    | KeyCode::Delete
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Home
+                    | KeyCode::End
+            )
     }) {
         return Err(format!(
             "Invalid plugin.hide binding '{binding}': it is text input or editing input in search fields; use esc or a modified chord."
@@ -464,8 +516,14 @@ fn validate_background_open_binding(keys: &KeysConfig, binding: KeyEvent) -> Res
         (&keys.general.quit, "general.quit"),
         (&keys.general.reset, "general.reset"),
         (&keys.general.show_help_menu, "general.show_help_menu"),
-        (&keys.search.toggle_preview_wrapping, "search.toggle_preview_wrapping"),
-        (&keys.search.toggle_hidden_files, "search.toggle_hidden_files"),
+        (
+            &keys.search.toggle_preview_wrapping,
+            "search.toggle_preview_wrapping",
+        ),
+        (
+            &keys.search.toggle_hidden_files,
+            "search.toggle_hidden_files",
+        ),
         (&keys.search.toggle_multiline, "search.toggle_multiline"),
         (
             &keys.search.toggle_interpret_escape_sequences,
@@ -475,8 +533,14 @@ fn validate_background_open_binding(keys: &KeysConfig, binding: KeyEvent) -> Res
             &keys.search.fields.unlock_prepopulated_fields,
             "search.fields.unlock_prepopulated_fields",
         ),
-        (&keys.search.fields.trigger_search, "search.fields.trigger_search"),
-        (&keys.search.fields.focus_next_field, "search.fields.focus_next_field"),
+        (
+            &keys.search.fields.trigger_search,
+            "search.fields.trigger_search",
+        ),
+        (
+            &keys.search.fields.focus_next_field,
+            "search.fields.focus_next_field",
+        ),
         (
             &keys.search.fields.focus_previous_field,
             "search.fields.focus_previous_field",
@@ -485,8 +549,14 @@ fn validate_background_open_binding(keys: &KeysConfig, binding: KeyEvent) -> Res
             &keys.search.results.trigger_replacement,
             "search.results.trigger_replacement",
         ),
-        (&keys.search.results.back_to_fields, "search.results.back_to_fields"),
-        (&keys.search.results.open_in_editor, "search.results.open_in_editor"),
+        (
+            &keys.search.results.back_to_fields,
+            "search.results.back_to_fields",
+        ),
+        (
+            &keys.search.results.open_in_editor,
+            "search.results.open_in_editor",
+        ),
         (&keys.search.results.move_down, "search.results.move_down"),
         (&keys.search.results.move_up, "search.results.move_up"),
         (
@@ -506,7 +576,10 @@ fn validate_background_open_binding(keys: &KeysConfig, binding: KeyEvent) -> Res
             "search.results.move_up_full_page",
         ),
         (&keys.search.results.move_top, "search.results.move_top"),
-        (&keys.search.results.move_bottom, "search.results.move_bottom"),
+        (
+            &keys.search.results.move_bottom,
+            "search.results.move_bottom",
+        ),
         (
             &keys.search.results.toggle_selected_inclusion,
             "search.results.toggle_selected_inclusion",
@@ -568,7 +641,7 @@ mod tests {
 
     use crate::options::{EngineOptions, OptionEntry};
 
-    use super::{DRAIN_LIMIT, EngineAction, ScooterEngine};
+    use super::{DRAIN_LIMIT, MAX_PASTE_CHARS, EngineAction, ScooterEngine};
 
     #[test]
     fn engine_creation_returns_core_key_conflict_errors() {
@@ -582,6 +655,18 @@ mod tests {
         };
         assert!(error.contains("C-r"), "{error}");
         assert!(error.to_lowercase().contains("conflict"), "{error}");
+    }
+
+    #[test]
+    fn engine_creation_reports_a_deleted_working_directory_cleanly() {
+        let fixture = tempdir().expect("fixture directory");
+        let directory = fixture.path().join("gone");
+        fs::create_dir(&directory).expect("create fixture directory");
+        fs::remove_dir(&directory).expect("remove fixture directory");
+        let Err(error) = ScooterEngine::new(&directory) else {
+            panic!("deleted cwd must not make a session");
+        };
+        assert!(error.contains("Cannot start Scooter"), "{error}");
     }
 
     #[test]
@@ -928,10 +1013,10 @@ mod tests {
         let fixture = tempdir().expect("fixture directory");
         let expected_path = fixture.path().join("selected.txt");
         fs::write(&expected_path, "alpha result\n").expect("write fixture");
-        let options = EngineOptions::from_entries([OptionEntry::keys(
-            "keys.search.results.open_in_editor",
-            &["o", "e"],
-        ), OptionEntry::keys("keys.plugin.open_in_editor_bg", &["A-p"])])
+        let options = EngineOptions::from_entries([
+            OptionEntry::keys("keys.search.results.open_in_editor", &["o", "e"]),
+            OptionEntry::keys("keys.plugin.open_in_editor_bg", &["A-p"]),
+        ])
         .expect("options parse");
         let mut engine =
             ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
@@ -1036,17 +1121,18 @@ mod tests {
             ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
         assert_eq!(engine.handle_key("q", 2), "rerender");
         assert!(engine.app.run_config.include_hidden);
-        assert_eq!(engine.forwarded_key_events.last().unwrap().to_string(), "C-q");
+        assert_eq!(
+            engine.forwarded_key_events.last().unwrap().to_string(),
+            "C-q"
+        );
     }
 
     #[test]
     fn hide_binding_hides_from_both_search_focuses_and_results_screen() {
         let fixture = tempdir().expect("fixture directory");
-        let options = EngineOptions::from_entries([OptionEntry::keys(
-            "keys.plugin.hide",
-            &["C-q", "F12"],
-        )])
-        .expect("options parse");
+        let options =
+            EngineOptions::from_entries([OptionEntry::keys("keys.plugin.hide", &["C-q", "F12"])])
+                .expect("options parse");
         let mut engine =
             ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");
         assert_eq!(engine.handle_key("q", 2), "hide");
@@ -1081,12 +1167,16 @@ mod tests {
     #[test]
     fn editing_key_hide_binding_is_rejected_at_session_creation() {
         let fixture = tempdir().expect("fixture directory");
-        let options = EngineOptions::from_entries([OptionEntry::keys("keys.plugin.hide", &["backspace"])])
-            .expect("options parse");
+        let options =
+            EngineOptions::from_entries([OptionEntry::keys("keys.plugin.hide", &["backspace"])])
+                .expect("options parse");
         let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
             panic!("field editing key must not be a hide binding");
         };
-        assert!(error.contains("Invalid plugin.hide binding 'backspace'"), "{error}");
+        assert!(
+            error.contains("Invalid plugin.hide binding 'backspace'"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -1100,7 +1190,10 @@ mod tests {
         let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
             panic!("background open without foreground binding must fail");
         };
-        assert!(error.contains("requires search.results.open_in_editor"), "{error}");
+        assert!(
+            error.contains("requires search.results.open_in_editor"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -1121,13 +1214,25 @@ mod tests {
     }
 
     #[test]
+    fn paste_is_bounded_and_strips_terminal_controls() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        let input = format!("a\u{1b}[31m{}", "z".repeat(MAX_PASTE_CHARS + 10));
+        assert_eq!(engine.paste(&input).status, "rerender");
+        assert_eq!(engine.forwarded_key_events.len(), MAX_PASTE_CHARS);
+        assert!(!engine.forwarded_key_events.iter().any(|event| {
+            matches!(event.code, KeyCode::Char(character) if character.is_control())
+        }));
+    }
+
+    #[test]
     fn configured_background_binding_is_injected_into_results_help_only() {
         let fixture = tempdir().expect("fixture directory");
         fs::write(fixture.path().join("match.txt"), "alpha\n").expect("write fixture");
-        let options = EngineOptions::from_entries([OptionEntry::keys(
-            "keys.plugin.open_in_editor_bg",
-            &["A-p"],
-        ), OptionEntry::keys("keys.plugin.hide", &["C-q"])])
+        let options = EngineOptions::from_entries([
+            OptionEntry::keys("keys.plugin.open_in_editor_bg", &["A-p"]),
+            OptionEntry::keys("keys.plugin.hide", &["C-q"]),
+        ])
         .expect("options parse");
         let mut engine =
             ScooterEngine::new_with_options(fixture.path(), options).expect("engine initialises");

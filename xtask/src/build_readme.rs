@@ -5,11 +5,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use cargo_metadata::MetadataCommand;
 use scooter_core::config::KeysConfig;
 use scooter_hx::docs::{option_specs, plugin_key_specs};
-use syn::{parse_file, Attribute, Fields, Item, ItemStruct, Meta};
+use syn::{Attribute, Fields, Item, ItemStruct, Meta, parse_file};
 
 const TOC_START: &str = "<!-- TOC START -->";
 const TOC_END: &str = "<!-- TOC END -->";
@@ -140,8 +140,12 @@ fn scooter_core_version() -> Result<String> {
 
 fn key_description<'a>(path: &str, descriptions: &'a HashMap<String, String>) -> Result<&'a str> {
     match path {
-        "search.fields.unlock_prepopulated_fields" => Ok("Allow editing of prepopulated search fields."),
-        "search.results.open_in_editor" => Ok("Open the selected result in Helix and hide Scooter."),
+        "search.fields.unlock_prepopulated_fields" => {
+            Ok("Allow editing of prepopulated search fields.")
+        }
+        "search.results.open_in_editor" => {
+            Ok("Open the selected result in Helix and hide Scooter.")
+        }
         _ => descriptions
             .get(path)
             .map(String::as_str)

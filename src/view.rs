@@ -1,6 +1,11 @@
 //! Native frame model for Scooter's search-fields screen.
 
-use std::{cmp::min, io, path::Path, sync::{Arc, atomic::Ordering}};
+use std::{
+    cmp::min,
+    io,
+    path::Path,
+    sync::{Arc, atomic::Ordering},
+};
 
 use crate::highlight::{HighlightEngine, HighlightSpan};
 
@@ -8,9 +13,9 @@ use scooter_core::{
     app::{App, FocussedSection, InputSource, Popup, Screen, SearchPhase, SearchState},
     diff::line_diff,
     fields::{Field, NUM_SEARCH_FIELDS, SearchField},
+    keyboard::{KeyCode, KeyEvent, KeyModifiers},
     replace::{PerformingReplacementState, ReplaceState},
     search::{MatchContent, SearchResultWithReplacement},
-    keyboard::{KeyCode, KeyEvent, KeyModifiers},
     utils::{read_lines_range, relative_path, strip_control_chars},
 };
 use unicode_width::UnicodeWidthChar;
@@ -1422,7 +1427,8 @@ fn build_preview_sections(
         highlight_engine,
         syntax_highlighting,
     )?;
-    let selected_position = preview_read.lines
+    let selected_position = preview_read
+        .lines
         .iter()
         .position(|line| line.number == line_index)
         .ok_or_else(|| "File content has changed".to_string())?;
@@ -1431,7 +1437,8 @@ fn build_preview_sections(
         return Err("File content has changed".to_string());
     }
 
-    let (before, after) = centered_context_lines(preview_read.lines, selected_position, context_height);
+    let (before, after) =
+        centered_context_lines(preview_read.lines, selected_position, context_height);
     let end_line_index = result.search_result.end_line_number().saturating_sub(1);
     Ok(PreviewSections {
         before: context_preview_lines(&before, preview_read.spans.as_deref()),
@@ -1485,7 +1492,10 @@ fn read_preview_window(
             Ok(PreviewRead { lines, spans: None })
         }
         InputSource::Stdin(stdin) => Ok(PreviewRead {
-            lines: stdin.lines().enumerate().skip(start)
+            lines: stdin
+                .lines()
+                .enumerate()
+                .skip(start)
                 .take(end.saturating_sub(start).saturating_add(1))
                 .map(|(number, text)| IndexedLine {
                     number,
@@ -1520,7 +1530,9 @@ fn indexed_lines_in_window(content: &str, start: usize, end: usize) -> ContextLi
             continue;
         }
         let without_newline = raw_line.strip_suffix('\n').unwrap_or(raw_line);
-        let text = without_newline.strip_suffix('\r').unwrap_or(without_newline);
+        let text = without_newline
+            .strip_suffix('\r')
+            .unwrap_or(without_newline);
         lines.push(IndexedLine {
             number,
             text: text.to_string(),
@@ -1567,7 +1579,10 @@ fn expected_first_line_content(result: &SearchResultWithReplacement) -> &str {
     }
 }
 
-fn context_preview_lines(lines: &[IndexedLine], spans: Option<&[HighlightSpan]>) -> Vec<PreviewLine> {
+fn context_preview_lines(
+    lines: &[IndexedLine],
+    spans: Option<&[HighlightSpan]>,
+) -> Vec<PreviewLine> {
     let Some(spans) = spans else {
         return lines
             .iter()
@@ -1616,19 +1631,19 @@ fn context_preview_line(source: &IndexedLine, spans: Option<&[HighlightSpan]>) -
         if start >= end || start < position {
             continue;
         }
-        let Some(plain) = source.text.get(position.saturating_sub(byte_offset)..start.saturating_sub(byte_offset))
+        let Some(plain) = source
+            .text
+            .get(position.saturating_sub(byte_offset)..start.saturating_sub(byte_offset))
         else {
             return plain_context_preview_line(source);
         };
-        let Some(highlighted) = source.text.get(start.saturating_sub(byte_offset)..end.saturating_sub(byte_offset))
+        let Some(highlighted) = source
+            .text
+            .get(start.saturating_sub(byte_offset)..end.saturating_sub(byte_offset))
         else {
             return plain_context_preview_line(source);
         };
-        push_preview_segment(
-            &mut preview_line,
-            plain,
-            StyleTag::Text,
-        );
+        push_preview_segment(&mut preview_line, plain, StyleTag::Text);
         push_preview_segment(
             &mut preview_line,
             highlighted,
@@ -1639,11 +1654,7 @@ fn context_preview_line(source: &IndexedLine, spans: Option<&[HighlightSpan]>) -
     let Some(tail) = source.text.get(position.saturating_sub(byte_offset)..) else {
         return plain_context_preview_line(source);
     };
-    push_preview_segment(
-        &mut preview_line,
-        tail,
-        StyleTag::Text,
-    );
+    push_preview_segment(&mut preview_line, tail, StyleTag::Text);
     preview_line
 }
 
@@ -1968,9 +1979,9 @@ mod tests {
     use crate::{engine::ScooterEngine, highlight::HighlightEngine};
 
     use super::{
-        Frame, HighlightSpan, IndexedLine, PopupLine, StyleTag, context_preview_line, context_preview_lines,
-        diff_lines, display_width, preview_read_error, read_preview_window, render_paragraph_popup,
-        render_results_tallies, truncate,
+        Frame, HighlightSpan, IndexedLine, PopupLine, StyleTag, context_preview_line,
+        context_preview_lines, diff_lines, display_width, preview_read_error, read_preview_window,
+        render_paragraph_popup, render_results_tallies, truncate,
     };
 
     #[test]
@@ -2109,31 +2120,74 @@ mod tests {
             }]),
         );
         assert_eq!(
-            line.segments.iter().map(|segment| segment.text.as_str()).collect::<String>(),
+            line.segments
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect::<String>(),
             "  éclair"
         );
-        assert!(line.segments.iter().all(|segment| segment.tag == StyleTag::Text));
+        assert!(
+            line.segments
+                .iter()
+                .all(|segment| segment.tag == StyleTag::Text)
+        );
     }
 
     #[test]
     fn context_span_cursor_respects_line_boundaries_and_zero_length_spans() {
         let lines = vec![
-            IndexedLine { number: 0, text: "a".to_string(), byte_offset: Some(0) },
-            IndexedLine { number: 1, text: "b".to_string(), byte_offset: Some(2) },
-            IndexedLine { number: 2, text: "c".to_string(), byte_offset: Some(4) },
+            IndexedLine {
+                number: 0,
+                text: "a".to_string(),
+                byte_offset: Some(0),
+            },
+            IndexedLine {
+                number: 1,
+                text: "b".to_string(),
+                byte_offset: Some(2),
+            },
+            IndexedLine {
+                number: 2,
+                text: "c".to_string(),
+                byte_offset: Some(4),
+            },
         ];
         let scope = Arc::from("keyword");
         let previews = context_preview_lines(
             &lines,
             Some(&[
-                HighlightSpan { byte_range: 0..0, scope: Arc::clone(&scope) },
-                HighlightSpan { byte_range: 0..2, scope: Arc::clone(&scope) },
-                HighlightSpan { byte_range: 1..5, scope: Arc::clone(&scope) },
+                HighlightSpan {
+                    byte_range: 0..0,
+                    scope: Arc::clone(&scope),
+                },
+                HighlightSpan {
+                    byte_range: 0..2,
+                    scope: Arc::clone(&scope),
+                },
+                HighlightSpan {
+                    byte_range: 1..5,
+                    scope: Arc::clone(&scope),
+                },
             ]),
         );
-        assert!(previews[0].segments.iter().any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope))));
-        assert!(previews[1].segments.iter().any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope))));
-        assert!(previews[2].segments.iter().any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope))));
+        assert!(
+            previews[0]
+                .segments
+                .iter()
+                .any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope)))
+        );
+        assert!(
+            previews[1]
+                .segments
+                .iter()
+                .any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope)))
+        );
+        assert!(
+            previews[2]
+                .segments
+                .iter()
+                .any(|segment| segment.tag == StyleTag::Scope(Arc::clone(&scope)))
+        );
     }
 
     #[test]

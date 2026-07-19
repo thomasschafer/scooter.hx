@@ -28,6 +28,14 @@ fi
 rm -rf "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR" "$RUST_PREVIEW_FIXTURE_DIR" "$LIFECYCLE_FIXTURE_DIR"
 mkdir -p "$XDG_CONFIG_HOME/helix" "$XDG_CACHE_HOME" "$FIXTURE_DIR" "$SEARCH_FIXTURE_DIR" "$PREVIEW_FIXTURE_DIR" "$RUST_PREVIEW_FIXTURE_DIR" "$LIFECYCLE_FIXTURE_DIR"
 
+# DEF1's intentionally skeletal theme has no inherited scopes or background.
+# It exercises every style-table fallback through the real Helix renderer.
+if [[ "${E2E_PATHOLOGICAL_THEME:-0}" == "1" ]]; then
+  mkdir -p "$XDG_CONFIG_HOME/helix/themes"
+  printf '%s\n' '"ui.cursor" = { fg = "white" }' \
+    > "$XDG_CONFIG_HOME/helix/themes/def1_pathological.toml"
+fi
+
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
 # A themed popup exposes accidental inheritance between the field, popup, and
 # border runs.  The caller may select Helix's built-in default theme as a
