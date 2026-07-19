@@ -231,12 +231,16 @@
          [popup-style (hash-ref styles "popup")])
     (buffer/clear frame window-area)
     (block/render frame window-area (make-block popup-style popup-style "all" "plain"))
-    (when (> (area-width window-area) 2)
-      (frame-set-string! frame
-                         (+ (area-x window-area) 2)
-                         (area-y window-area)
-                         " Scooter "
-                         popup-style))
+    (let ([title " scooter "])
+      (when (> (area-width window-area) (string-length title))
+        (frame-set-string! frame
+                           (+ (area-x window-area)
+                              (quotient (- (area-width window-area)
+                                           (string-length title))
+                                        2))
+                           (area-y window-area)
+                           title
+                           popup-style)))
     (for-each (lambda (run) (blit-run! frame content-area styles scope-cache run))
               (Scooter-render engine
                               (area-width content-area)
