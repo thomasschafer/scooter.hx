@@ -85,6 +85,24 @@ e2e_wait_for_present 'Key binding conflict detected!'
 e2e_wait_for_absent 'Search text'
 e2e_cleanup
 
+# Two plugin bindings must also be unique.  This follows the same
+# session-creation path and must leave the Scooter window unopened.
+printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
+printf '%s\n' '(scooter-keys! "plugin.open_in_editor_bg" "A-p")' >> "$XDG_CONFIG_HOME/helix/init.scm"
+printf '%s\n' '(scooter-keys! "plugin.hide" "A-p")' >> "$XDG_CONFIG_HOME/helix/init.scm"
+TMUX_SOCKET="scooter-par1-plugin-conflict-${PPID}-${RANDOM}"
+TMUX_SESSION="scooter-par1-plugin-conflict"
+PANE_TARGET="$TMUX_SESSION:0.0"
+tmux -L "$TMUX_SOCKET" new-session -d -x 120 -y 40 -s "$TMUX_SESSION" \
+  -c "$SEARCH_FIXTURE_DIR" "$HX_BINARY" one.txt \
+  || e2e_fail 'could not start the plugin-conflicting Helix tmux session'
+e2e_wait_for_helix
+e2e_wait_for_present 'alpha one'
+tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
+e2e_wait_for_present 'Key binding conflict detected!'
+e2e_wait_for_absent 'Search text'
+e2e_cleanup
+
 # Default Escape hides from fields. A custom, otherwise-unbound hide chord
 # works from results focus and from the post-replacement Results screen.
 printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"

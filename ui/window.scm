@@ -322,7 +322,12 @@
   (align_view_center))
 
 (define (reload-non-dirty-documents!)
-  (for-each editor-document-reload
+  ;; A deleted or otherwise unavailable file can make Helix reload throw.
+  ;; Handle that document locally so one stale buffer cannot prevent the rest
+  ;; of the non-dirty documents from being refreshed after a replacement.
+  (for-each (lambda (document)
+              (with-handler (lambda (_) #f)
+                (editor-document-reload document)))
             (filter (lambda (document) (not (editor-document-dirty? document)))
                     (editor-all-documents))))
 

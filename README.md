@@ -94,7 +94,7 @@ settings until then.
 | `multiline` | boolean | `#f` | Allow search patterns to match across line boundaries. |
 | `hidden` | boolean | `#f` | Include hidden files and directories. |
 | `advanced-regex` | boolean | `#f` | Enable Scooter's advanced regular-expression engine. |
-| `include-git-folders` | boolean | `#f` | Search Git metadata directories as well as normal files. |
+| `include-git-folders` | boolean | `#f` | Search Git metadata directories when hidden files are also enabled. |
 | `escape-sequences` | boolean | `#f` | Interpret `\n`, `\t`, and `\\` in replacement text. |
 | `wrap-text` | boolean | `#f` | Wrap long preview lines. |
 | `syntax-highlighting` | boolean | `#t` | Highlight preview context with Helix runtime grammars and your Helix theme, rendered on the editor background (a deliberate difference from the TUI). |

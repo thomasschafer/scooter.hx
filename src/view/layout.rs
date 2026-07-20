@@ -5,6 +5,8 @@ pub(super) struct FieldsLayout {
     pub(super) x: usize,
     pub(super) y: usize,
     pub(super) width: usize,
+    /// Index of the first search field rendered in this viewport.
+    pub(super) first: usize,
     pub(super) count: usize,
     pub(super) banner_y: usize,
 }
@@ -35,17 +37,24 @@ pub(super) fn fields_layout(
     height: usize,
     requested_count: usize,
     field_height: usize,
+    focussed_field: Option<usize>,
 ) -> FieldsLayout {
     let count = requested_count.min(height / field_height);
     let fields_height = count * field_height;
     // Match the TUI: fields at the top of the content area, a one-row gap,
     // then the results banner and list fill the remaining height.
     let (x, width) = default_content_width(frame_width);
+    // Preserve the conventional first-N layout until focus leaves it.  Then
+    // move the viewport just far enough to keep the focussed field visible.
+    let first = focussed_field
+        .filter(|&index| index >= count)
+        .map_or(0, |index| index + 1 - count);
 
     FieldsLayout {
         x,
         y: 0,
         width,
+        first,
         count,
         banner_y: fields_height + 1,
     }
@@ -88,8 +97,21 @@ mod tests {
     fn content_uses_two_cell_horizontal_gutters() {
         assert_eq!(default_content_width(80), (2, 76));
 
-        let fields = fields_layout(80, 20, 2, 3);
+        let fields = fields_layout(80, 20, 2, 3, None);
         assert_eq!((fields.x, fields.width), (2, 76));
+    }
+
+    #[test]
+    fn field_viewport_keeps_focussed_field_visible() {
+        let fields = fields_layout(80, 11, 7, 3, Some(6));
+        assert_eq!((fields.first, fields.count), (4, 3));
+
+        let fields = fields_layout(80, 11, 7, 3, Some(2));
+        assert_eq!((fields.first, fields.count), (0, 3));
+
+        // Results focus deliberately retains the first two fields.
+        let fields = fields_layout(80, 11, 2, 3, None);
+        assert_eq!((fields.first, fields.count), (0, 2));
     }
 
     #[test]

@@ -100,6 +100,7 @@ impl ScooterEngine {
         let _guard = runtime.enter();
         validate_background_open_binding(&options.config.keys, options.open_in_editor_bg)?;
         validate_hide_bindings(&options.hide)?;
+        validate_plugin_binding_collisions(&options.hide, options.open_in_editor_bg)?;
         let highlight_engine = HighlightEngine::new(options.runtime_dir.clone());
         let app = App::new(
             InputSource::Directory(directory),
@@ -500,6 +501,18 @@ fn validate_hide_bindings(bindings: &[KeyEvent]) -> Result<(), String> {
     }) {
         return Err(format!(
             "Invalid plugin.hide binding '{binding}': it is text input or editing input in search fields; use esc or a modified chord."
+        ));
+    }
+    Ok(())
+}
+
+fn validate_plugin_binding_collisions(
+    hide_bindings: &[KeyEvent],
+    background_open: KeyEvent,
+) -> Result<(), String> {
+    if hide_bindings.contains(&background_open) {
+        return Err(format!(
+            "Key binding conflict detected!\n\nThe key '{background_open}' is bound to multiple commands in [keys.plugin]:\n  1. hide\n  2. open_in_editor_bg\n\nPlease update your config to use unique key bindings."
         ));
     }
     Ok(())
@@ -1178,6 +1191,30 @@ mod tests {
             error.contains("Invalid plugin.hide binding 'backspace'"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn colliding_plugin_bindings_are_rejected_at_session_creation() {
+        let fixture = tempdir().expect("fixture directory");
+        let options = EngineOptions::from_entries([
+            OptionEntry::keys("keys.plugin.hide", &["A-p"]),
+            OptionEntry::keys("keys.plugin.open_in_editor_bg", &["A-p"]),
+        ])
+        .expect("options parse");
+        let Err(error) = ScooterEngine::new_with_options(fixture.path(), options) else {
+            panic!("colliding plugin bindings must not open a session");
+        };
+        assert!(error.contains("Key binding conflict detected!"), "{error}");
+        assert!(error.contains("hide"), "{error}");
+        assert!(error.contains("open_in_editor_bg"), "{error}");
+
+        let options = EngineOptions::from_entries([
+            OptionEntry::keys("keys.plugin.hide", &["C-q"]),
+            OptionEntry::keys("keys.plugin.open_in_editor_bg", &["A-p"]),
+        ])
+        .expect("options parse");
+        ScooterEngine::new_with_options(fixture.path(), options)
+            .expect("non-colliding plugin bindings open a session");
     }
 
     #[test]

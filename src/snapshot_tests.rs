@@ -291,6 +291,16 @@ fn fields_fresh_and_populated() {
 }
 
 #[test]
+fn small_window_keeps_tabbed_field_visible() {
+    let (_fixture, mut engine) = engine_with_fixture("nothing to find\n");
+    for _ in 0..6 {
+        press(&mut engine, "tab", 0);
+    }
+    assert_eq!(engine.app.search_fields.highlighted, 6);
+    assert_frame(&mut engine, "small_window_tabbed_field_visible", (80, 12));
+}
+
+#[test]
 fn field_error_popup_and_closed_error() {
     let (_fixture, mut engine) = engine_with_fixture("alpha\n");
     type_text(&mut engine, "(");

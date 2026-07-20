@@ -105,21 +105,28 @@ pub(crate) fn render(
             } else {
                 FIELD_COUNT_WHEN_RESULTS_FOCUSSED
             };
-            let layout = fields_layout(width, content_height, requested_count, FIELD_HEIGHT);
+            let layout = fields_layout(
+                width,
+                content_height,
+                requested_count,
+                FIELD_HEIGHT,
+                fields_focussed.then_some(app.search_fields.highlighted),
+            );
 
             for (index, field) in app
                 .search_fields
                 .fields
                 .iter()
-                .take(layout.count)
                 .enumerate()
+                .skip(layout.first)
+                .take(layout.count)
             {
                 let highlighted = fields_focussed && index == app.search_fields.highlighted;
                 render_field(
                     &mut frame.runs,
                     field,
                     layout,
-                    index,
+                    index - layout.first,
                     highlighted,
                     width,
                     content_height,
@@ -221,7 +228,14 @@ pub(crate) fn cursor(app: &App, width: usize, height: usize) -> Option<(usize, u
     let content_height = height.saturating_sub(1);
     field_cursor(
         app,
-        fields_layout(width, content_height, requested_count, FIELD_HEIGHT),
+        fields_layout(
+            width,
+            content_height,
+            requested_count,
+            FIELD_HEIGHT,
+            (search_fields_state.focussed_section == FocussedSection::SearchFields)
+                .then_some(app.search_fields.highlighted),
+        ),
         content_height,
     )
 }
@@ -720,18 +734,61 @@ fn field_cursor(app: &App, layout: FieldsLayout, height: usize) -> Option<(usize
     }
 
     let index = app.search_fields.highlighted;
-    let cursor_offset = app.search_fields.highlighted_field().cursor_pos()?;
-    let field_y = layout.y + index * FIELD_HEIGHT;
-    if index >= layout.count || layout.width <= 2 || field_y.saturating_add(1) >= height {
+    let field = app.search_fields.highlighted_field();
+    let cursor_offset = field.cursor_pos()?;
+    let Field::Text(text) = &field.field else {
+        return None;
+    };
+    if !(layout.first..layout.first + layout.count).contains(&index) || layout.width <= 2 {
+        return None;
+    }
+    let field_y = layout.y + (index - layout.first) * FIELD_HEIGHT;
+    if field_y.saturating_add(1) >= height {
         return None;
     }
 
     let inner_left = layout.x + 1;
     let inner_right = layout.x + layout.width - 2;
+    let scroll_offset = text_scroll_offset(text.text(), cursor_offset, layout.width - 2);
     Some((
-        min(inner_left.saturating_add(cursor_offset), inner_right),
+        inner_left
+            .saturating_add(cursor_offset.saturating_sub(scroll_offset))
+            .min(inner_right),
         field_y + 1,
     ))
+}
+
+/// Find the display-column offset of a single-line input viewport.  The
+/// cursor remains within `inner_width` columns and the returned offset always
+/// lands on a character boundary, including for double-width Unicode text.
+fn text_scroll_offset(value: &str, cursor_column: usize, inner_width: usize) -> usize {
+    if inner_width == 0 {
+        return 0;
+    }
+
+    let minimum_offset = cursor_column.saturating_sub(inner_width - 1);
+    let mut offset = 0;
+    for (byte_index, character) in value.char_indices() {
+        if offset >= minimum_offset {
+            break;
+        }
+        offset = display_width(&value[..byte_index + character.len_utf8()]);
+    }
+    offset
+}
+
+fn text_from_display_offset(value: &str, offset: usize) -> &str {
+    if offset == 0 {
+        return value;
+    }
+
+    for (byte_index, character) in value.char_indices() {
+        let end = byte_index + character.len_utf8();
+        if display_width(&value[..end]) >= offset {
+            return &value[end..];
+        }
+    }
+    &value[value.len()..]
 }
 
 fn render_field(
@@ -858,7 +915,10 @@ fn render_text_field(
         frame_width,
         frame_height,
     );
-    let value = truncate(value, field_width.saturating_sub(2));
+    let inner_width = field_width.saturating_sub(2);
+    let cursor_column = field.cursor_pos().unwrap_or(0);
+    let scroll_offset = text_scroll_offset(value, cursor_column, inner_width);
+    let value = truncate(text_from_display_offset(value, scroll_offset), inner_width);
     add_run(
         runs,
         x + 1,
@@ -1973,6 +2033,7 @@ mod tests {
     use scooter_core::{
         app::{InputSource, Popup, Screen, SearchPhase},
         errors::AppError,
+        fields::{Field, NUM_SEARCH_FIELDS},
         line_reader::LineEnding,
         replace::{PerformingReplacementState, ReplaceResult, ReplaceState},
         search::{ByteRangeParams, Line, SearchResult, SearchResultWithReplacement},
@@ -1983,15 +2044,49 @@ mod tests {
     use crate::{engine::ScooterEngine, highlight::HighlightEngine};
 
     use super::{
-        Frame, HighlightSpan, IndexedLine, PopupLine, StyleTag, context_preview_line,
-        context_preview_lines, diff_lines, display_width, preview_read_error, read_preview_window,
-        render_paragraph_popup, render_results_tallies, truncate,
+        FIELD_HEIGHT, Frame, HighlightSpan, IndexedLine, PopupLine, StyleTag, context_preview_line,
+        context_preview_lines, diff_lines, display_width, fields_layout, preview_read_error,
+        read_preview_window, render_paragraph_popup, render_results_tallies, text_scroll_offset,
+        truncate,
     };
 
     #[test]
     fn truncates_by_display_width() {
         assert_eq!(truncate("a界b", 3), "a界");
         assert_eq!(truncate("a界b", 2), "a");
+    }
+
+    #[test]
+    fn text_viewport_scrolls_to_keep_the_cursor_visible() {
+        assert_eq!(text_scroll_offset("abcdefghij", 0, 5), 0);
+        assert_eq!(text_scroll_offset("abcdefghij", 4, 5), 0);
+        assert_eq!(text_scroll_offset("abcdefghij", 10, 5), 6);
+
+        // The offset is a character boundary rather than the middle of the
+        // double-width character before the cursor.
+        assert_eq!(text_scroll_offset("a界bc", 5, 3), 3);
+    }
+
+    #[test]
+    fn long_text_field_renders_the_cursor_viewport_at_both_ends() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        let Field::Text(field) = &mut engine.app.search_fields.fields[0].field else {
+            unreachable!("search is a text field");
+        };
+        field.set_text("abcdefghij");
+        field.set_cursor_idx(0);
+        let start = engine.render(10, 10);
+        assert!(start.runs.iter().any(|run| run.text == "abcd"));
+        assert_eq!(start.cursor, Some((3, 1)));
+
+        let Field::Text(field) = &mut engine.app.search_fields.fields[0].field else {
+            unreachable!("search is a text field");
+        };
+        field.set_cursor_idx(10);
+        let end = engine.render(10, 10);
+        assert!(end.runs.iter().any(|run| run.text == "hij"));
+        assert_eq!(end.cursor, Some((6, 1)));
     }
 
     #[test]
@@ -2304,6 +2399,45 @@ mod tests {
         );
 
         assert_all_sizes_are_well_formed(&mut engine);
+    }
+
+    #[test]
+    fn every_focussed_field_is_visible_across_the_size_grid() {
+        let fixture = tempdir().expect("fixture directory");
+        let mut engine = ScooterEngine::new(fixture.path()).expect("engine initialises");
+        let widths = [3, 10, 24, 80, 160];
+        let heights = [4, 10, 24, 40];
+
+        for highlighted in 0..NUM_SEARCH_FIELDS as usize {
+            engine.app.search_fields.highlighted = highlighted;
+            for width in widths {
+                for height in heights {
+                    let frame = engine.render(width, height);
+                    let layout = fields_layout(
+                        width,
+                        height - 1,
+                        NUM_SEARCH_FIELDS as usize,
+                        FIELD_HEIGHT,
+                        Some(highlighted),
+                    );
+                    assert!((layout.first..layout.first + layout.count).contains(&highlighted));
+                    assert!(
+                        frame.runs.iter().any(|run| {
+                            run.tag == StyleTag::FocusedField
+                                && run.y == (highlighted - layout.first) * FIELD_HEIGHT
+                        }),
+                        "field {highlighted} is not rendered at {width}x{height}"
+                    );
+                    if matches!(
+                        &engine.app.search_fields.fields[highlighted].field,
+                        Field::Text(_)
+                    ) {
+                        let cursor = frame.cursor.expect("focussed text field has a cursor");
+                        assert!(cursor.0 < width && cursor.1 < height);
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -89,7 +89,7 @@ const OPTION_SPECS: &[OptionSpec] = &[
         wire_path: "search.include-git-folders",
         value_type: "boolean",
         default: "`#f`",
-        description: "Search Git metadata directories as well as normal files.",
+        description: "Search Git metadata directories when hidden files are also enabled.",
         default_value: DefaultValue::Bool(false),
         apply: set_include_git_folders,
     },
