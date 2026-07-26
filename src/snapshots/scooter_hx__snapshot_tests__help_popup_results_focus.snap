@@ -1,0 +1,86 @@
+---
+source: src/snapshot_tests.rs
+expression: snapshot
+---
+canvas: 120x40
+00 |  ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+01 |  │alpha                                                                                                             │  |
+02 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+03 |  ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+04 |  │                                                                                                                  │  |
+05 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+06 |         ┌────────────────────────────────────────────────Help────────────────────────────────────────────────┐         |
+07 |  Results│ <space> toggle                                                                                     │0.000s]  |
+08 |         │     <a> toggle all                                                                                 │         |
+09 |  [x] fix│     <v> toggle multi-select mode                                                                   │         |
+10 |         │   <A-;> flip multi-select direction                                                                │         |
+11 |         │     <e> open in editor                                                                             │         |
+12 |         │   <A-o> open in background                                                                         │         |
+13 |         │   <esc> back to search fields                                                                      │         |
+14 |         │   <A-h> hide Scooter                                                                               │         |
+15 |         │     <j> down                                                                                       │         |
+16 |         │     <k> up                                                                                         │         |
+17 |         │   <C-u> up half a page                                                                             │         |
+18 |         │   <C-d> down half a page                                                                           │         |
+19 |         │   <C-b> up a full page                                                                             │         |
+20 |         │   <C-f> down a full page                                                                           │         |
+21 |         │     <g> jump to top                                                                                │         |
+22 |         │     <G> jump to bottom                                                                             │         |
+23 |         │ <enter> replace selected                                                                           │         |
+24 |         │   <C-l> toggle text wrapping in preview                                                            │         |
+25 |         │   <C-t> toggle hidden files                                                                        │         |
+26 |         │   <A-m> toggle multiline                                                                           │         |
+27 |         │   <A-e> toggle escape sequences                                                                    │         |
+28 |         │   <C-r> reset                                                                                      │         |
+29 |         │   <C-h> help                                                                                       │         |
+30 |         │   <esc> close popup / exit multi-select                                                            │         |
+31 |         │   <C-c> quit                                                                                       │         |
+32 |         └────────────────────────────────────────────────────────────────────────────────────────────────────┘         |
+33 |                                                                                                                        |
+34 |                                                                                                                        |
+35 |                                                                                                                        |
+36 |                                                                                                                        |
+37 |                                                                                                                        |
+38 |                                                                                                                        |
+39 |           <space> toggle / <esc> back to search fields / <enter> replace selected / <C-h> help / <C-c> quit            |
+tags:
+00: 2-118 text
+01: 2-8 text | 117-118 text
+02: 2-118 text
+03: 2-118 text
+04: 2-3 text | 117-118 text
+05: 2-118 text
+06: 9-58 popup-border | 58-62 popup | 62-111 popup-border
+07: 2-9 text | 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-25 text | 25-110 popup | 110-111 popup-border | 111-118 diff-added
+08: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-29 text | 29-110 popup | 110-111 popup-border
+09: 2-9 selection | 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-43 text | 43-110 popup | 110-111 popup-border | 111-118 preview
+10: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-46 text | 46-110 popup | 110-111 popup-border | 111-118 preview
+11: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-118 preview
+12: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-37 text | 37-110 popup | 110-111 popup-border | 111-118 preview
+13: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-40 text | 40-110 popup | 110-111 popup-border | 111-118 preview
+14: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-31 text | 31-110 popup | 110-111 popup-border | 111-118 preview
+15: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-118 preview
+16: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-21 text | 21-110 popup | 110-111 popup-border | 111-118 preview
+17: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-118 preview
+18: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-118 preview
+19: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-118 preview
+20: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-118 preview
+21: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-30 text | 30-110 popup | 110-111 popup-border | 111-118 preview
+22: 9-10 popup-border | 10-15 popup | 15-18 info | 18-19 popup | 19-33 text | 33-110 popup | 110-111 popup-border | 111-118 preview
+23: 9-10 popup-border | 10-11 popup | 11-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-118 preview
+24: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-118 preview
+25: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-38 text | 38-110 popup | 110-111 popup-border | 111-118 preview
+26: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-35 text | 35-110 popup | 110-111 popup-border | 111-118 preview
+27: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-42 text | 42-110 popup | 110-111 popup-border | 111-118 preview
+28: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-24 text | 24-110 popup | 110-111 popup-border | 111-118 preview
+29: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-118 preview
+30: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-50 text | 50-110 popup | 110-111 popup-border | 111-118 preview
+31: 9-10 popup-border | 10-13 popup | 13-18 info | 18-19 popup | 19-23 text | 23-110 popup | 110-111 popup-border | 111-118 preview
+32: 9-111 popup-border | 111-118 preview
+33: 49-118 preview
+34: 49-118 preview
+35: 49-118 preview
+36: 49-118 preview
+37: 49-118 preview
+38: 49-118 preview
+39: 11-108 info

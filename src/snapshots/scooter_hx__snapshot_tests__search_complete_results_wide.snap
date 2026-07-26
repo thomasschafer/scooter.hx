@@ -1,0 +1,94 @@
+---
+source: src/snapshot_tests.rs
+expression: snapshot
+---
+canvas: 160x45
+00 |  ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+01 |  │alpha                                                                                                                                                     │  |
+02 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+03 |  ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+04 |  │                                                                                                                                                          │  |
+05 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+06 |                                                                                                                                                                |
+07 |  Results: 3 [Search complete]                                                                                                            [Time taken: TIME]  |
+08 |                                                                                                                                                                |
+09 |  [x] fixture.txt:1                                          (1) - alpha one                                                                                    |
+10 |  [x] fixture.txt:2                                          (2) +  one                                                                                         |
+11 |  [x] fixture.txt:3                                          (3)   alpha two                                                                                    |
+12 |                                                                   alpha three                                                                                  |
+13 |                                                                                                                                                                |
+14 |                                                                                                                                                                |
+15 |                                                                                                                                                                |
+16 |                                                                                                                                                                |
+17 |                                                                                                                                                                |
+18 |                                                                                                                                                                |
+19 |                                                                                                                                                                |
+20 |                                                                                                                                                                |
+21 |                                                                                                                                                                |
+22 |                                                                                                                                                                |
+23 |                                                                                                                                                                |
+24 |                                                                                                                                                                |
+25 |                                                                                                                                                                |
+26 |                                                                                                                                                                |
+27 |                                                                                                                                                                |
+28 |                                                                                                                                                                |
+29 |                                                                                                                                                                |
+30 |                                                                                                                                                                |
+31 |                                                                                                                                                                |
+32 |                                                                                                                                                                |
+33 |                                                                                                                                                                |
+34 |                                                                                                                                                                |
+35 |                                                                                                                                                                |
+36 |                                                                                                                                                                |
+37 |                                                                                                                                                                |
+38 |                                                                                                                                                                |
+39 |                                                                                                                                                                |
+40 |                                                                                                                                                                |
+41 |                                                                                                                                                                |
+42 |                                                                                                                                                                |
+43 |                                                                                                                                                                |
+44 |                               <space> toggle / <esc> back to search fields / <enter> replace selected / <C-h> help / <C-c> quit                                |
+tags:
+00: 2-158 text
+01: 2-8 text | 157-158 text
+02: 2-158 text
+03: 2-158 text
+04: 2-3 text | 157-158 text
+05: 2-158 text
+07: 2-12 text | 12-30 diff-added | 138-158 diff-added
+09: 2-64 selection | 65-67 diff-removed | 67-72 diff-removed-emph | 72-76 diff-removed | 76-158 preview
+10: 2-6 info | 6-17 text | 17-19 info | 60-64 info | 65-71 diff-added | 71-158 preview
+11: 2-6 info | 6-17 text | 17-19 info | 60-64 info | 65-76 text | 76-158 preview
+12: 65-78 text | 78-158 preview
+13: 65-158 preview
+14: 65-158 preview
+15: 65-158 preview
+16: 65-158 preview
+17: 65-158 preview
+18: 65-158 preview
+19: 65-158 preview
+20: 65-158 preview
+21: 65-158 preview
+22: 65-158 preview
+23: 65-158 preview
+24: 65-158 preview
+25: 65-158 preview
+26: 65-158 preview
+27: 65-158 preview
+28: 65-158 preview
+29: 65-158 preview
+30: 65-158 preview
+31: 65-158 preview
+32: 65-158 preview
+33: 65-158 preview
+34: 65-158 preview
+35: 65-158 preview
+36: 65-158 preview
+37: 65-158 preview
+38: 65-158 preview
+39: 65-158 preview
+40: 65-158 preview
+41: 65-158 preview
+42: 65-158 preview
+43: 65-158 preview
+44: 31-128 info

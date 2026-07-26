@@ -1,0 +1,50 @@
+---
+source: src/snapshot_tests.rs
+expression: snapshot
+---
+canvas: 120x40
+00 |                                                                                                                        |
+01 |                                                                                                                        |
+02 |                                                                                                                        |
+03 |                                                                                                                        |
+04 |                                                                                                                        |
+05 |                                                                                                                        |
+06 |                                                                                                                        |
+07 |                                                                                                                        |
+08 |                                                                                                                        |
+09 |                                                                                                                        |
+10 |                                                                                                                        |
+11 |                                                                                                                        |
+12 |                                                                                                                        |
+13 |                                                                                                                        |
+14 |                                                                                                                        |
+15 |                                                                                                                        |
+16 |                                                                                                                        |
+17 |                                               Performing replacement...                                                |
+18 |                                                                                                                        |
+19 |                                                Completed: PROGRESS                                                 |
+20 |                                                      Time: TIME                                                      |
+21 |                                                                                                                        |
+22 |                                                                                                                        |
+23 |                                                                                                                        |
+24 |                                                                                                                        |
+25 |                                                                                                                        |
+26 |                                                                                                                        |
+27 |                                                                                                                        |
+28 |                                                                                                                        |
+29 |                                                                                                                        |
+30 |                                                                                                                        |
+31 |                                                                                                                        |
+32 |                                                                                                                        |
+33 |                                                                                                                        |
+34 |                                                                                                                        |
+35 |                                                                                                                        |
+36 |                                                                                                                        |
+37 |                                                                                                                        |
+38 |                                                                                                                        |
+39 |                                         <C-r> reset / <C-h> help / <C-c> quit                                          |
+tags:
+17: 47-72 text
+19: 48-71 info
+20: 54-66 info
+39: 41-78 info

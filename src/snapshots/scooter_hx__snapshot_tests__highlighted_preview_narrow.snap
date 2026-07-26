@@ -1,0 +1,84 @@
+---
+source: src/snapshot_tests.rs
+expression: snapshot
+---
+canvas: 120x40
+00 |  ┌─Search text──────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+01 |  │alpha                                                                                                             │  |
+02 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+03 |  ┌─Replace text─────────────────────────────────────────────────────────────────────────────────────────────────────┐  |
+04 |  │OMEGA                                                                                                             │  |
+05 |  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  |
+06 |                                                                                                                        |
+07 |  Results: 1 [Search complete]                                                                    [Time taken: TIME]  |
+08 |                                                                                                                        |
+09 |  [x] fixture.rs:2                           (1)   pub fn context_before_with_a_deliberately_long_name() { let value =  |
+10 |                                                 - let alpha = value;                                                   |
+11 |                                                 + let OMEGA = value;                                                   |
+12 |                                                   pub fn context_after() -> usize { 2 }                                |
+13 |                                                                                                                        |
+14 |                                                                                                                        |
+15 |                                                                                                                        |
+16 |                                                                                                                        |
+17 |                                                                                                                        |
+18 |                                                                                                                        |
+19 |                                                                                                                        |
+20 |                                                                                                                        |
+21 |                                                                                                                        |
+22 |                                                                                                                        |
+23 |                                                                                                                        |
+24 |                                                                                                                        |
+25 |                                                                                                                        |
+26 |                                                                                                                        |
+27 |                                                                                                                        |
+28 |                                                                                                                        |
+29 |                                                                                                                        |
+30 |                                                                                                                        |
+31 |                                                                                                                        |
+32 |                                                                                                                        |
+33 |                                                                                                                        |
+34 |                                                                                                                        |
+35 |                                                                                                                        |
+36 |                                                                                                                        |
+37 |                                                                                                                        |
+38 |                                                                                                                        |
+39 |           <space> toggle / <esc> back to search fields / <enter> replace selected / <C-h> help / <C-c> quit            |
+tags:
+00: 2-118 text
+01: 2-8 text | 117-118 text
+02: 2-118 text
+03: 2-118 text
+04: 2-8 text | 117-118 text
+05: 2-118 text
+07: 2-12 text | 12-30 diff-added | 98-118 diff-added
+09: 2-48 selection | 49-51 text | 51-54 s:keyword | 54-55 text | 55-57 s:keyword.function | 57-58 text | 58-102 s:function | 102-104 s:punctuation.bracket | 104-105 text | 105-106 s:punctuation.bracket | 106-107 text | 107-110 s:keyword.storage | 110-111 text | 111-116 s:variable | 116-117 text | 117-118 s:operator
+10: 49-55 diff-removed | 55-60 diff-removed-emph | 60-69 diff-removed | 69-118 preview
+11: 49-55 diff-added | 55-60 diff-added-emph | 60-69 diff-added | 69-118 preview
+12: 49-51 text | 51-54 s:keyword | 54-55 text | 55-57 s:keyword.function | 57-58 text | 58-71 s:function | 71-73 s:punctuation.bracket | 73-74 text | 74-76 s:operator | 76-77 text | 77-82 s:type.builtin | 82-83 text | 83-84 s:punctuation.bracket | 84-85 text | 85-86 s:constant.numeric.integer | 86-87 text | 87-88 s:punctuation.bracket | 88-118 preview
+13: 49-118 preview
+14: 49-118 preview
+15: 49-118 preview
+16: 49-118 preview
+17: 49-118 preview
+18: 49-118 preview
+19: 49-118 preview
+20: 49-118 preview
+21: 49-118 preview
+22: 49-118 preview
+23: 49-118 preview
+24: 49-118 preview
+25: 49-118 preview
+26: 49-118 preview
+27: 49-118 preview
+28: 49-118 preview
+29: 49-118 preview
+30: 49-118 preview
+31: 49-118 preview
+32: 49-118 preview
+33: 49-118 preview
+34: 49-118 preview
+35: 49-118 preview
+36: 49-118 preview
+37: 49-118 preview
+38: 49-118 preview
+39: 11-108 info

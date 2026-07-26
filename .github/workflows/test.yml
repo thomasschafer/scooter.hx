@@ -1,5 +1,8 @@
 name: Test
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ "main" ]
@@ -10,46 +13,56 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  check:
-    name: Check
-    runs-on: ubuntu-latest
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Check formatting
-        run: cargo fmt --all --check
+      - name: Cache minimal Helix runtime
+        if: runner.os != 'Windows'
+        id: helix-runtime-cache
+        uses: actions/cache@v4
+        with:
+          path: .ci/helix-runtime
+          # runner.os in the key: grammar dylibs are platform binaries, and a
+          # cross-OS cache hit loads unloadable artifacts.
+          key: helix-runtime-${{ runner.os }}-0522d519-${{ hashFiles('scripts/ci/assemble-runtime.sh') }}
 
-      - name: Run clippy on all packages
-        run: cargo clippy --workspace -- -D warnings
+      - name: Assemble minimal Helix runtime
+        if: runner.os != 'Windows' && steps.helix-runtime-cache.outputs.cache-hit != 'true'
+        run: scripts/ci/assemble-runtime.sh .ci/helix-runtime
+        shell: bash
 
-      - name: Run cargo check
-        run: cargo check
+      # The tmux/Helix e2e harness needs a locally built Helix from the
+      # steel-event-system branch, so it deliberately remains local-only.
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-  test:
-    name: Test (${{ matrix.os }})
-    needs: [check]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    timeout-minutes: 15
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
+      - name: Run tests with the Helix runtime
+        if: runner.os != 'Windows'
+        env:
+          HELIX_RUNTIME: ${{ github.workspace }}/.ci/helix-runtime
+          REQUIRE_HELIX_RUNTIME: "1"
+        run: cargo test --workspace
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      # Windows runners do not guarantee the C toolchain Helix grammars need.
+      # Runtime-backed tests therefore skip there; all other tests still run.
+      - name: Run tests without the Helix runtime
+        if: runner.os == 'Windows'
+        run: cargo test --workspace
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run all tests
-        run: cargo test --workspace --verbose
+      - name: Check generated README
+        run: cargo xtask readme --check

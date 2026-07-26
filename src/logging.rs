@@ -1,18 +1,26 @@
+//! File-only logging for the dylib boundary.
+
+use std::{path::Path, sync::Once};
+
 use etcetera::base_strategy::{BaseStrategy, choose_base_strategy};
-use log::{LevelFilter, info};
-use std::path::{Path, PathBuf};
+const APP_NAME: &str = "scooter.hx";
+static INITIALISE: Once = Once::new();
 
-static APP_NAME: &str = "scooter.hx";
-
-pub fn cache_dir() -> PathBuf {
-    let strategy = choose_base_strategy().expect("Error when finding cache directory");
-    let mut path = strategy.cache_dir();
-    path.push(APP_NAME);
-    path
-}
-
-pub fn default_log_file() -> PathBuf {
-    cache_dir().join(format!("{APP_NAME}.log"))
+/// Install the cheap, warning-level file logger once for the dylib process.
+///
+/// A logger may already be installed by Helix.  In that case `simple_log`
+/// returns an error and the `log` facade remains a harmless no-op here rather
+/// than ever writing to the terminal's stderr stream.
+pub(crate) fn initialise() {
+    INITIALISE.call_once(|| {
+        let Ok(strategy) = choose_base_strategy() else {
+            return;
+        };
+        let path = strategy.cache_dir().join(APP_NAME).join("scooter-hx.log");
+        if make_parent_dir(&path).is_ok() {
+            let _ = simple_log::file(path.to_string_lossy(), "warn", 2, 2);
+        }
+    });
 }
 
 fn make_parent_dir(path: &Path) -> std::io::Result<()> {
@@ -24,12 +32,23 @@ fn make_parent_dir(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn setup_logging(level: LevelFilter) -> std::io::Result<()> {
-    let log_path = default_log_file();
-    make_parent_dir(&log_path)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let _ = simple_log::file(log_path.to_string_lossy(), level.as_str(), 100, 10);
-
-    info!("Logging initialized at {}", log_path.display());
-    Ok(())
+    #[test]
+    fn cache_log_path_is_nested_under_the_application_directory() {
+        let strategy = choose_base_strategy().expect("cache base strategy");
+        let path = strategy.cache_dir().join(APP_NAME).join("scooter-hx.log");
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("scooter-hx.log")
+        );
+        assert_eq!(
+            path.parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str()),
+            Some(APP_NAME)
+        );
+    }
 }
