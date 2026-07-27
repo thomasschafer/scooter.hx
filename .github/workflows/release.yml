@@ -19,7 +19,7 @@ jobs:
       version: ${{ steps.get-package-info.outputs.version }}
       should_release: ${{ steps.check-version.outputs.state == 'create' || steps.check-version.outputs.state == 'resume' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -139,7 +139,7 @@ jobs:
             asset_name: libscooter_hx.x86_64-windows.dll
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: v${{ needs.prepare-release.outputs.version }}
