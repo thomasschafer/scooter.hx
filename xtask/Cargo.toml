@@ -10,5 +10,5 @@ cargo_metadata = "0.19"
 clap = { version = "4.6", features = ["derive"] }
 scooter-core = "0.4.0"
 scooter-hx-engine = { path = ".." }
-syn = { version = "2.0", features = ["full", "parsing"] }
+syn = { version = "3.0", features = ["full", "parsing"] }
 toml = "1.1"
