@@ -34,7 +34,7 @@ jobs:
       - name: Cache minimal Helix runtime
         if: runner.os != 'Windows'
         id: helix-runtime-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .ci/helix-runtime
           # runner.os in the key: grammar dylibs are platform binaries, and a
