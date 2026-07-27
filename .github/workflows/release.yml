@@ -14,11 +14,12 @@ jobs:
   prepare-release:
     name: Prepare release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       version: ${{ steps.get-package-info.outputs.version }}
-      should_release: ${{ steps.check-version.outputs.exists == 'false' }}
+      should_release: ${{ steps.check-version.outputs.state == 'create' || steps.check-version.outputs.state == 'resume' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -52,16 +53,36 @@ jobs:
         run: |
           version="${{ steps.get-package-info.outputs.version }}"
 
-          if gh release view "v${version}" &>/dev/null; then
-            echo "Release v${version} already exists" >&2
-            echo "exists=true" >> $GITHUB_OUTPUT
+          error_file=$(mktemp)
+          if draft_status=$(gh release view "v${version}" --json isDraft --jq '.isDraft' 2>"$error_file"); then
+            rm "$error_file"
+            case "$draft_status" in
+              true)
+                state=resume
+                ;;
+              false)
+                state=published
+                ;;
+              *)
+                echo "ERROR: Unexpected draft status for release v${version}: ${draft_status}" >&2
+                exit 1
+                ;;
+            esac
+          elif grep -Eqi 'release not found|HTTP 404' "$error_file"; then
+            rm "$error_file"
+            state=create
           else
-            echo "Release v${version} does not exist" >&2
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "ERROR: Failed to determine release state for v${version}" >&2
+            cat "$error_file" >&2
+            rm "$error_file"
+            exit 1
           fi
 
+          echo "Release v${version} state: ${state}"
+          echo "state=${state}" >> $GITHUB_OUTPUT
+
       - name: Create release
-        if: steps.check-version.outputs.exists == 'false'
+        if: steps.check-version.outputs.state == 'create'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -69,8 +90,12 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          git tag -a "v${version}" -m "Release v${version}"
-          git push origin "v${version}"
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null || git ls-remote --exit-code --tags origin "v${version}" >/dev/null; then
+            echo "Tag v${version} already exists; skipping tag creation"
+          else
+            git tag -a "v${version}" -m "Release v${version}"
+            git push origin "v${version}"
+          fi
 
           gh release create "v${version}" \
             --title "v${version}" \
@@ -82,6 +107,7 @@ jobs:
     if: needs.prepare-release.outputs.should_release == 'true'
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -96,7 +122,7 @@ jobs:
             use-cross: true
             cargo_output_name: libscooter_hx.so
             asset_name: libscooter_hx.aarch64-linux.so
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             use-cross: false
             cargo_output_name: libscooter_hx.dylib
@@ -113,9 +139,10 @@ jobs:
             asset_name: libscooter_hx.x86_64-windows.dll
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
+        ref: v${{ needs.prepare-release.outputs.version }}
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -151,6 +178,7 @@ jobs:
     needs: [prepare-release, build-and-upload]
     if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Publish release
         env:
