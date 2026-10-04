@@ -951,7 +951,7 @@ mod tests {
         };
         assert_eq!(state.num_successes, 2);
         assert_eq!(state.num_ignored, 0);
-        assert!(state.errors.is_empty());
+        assert_eq!(state.errors, vec![]);
         let results = joined_runs(&mut engine);
         assert!(results.contains("Successful replacements (lines):"));
         assert!(results.contains("Success!"));
@@ -1041,7 +1041,7 @@ mod tests {
 
         // The plugin chord forwards untouched in fields focus.
         let fields_response = engine.handle_key("p", 4);
-        assert!(fields_response.actions.is_empty());
+        assert_eq!(fields_response.actions, vec![]);
         assert_eq!(engine.app.search_fields.search().text(), "alphap");
 
         assert_eq!(engine.handle_key("enter", 0), "rerender");
@@ -1053,7 +1053,7 @@ mod tests {
 
         // The plugin binding, not the foreground binding, owns interception.
         let wrong_key_response = engine.handle_key("o", 4);
-        assert!(wrong_key_response.actions.is_empty());
+        assert_eq!(wrong_key_response.actions, vec![]);
         let response = engine.handle_key("p", 4);
         assert_eq!(
             response.actions,
@@ -1521,14 +1521,14 @@ mod tests {
         engine.reset();
         for _ in 0..30 {
             let response = engine.pump();
-            assert!(response.actions.is_empty());
+            assert_eq!(response.actions, vec![]);
             thread::sleep(Duration::from_millis(10));
         }
 
         let Screen::SearchFields(state) = &engine.app.ui_state.current_screen else {
             panic!("reset left the fields screen");
         };
-        assert!(engine.app.search_fields.search().text().is_empty());
+        assert_eq!(engine.app.search_fields.search().text(), "");
         assert!(state.search_state.is_none());
     }
 
