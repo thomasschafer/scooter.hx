@@ -17,7 +17,7 @@ abi_stable = "0.11.1"
 etcetera = "0.11.0"
 log = "0.4.30"
 lru = "0.18.1"
-scooter-core = "0.4.0"
+scooter-core = "0.4.1"
 simple-log = "2.4.0"
 # steel-core/steel-derive must match the exact revision pinned in the Helix
 # steel-event-system branch's Cargo.lock. Dylib loading only compares declared

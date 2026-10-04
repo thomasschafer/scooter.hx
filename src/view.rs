@@ -1538,7 +1538,8 @@ fn read_preview_window(
                 // Read once: this supplies both the visible context and the
                 // complete source Tree-sitter needs for correct parsing. A
                 // non-UTF-8 read intentionally falls through to the core's
-                // lossy window reader, matching the TUI's plain preview.
+                // window reader, which decodes legacy encodings, matching the
+                // TUI's plain preview.
                 if let Ok(Some(content)) = highlight_engine.read_preview_content(path) {
                     let spans = highlight_engine.highlight_preview_content(path, &content);
                     let lines = indexed_lines_in_window(&content, start, end);
@@ -2289,20 +2290,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn non_utf8_preview_falls_back_to_the_core_lossy_plain_window() {
+    /// Writes `contents` to a file and returns the text of the second line of its plain
+    /// (non-highlighted) preview, which is the line that the search result points at.
+    fn non_utf8_preview_line(contents: &[u8], expected_line: &str) -> String {
         let fixture = tempdir().expect("fixture directory");
         let path = fixture.path().join("invalid.rs");
-        fs::write(
-            &path,
-            b"before context\ninvalid \xff alpha target\nafter context\n",
-        )
-        .expect("write non-UTF-8 fixture");
+        fs::write(&path, contents).expect("write non-UTF-8 fixture");
         let result = SearchResultWithReplacement {
             search_result: SearchResult::new_line(
                 Some(path),
                 2,
-                "invalid � alpha target".to_string(),
+                expected_line.to_string(),
                 LineEnding::Lf,
                 true,
             ),
@@ -2319,8 +2317,41 @@ mod tests {
             true,
         )
         .expect("plain fallback succeeds");
-        assert_eq!(preview.lines[1].text, "invalid � alpha target");
         assert!(preview.spans.is_none());
+        preview.lines[1].text.clone()
+    }
+
+    #[test]
+    fn non_utf8_preview_decodes_with_the_detected_legacy_encoding() {
+        assert_eq!(
+            non_utf8_preview_line(
+                b"before context\ninvalid \xff alpha target\nafter context\n",
+                "invalid ÿ alpha target",
+            ),
+            "invalid ÿ alpha target"
+        );
+    }
+
+    #[test]
+    fn latin1_preview_decodes_accented_characters() {
+        assert_eq!(
+            non_utf8_preview_line(
+                b"before context\nmini \xe9tait d\xe9j\xe0 vu\nafter context\n",
+                "mini était déjà vu",
+            ),
+            "mini était déjà vu"
+        );
+    }
+
+    #[test]
+    fn binary_preview_still_replaces_invalid_bytes_lossily() {
+        assert_eq!(
+            non_utf8_preview_line(
+                b"before context\nabc\xff\x00def\nafter context\n",
+                "abc�\0def",
+            ),
+            "abc�\0def"
+        );
     }
 
     #[test]
