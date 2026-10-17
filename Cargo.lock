@@ -1785,9 +1785,9 @@ dependencies = [
 
 [[package]]
 name = "scooter-core"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b29a3ee42aaad5836f703fd2f5972cb9a9e891e11e3a2f4e74fa968cbe94e18e"
+checksum = "2103229681fd7e6ef6da4beefe59129952816a6ce2d5cb10f7b69c0f19fb7e3b"
 dependencies = [
  "anyhow",
  "bitflags",
