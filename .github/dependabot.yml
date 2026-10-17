@@ -4,23 +4,29 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: monday
     groups:
-      cargo-minor-patch:
+      cargo-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
         update-types:
-          - "minor"
-          - "patch"
-      cargo-major:
-        update-types:
-          - "major"
+          - minor
+          - patch
+    cooldown:
+      default-days: 5
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: monday
     groups:
-      actions-minor-patch:
+      github-actions-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
         update-types:
-          - "minor"
-          - "patch"
-      actions-major:
-        update-types:
-          - "major"
+          - minor
+          - patch
+    cooldown:
+      default-days: 5
