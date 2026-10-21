@@ -14,10 +14,6 @@ TMUX_SOCKET=""
 TMUX_SESSION=""
 PANE_TARGET=""
 
-if [[ ! -x "$HX_BINARY" ]]; then
-  e2e_fail "Helix test binary is not executable: $HX_BINARY"
-fi
-
 if ! command -v tmux >/dev/null; then
   e2e_fail 'tmux is required'
 fi

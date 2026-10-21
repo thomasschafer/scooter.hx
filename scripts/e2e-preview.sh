@@ -18,10 +18,6 @@ restore_standard_init() {
   printf '(require "%s")\n' "$REPO/scooter.scm" > "$XDG_CONFIG_HOME/helix/init.scm"
 }
 
-if [[ ! -x "$HX_BINARY" ]]; then
-  e2e_fail "Helix test binary is not executable: $HX_BINARY"
-fi
-
 if ! command -v tmux >/dev/null; then
   e2e_fail 'tmux is required'
 fi
