@@ -165,12 +165,14 @@ Bindings are written in Helix's key syntax.
 ### `scooter-set!` or `scooter-keys!` is a free identifier
 
 This error (`Cannot reference an identifier before its definition`) means Helix
-is loading a version of scooter.hx from before v0.2.0. Forge at the Steel
-revision Helix uses doesn't update its cached clone, so
-`forge pkg install --git ... --force` reinstalls the old version. Delete
-`cog-sources/scooter.hx` from your Steel home directory (`$STEEL_HOME`, or if
-unset, `~/.steel` when it exists and `~/.local/share/steel` otherwise), then
-reinstall.
+is loading a version of scooter.hx from before v0.2.0. Versions of forge
+installed before September 2026 don't update their cached clone, so
+`forge pkg install --git ... --force` reinstalls the old version. Update forge,
+then reinstall scooter.hx:
+
+```sh
+cargo install --git https://github.com/mattwparas/steel.git steel-forge --locked --force
+```
 
 ### Plugin fails to load, or an update does not take effect
 
