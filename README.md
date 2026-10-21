@@ -172,6 +172,7 @@ then reinstall scooter.hx:
 
 ```sh
 cargo install --git https://github.com/mattwparas/steel.git steel-forge --locked --force
+forge pkg install --git https://github.com/thomasschafer/scooter.hx.git --force
 ```
 
 ### Plugin fails to load, or an update does not take effect
