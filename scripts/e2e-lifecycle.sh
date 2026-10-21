@@ -12,10 +12,6 @@ TMUX_SESSION="scooter-e6-lifecycle"
 PANE_TARGET="$TMUX_SESSION:0.0"
 trap e2e_cleanup EXIT INT TERM
 
-if [[ ! -x "$HX_BINARY" ]]; then
-  e2e_fail "Helix test binary is not executable: $HX_BINARY"
-fi
-
 if ! command -v tmux >/dev/null; then
   e2e_fail 'tmux is required'
 fi
@@ -26,7 +22,10 @@ fi
 
 rm -rf "$LIFECYCLE_FIXTURE_DIR"
 mkdir -p "$LIFECYCLE_FIXTURE_DIR"
-for ((index = 1; index <= 2000; index++)); do
+# The search must stay in progress long enough for the 0.2s pane polling to
+# observe "Still searching..."; 2,000 files can finish in under that.
+LIFECYCLE_FILE_COUNT=20000
+for ((index = 1; index <= LIFECYCLE_FILE_COUNT; index++)); do
   printf 'lifecycle-match %04d\n' "$index" > "$LIFECYCLE_FIXTURE_DIR/file-${index}.txt"
 done
 
@@ -47,7 +46,7 @@ tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Escape
 e2e_wait_for_absent 'Search text'
 
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" ':scooter' Enter
-e2e_wait_for_present 'Results: 2000 [Search complete]'
+e2e_wait_for_present "Results: $LIFECYCLE_FILE_COUNT [Search complete]"
 
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" C-r
 e2e_wait_for_present 'Results: 0 [Search is empty]'

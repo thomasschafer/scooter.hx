@@ -17,9 +17,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if [[ ! -x "$HX_BINARY" ]]; then
-  e2e_fail "Helix test binary is not executable: $HX_BINARY"
-fi
 if ! command -v tmux >/dev/null; then
   e2e_fail 'tmux is required'
 fi
@@ -126,7 +123,8 @@ e2e_wait_for_present 'Results:'
 e2e_wait_for_present '[Search complete]'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" Tab
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" OMEGA
-e2e_wait_for_present '+ OMEGA one'
+# Result order is not deterministic, so accept the preview of any match.
+e2e_wait_for_present '+ OMEGA '
 e2e_press_until_present Enter 'Successful replacements'
 tmux -L "$TMUX_SOCKET" send-keys -t "$PANE_TARGET" C-q
 e2e_wait_for_absent 'Successful replacements'

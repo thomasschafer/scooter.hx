@@ -18,9 +18,19 @@ export LIFECYCLE_FIXTURE_DIR="$REPO/.dev/fixtures/lifecycle"
 export HX_BINARY="${HX_BINARY:-$HOME/Development/helix/target/release/hx}"
 export E2E_THEME="${E2E_THEME:-catppuccin_mocha}"
 
+# Upstream Helix does not enable its `steel` feature by default; without it the
+# binary has no plugin support and code-gen silently generates nothing.
+if [[ ! -x "$HX_BINARY" ]]; then
+  printf '%s\n' "Helix test binary is not executable: $HX_BINARY" >&2
+  printf '%s\n' "Build it from a steel-event-system checkout with:" >&2
+  printf '%s\n' "  cargo build --release -p helix-term --features steel,git" >&2
+  printf '%s\n' "then set HX_BINARY to its target/release/hx and rerun this script." >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 if [[ ! -d "$STEEL_HOME/cogs/helix" ]]; then
   printf '%s\n' "Missing generated Helix Steel modules at $STEEL_HOME/cogs/helix." >&2
-  printf '%s\n' "Run: STEEL_HOME=$REPO/.dev/steel-home cargo xtask code-gen" >&2
+  printf '%s\n' "Run: STEEL_HOME=$REPO/.dev/steel-home cargo run -p xtask --features helix-term/steel -- code-gen" >&2
   printf '%s\n' "from the Helix checkout, then rerun this script." >&2
   return 1 2>/dev/null || exit 1
 fi

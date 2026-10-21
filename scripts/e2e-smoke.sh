@@ -13,10 +13,6 @@ PANE_TARGET="$TMUX_SESSION:0.0"
 
 trap e2e_cleanup EXIT INT TERM
 
-if [[ ! -x "$HX_BINARY" ]]; then
-  e2e_fail "Helix test binary is not executable: $HX_BINARY"
-fi
-
 if ! command -v tmux >/dev/null; then
   e2e_fail 'tmux is required'
 fi
