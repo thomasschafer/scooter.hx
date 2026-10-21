@@ -39,9 +39,7 @@ Add the following after installing with either method below:
 (require "scooter/scooter.scm")
 ```
 
-Put it in Helix's `init.scm` (normally under `~/.config/helix/`), not
-`helix.scm`. Each Steel file is a separate module, so the configuration
-functions are only available in the file that requires scooter.hx.
+Put it in Helix's `init.scm` (normally under `~/.config/helix/`).
 
 ### Forge
 
@@ -83,10 +81,10 @@ buffer so its contents are current.
 
 ## Configuration
 
-Configure scooter.hx in `init.scm`, after its `require` line in that same
-file. Settings are captured when a session is created: they apply to the first
-`:scooter` with no active session, or to `:scooter-new`; a hidden session
-retains its existing settings until then.
+Configure scooter.hx in `init.scm`, after its `require` line. Settings are
+captured when a session is created: they apply to the first `:scooter` with no
+active session, or to `:scooter-new`; a hidden session retains its existing
+settings until then.
 
 ### Options
 
@@ -166,22 +164,13 @@ Bindings are written in Helix's key syntax.
 
 ### `scooter-set!` or `scooter-keys!` is a free identifier
 
-An error such as `Cannot reference an identifier before its definition:
-scooter-set!` means Helix loaded a `scooter.scm` from before v0.2.0, when the
-configuration functions were added, or that the file calling them does not
-require scooter.hx.
-
-Re-running `forge pkg install --git ... --force` does not always update an
-older install: forge reuses its cached clone at
-`$STEEL_HOME/cog-sources/scooter.hx`, which can stay on the old version. Check
-that `$STEEL_HOME/cogs/scooter/scooter.scm` contains `scooter-set!`; if it does
-not, delete the cached clone and reinstall. If `STEEL_HOME` is unset, Steel
-uses `~/.steel` when it exists, and otherwise `~/.local/share/steel`.
-
-Steel also resolves `(require "scooter/scooter.scm")` relative to `init.scm`
-before `$STEEL_HOME/cogs`, so remove any old `~/.config/helix/scooter/`
-directory. Finally, make sure the `require` is in `init.scm` itself, above the
-configuration calls; requiring it only from `helix.scm` is not enough.
+This error (`Cannot reference an identifier before its definition`) means Helix
+is loading a version of scooter.hx from before v0.2.0. Forge at the Steel
+revision Helix uses doesn't update its cached clone, so
+`forge pkg install --git ... --force` reinstalls the old version. Delete
+`cog-sources/scooter.hx` from your Steel home directory (`$STEEL_HOME`, or if
+unset, `~/.steel` when it exists and `~/.local/share/steel` otherwise), then
+reinstall.
 
 ### Plugin fails to load, or an update does not take effect
 
