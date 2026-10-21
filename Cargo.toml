@@ -25,8 +25,8 @@ simple-log = "2.4.0"
 # without bumping them, so two builds both claiming e.g. 0.8.2 can still differ
 # in ABI — and loading such a dylib is undefined behaviour. Track Helix's rev,
 # not a version requirement, until that branch depends on a published release.
-steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a", features = ["dylibs", "sync"] }
-steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "dec633b908afeafeaf62bab457a92e2bf873745a" }
+steel-core = { git = "https://github.com/mattwparas/steel.git", rev = "24cd21598c091fb88bc10a6375a1ded25e677c37", features = ["dylibs", "sync"] }
+steel-derive = { git = "https://github.com/mattwparas/steel.git", rev = "24cd21598c091fb88bc10a6375a1ded25e677c37" }
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
 ropey = "=1.6.1"
 regex = "1.12.3"

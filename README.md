@@ -28,7 +28,7 @@ branch and the Steel toolchain installed from that checkout (including
 
 The native dylib must use the exact `steel-core` and `steel-derive` revision
 that Helix uses. This repository pins
-[`dec633b908afeafeaf62bab457a92e2bf873745a`](https://github.com/mattwparas/steel/tree/dec633b908afeafeaf62bab457a92e2bf873745a);
+[`24cd21598c091fb88bc10a6375a1ded25e677c37`](https://github.com/mattwparas/steel/tree/24cd21598c091fb88bc10a6375a1ded25e677c37);
 changing the pin independently can make Helix reject the dylib at load time.
 
 ## Installation
