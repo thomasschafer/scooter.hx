@@ -1545,7 +1545,7 @@ checksum = "0d22152487193190344590e4f30e219cf3fe140d9e7a3fdb683d82aa2c5f4156"
 dependencies = [
  "arrayvec",
  "typed-arena",
- "unicode-width 0.2.2",
+ "unicode-width 0.2.3",
 ]
 
 [[package]]
@@ -1810,7 +1810,7 @@ dependencies = [
  "tokio",
  "toml",
  "two-face",
- "unicode-width 0.2.2",
+ "unicode-width 0.2.3",
 ]
 
 [[package]]
@@ -1833,7 +1833,7 @@ dependencies = [
  "toml",
  "tree-house",
  "tree-house-bindings",
- "unicode-width 0.2.2",
+ "unicode-width 0.2.3",
 ]
 
 [[package]]
@@ -2340,9 +2340,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.53.3"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",
@@ -2499,9 +2499,9 @@ checksum = "68f5e5f3158ecfd4b8ff6fe086db7c8467a2dfdac97fe420f2b7c4aa97af66d6"
 
 [[package]]
 name = "unicode-width"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
 
 [[package]]
 name = "unicode-xid"
