@@ -16,7 +16,7 @@ resolver = "3"
 abi_stable = "0.11.1"
 etcetera = "0.11.0"
 log = "0.4.30"
-lru = "0.18.1"
+lru = "0.19.0"
 scooter-core = "0.5.0"
 simple-log = "2.4.0"
 # steel-core/steel-derive must match the exact revision pinned in the Helix
